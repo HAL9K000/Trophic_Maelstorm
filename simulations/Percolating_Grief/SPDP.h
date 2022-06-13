@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cmath>
 #include <list>
+#include <thread>
 using namespace std::chrono;
 //static std::mt19937_64 rng(time(NULL));
 #include<bits/stdc++.h>

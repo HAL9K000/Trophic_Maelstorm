@@ -143,14 +143,18 @@ void f_2D(double f[], vector<double> &Rho_t, double p, double D, double t, doubl
 void percolation_2D(vector<vector<double>> &Rho, vector<double> &t_stop, double Rh0[],
 	 double t_max, double p, double D, double sigma, double dt, double dx, int r,  int g)
 {
-
+	int rd = std::random_device{}(); // random device engine, usually based on /dev/random on UNIX-like systems
 	for(int j=0; j< r; j++)
 	{
 		// Iterating over replicates.
 
-		thread_local static std::random_device rd; // random device engine, usually based on /dev/random on UNIX-like systems
-		thread_local static std::mt19937 rng{rd()}; // initialize Mersennes' twister using rd to generate the seed
+		stringstream m1;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        m1 << "Replicate:\t" << j <<endl; cout << m1.str();
 
+		
+		thread_local std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
+		rng.seed(rd);
+		//thread_local std::default_random_engine rng(rd); //engine
 		//Credits: vsoftco, https://stackoverflow.com/questions/29549873/stdmt19937-doesnt-return-random-number
 
 
@@ -169,14 +173,20 @@ void percolation_2D(vector<vector<double>> &Rho, vector<double> &t_stop, double 
 				Rho_dt[i] = Rh0[i]; //Assigning initial conditions
 	  }
 
+	   	stringstream m2;     //To make cout thread-safe as well as non-garbled due to race conditions.
+     	m2 << "POCKET!" <<endl; cout << m2.str(); 
+
 		//int t_max = static_cast<int>(t_stop[t_stop.size() -1]); //Storing last element of the same here.
 		double t=0; //Initialise t
 		int s=0;
-		cout << t_stop[s] << endl;
+		//cout << t_stop[s] << endl;
 		while (t < t_max + dt)
 		{
 			//End at the end of all time.
-			//cout << "Cuck" << endl;
+			//cout << "SOCKET" << endl;
+
+			stringstream m3;     //To make cout thread-safe as well as non-garbled due to race conditions.
+      		m3 << "B4RK4" <<endl; cout << m3.str();
 
 			f_2D(K1, Rho_dt, p, D, t, dt, dx, g); //K1 updated.
 			for(int i = 0; i<g*g; dx, i++)
@@ -191,7 +201,8 @@ void percolation_2D(vector<vector<double>> &Rho, vector<double> &t_stop, double 
 		  { Rho_M[i] = Rho_dt[i] + (dt)*K3[i];  } //Recall Runge Kutta-Update Schema for K4
 			f_2D(K4, Rho_M, p, D, t +dt, dt, dx, g); //K4 updated.
 
-
+			 stringstream m5;     //To make cout thread-safe as well as non-garbled due to race conditions.
+      		m5 << "A7RK4" <<endl; cout << m5.str();
 			//Now that K1, K2, K3, K4 updated for all sites, do the stochastic update.
 
 			poisson_distribution<int> poisson; gamma_distribution <double> gamma;
@@ -205,10 +216,15 @@ void percolation_2D(vector<vector<double>> &Rho, vector<double> &t_stop, double 
 					// Deterministic RK4 complete.
 
 	        poisson = poisson_distribution<int>(lambda*lambda_exp*Rho_dt[i]);
+			cout << "Poisson Pill:\t" << poisson(rng) <<endl;
 	        gamma = gamma_distribution<double>(poisson(rng), 1.0);
 					//Defining shapes of poisson and gamma distributions.
 	        Rho_dt[i]= gamma(rng)/lambda;
-	    }
+			cout << "Moulin Rouge:\t" << Rho_dt[i] <<endl;
+	    	}
+
+			stringstream m4;     //To make cout thread-safe as well as non-garbled due to race conditions.
+      		m4 << "SOCKET!" <<endl; cout << m4.str();
 			t+=dt; //Update timestep
 
 			//Updating Pijm at end of sweep.
@@ -216,9 +232,11 @@ void percolation_2D(vector<vector<double>> &Rho, vector<double> &t_stop, double 
 			//cout << t << endl;
 			if(t > t_stop[s] -dt/2.0 && t <= t_stop[s] + dt/2.0)
 			{
+				stringstream m4;     //To make cout thread-safe as well as non-garbled due to race conditions.
+      			m4 << "LOCKET!:\t" << t << " " << p  <<endl; cout << m4.str();
 				for ( int k = 0; k< Rho_dt.size(); k++)
 			  {	// Recall Rho = | p (Order Parameter) | Replicate (r) | Time(t)  | a*L + b | Cell Density[a][b] |
-					Rho.push_back({p, j, t, k, Rho_dt[k]});
+					Rho.push_back({p, static_cast<double>(j), t, static_cast<double>(k), Rho_dt[k]});
 			  }
 				s = (s+1)%t_stop.size(); // To prevent out of bounds exception.
 			}
@@ -227,6 +245,8 @@ void percolation_2D(vector<vector<double>> &Rho, vector<double> &t_stop, double 
 
 		vector<double>().swap(Rho_M); vector<double>().swap(Rho_dt);
 		// Remove dynamic vectors from memory and free up allocated space.
+
+		
 
 	}
 
@@ -264,10 +284,10 @@ void stoc_dem_percolation(double Rho_0[], vector<double> &t_stop, int div, doubl
         message << "We are working on p Value:\t" << p_space[i] <<endl;
         cout << message.str();
         std::vector<vector <double>> Rho_p;
-				double Rh0[g*g]={0.0}; //Stores initial density conditions
-				for(int j =0; j < g*g; j++)
-				{	Rh0[j] = Rho_0[j]; }
-				percolation_2D(Rho_p, t_stop, Rh0, t_max, p_space[i], D, sigma, dt, dx, r, g);
+		double Rh0[g*g]={0.0}; //Stores initial density conditions
+		for(int j =0; j < g*g; j++)
+		{	Rh0[j] = Rho_0[j]; }
+		percolation_2D(Rho_p, t_stop, Rh0, t_max, p_space[i], D, sigma, dt, dx, r, g);
         //crtexp_DP_Basic(grid_size, comp_data, p_space[i], r_init, length);
 
         vec_private.insert(vec_private.end(), Rho_p.begin(), Rho_p.end());
@@ -313,7 +333,7 @@ void stoc_dem_percolation(double Rho_0[], vector<double> &t_stop, int div, doubl
 		<< vec[i][2] << "," << static_cast<int>(vec[i][3]) << "," << setprecision(16) << vec[i][4] << endl;
 		if( i%(5000) ==1)
     {
-			output_dp << setprecision(5) << vec[i][0] << "," << static_cast<int>(vec[i][1]) << "," << setprecision(7)
+			cout << setprecision(5) << vec[i][0] << "," << static_cast<int>(vec[i][1]) << "," << setprecision(7)
 			<< vec[i][2] << "," << vec[i][3] << "," << setprecision(16) << vec[i][4] << endl;
     }
 	}
