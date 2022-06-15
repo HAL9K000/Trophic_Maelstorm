@@ -6,7 +6,7 @@ int main()
 
   double p_start; double p_end; int div; double t_max;
   double D; double sigma; double dt; double dx; int r;  int g;
-  double Rho_0[g*g] ={0.75};
+  
 
   cout << "Enter desired time-step (dt): ";
   cin >> dt;
@@ -38,12 +38,22 @@ int main()
   cout << "Enter the desired diffusion coefficient (D): ";
   cin >> D;
 
-  r= 4; g=32;
+  r= 2; g=5;
+  double Rho_0[g*g] ={0.75};
   for(int i=0; i< g; i++)
   {   //
-    for(int j=0; i< g/2.0; i++)
-      Rho_0[g*i + j] = 0.25;
+    for(int j=0; j< g; j++)
+    {
+      Rho_0[g*i + j] = 0.1;
+      
+    }
   }
+  for(int i=0; i< g; i++)
+  {   //
+    for(int j=0; j< g/2.0; j++)
+      Rho_0[g*i + j] = 0.1;
+  }
+  
   vector<double> t_stop = {t_max/3.0, t_max}; vector <vector <double>> Rho;
   //Left half of random grid has initial concentration 1/3rd that of the right half.
   percolation_2D(Rho, t_stop, Rho_0, t_max,  p_start, D, sigma,  dt, dx, r,  g);
@@ -57,7 +67,15 @@ int main()
 	    << Rho[i][2] << "," << Rho[i][3] << "," << setprecision(16) << Rho[i][4] << endl;
   }
   
-  return 0;
+  cout<< "INITIAL CONDITIONS:" <<endl;
 
+  for(int i=0; i< g; i++)
+  {   //
+    for(int j=0; j< g; j++)
+      { int ten = g*i +j;
+        cout << "(" << i <<"," << j << ") " << Rho_0[g*i +j] << " ";}
+  }
+  cout << endl;
+  return 0;
   
 }

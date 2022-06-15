@@ -6,7 +6,7 @@ int main()
 
   double p_start; double p_end; int div; double t_max;
   double D; double sigma; double dt; double dx; int r;  int g;
-  double Rho_0[g*g] ={0.75}; vector<double> t_stop;
+ 
 
   cout << "Enter desired time-step (dt): ";
   cin >> dt;
@@ -38,10 +38,10 @@ int main()
   cout << "Enter the desired diffusion coefficient (D): ";
   cin >> D;
 
-
+  double Rho_0[g*g] ={0.75}; vector<double> t_stop;
   for(int i=0; i< g; i++)
   {   //
-    for(int j=0; i< g/2.0; i++)
+    for(int j=0; j< g/2.0; j++)
       Rho_0[g*i + j] = 0.25;
   }
   //Left half of random grid has initial concentration 1/3rd that of the right half.

@@ -143,15 +143,16 @@ void f_2D(double f[], vector<double> &Rho_t, double p, double D, double t, doubl
 void percolation_2D(vector<vector<double>> &Rho, vector<double> &t_stop, double Rh0[],
 	 double t_max, double p, double D, double sigma, double dt, double dx, int r,  int g)
 {
-	int rd = std::random_device{}(); // random device engine, usually based on /dev/random on UNIX-like systems
+	int n_roll =10000; int n_star = 1000; 
+	
 	for(int j=0; j< r; j++)
 	{
 		// Iterating over replicates.
 
 		stringstream m1;     //To make cout thread-safe as well as non-garbled due to race conditions.
         m1 << "Replicate:\t" << j <<endl; cout << m1.str();
-
-		
+		int rd = std::random_device{}(); // random device engine, usually based on /dev/random on UNIX-like systems
+		//https://cplusplus.com/forum/beginner/220120/
 		thread_local std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
 		rng.seed(rd);
 		//thread_local std::default_random_engine rng(rd); //engine
@@ -164,14 +165,15 @@ void percolation_2D(vector<vector<double>> &Rho, vector<double> &t_stop, double 
 		double lambda_exp = exp( (2*p -1.0)*dt); double lambda = 2*(2*p -1)/(sigma*sigma*(lambda_exp -1.0));
 
 		vector <double> Rho_dt(g*g, 0.0); //Kept constant, only updated at end of turn
-		double K1[g*g] ={0.0}; double K2[g*g] ={0.0}; double K3[g*g] ={0.0}; double K4[g*g] ={0.0};
+		double K1[g*g] ={0.0}; double K2[g*g] ={0.0}; double K3[g*g] ={0.0}; double K4[g*g] ={0.0};	
 		//Initialise RK4 terms for future use.
 		vector <double> Rho_M(g*g, 0.0); //Stores intermediate values of Rho at dt/2 and dt for RK4 calculations.
-
+		cout<< "Initially: "<<endl;
 	  for(int i=0; i< g*g; i++)
 	  {
 				Rho_dt[i] = Rh0[i]; //Assigning initial conditions
-	  }
+				cout<< Rho_dt[i] << " ";
+	  } cout<<endl;
 
 	   	stringstream m2;     //To make cout thread-safe as well as non-garbled due to race conditions.
      	m2 << "POCKET!" <<endl; cout << m2.str(); 
@@ -179,7 +181,7 @@ void percolation_2D(vector<vector<double>> &Rho, vector<double> &t_stop, double 
 		//int t_max = static_cast<int>(t_stop[t_stop.size() -1]); //Storing last element of the same here.
 		double t=0; //Initialise t
 		int s=0;
-		//cout << t_stop[s] << endl;
+		
 		while (t < t_max + dt)
 		{
 			//End at the end of all time.
@@ -188,19 +190,30 @@ void percolation_2D(vector<vector<double>> &Rho, vector<double> &t_stop, double 
 			stringstream m3;     //To make cout thread-safe as well as non-garbled due to race conditions.
       		m3 << "B4RK4" <<endl; cout << m3.str();
 
-			f_2D(K1, Rho_dt, p, D, t, dt, dx, g); //K1 updated.
+			f_2D(K1, Rho_dt, p, D, t, dt, dx, g); //K1 updated. 
+			cout<< "K1" << endl;
 			for(int i = 0; i<g*g; dx, i++)
-		  { Rho_M[i] = Rho_dt[i] + (dt/2.0)*K1[i];  } //Recall Runge Kutta-Update Schema for K2 = f(t+dt/2, y+dt/2*K1)
+		  	{ Rho_M[i] = Rho_dt[i] + (dt/2.0)*K1[i];  
+			  cout << K1[i] << " ";
+			} //Recall Runge Kutta-Update Schema for K2 = f(t+dt/2, y+dt/2*K1)
+			cout << endl;
 			f_2D(K2, Rho_M, p, D, t +dt/2.0, dt, dx, g); //K2 updated.
-
+			cout<< "K2" << endl;
 			for(int i = 0; i<g*g; i++)
-		  { Rho_M[i] = Rho_dt[i] + (dt/2.0)*K2[i];  } //Recall Runge Kutta-Update Schema for K3
+		  	{ Rho_M[i] = Rho_dt[i] + (dt/2.0)*K2[i]; cout << K2[i] << " ";  } //Recall Runge Kutta-Update Schema for K3
+		  	cout << endl;
 			f_2D(K3, Rho_M, p, D, t +dt/2.0, dt, dx, g); //K3 updated.
-
+			cout<< "K3" << endl;
 			for(int i = 0; i<g*g; i++)
-		  { Rho_M[i] = Rho_dt[i] + (dt)*K3[i];  } //Recall Runge Kutta-Update Schema for K4
-			f_2D(K4, Rho_M, p, D, t +dt, dt, dx, g); //K4 updated.
-
+		  	{ Rho_M[i] = Rho_dt[i] + (dt)*K3[i]; cout << K3[i] << " ";  } //Recall Runge Kutta-Update Schema for K4
+			cout << endl;
+			f_2D(K4, Rho_M, p, D, t + dt, dt, dx, g); //K4 updated.
+			cout<< "K4" << endl;
+			for(int i = 0; i<g*g; i++)
+			{
+				cout << K4[i] << " ";
+			}
+			cout << endl;
 			 stringstream m5;     //To make cout thread-safe as well as non-garbled due to race conditions.
       		m5 << "A7RK4" <<endl; cout << m5.str();
 			//Now that K1, K2, K3, K4 updated for all sites, do the stochastic update.
@@ -209,23 +222,33 @@ void percolation_2D(vector<vector<double>> &Rho, vector<double> &t_stop, double 
 
 			//Impproved Dornic  Integration of Linear & Stochastic Term
 			//CREDITS: PAULA VILLA MARTIN.
+			t+=dt; //Update timestep
 
 			for(int i=0;i<Rho_dt.size();i++)
 			{
 	        Rho_dt[i]+= (dt/6.0)*( K1[i] + 2*K2[i] + 2*K3[i] + K4[i]);
 					// Deterministic RK4 complete.
+			double mu = lambda*lambda_exp*Rho_dt[i];
+			if ( int(t)%50 == 0)
+			{ cout << "Debug module: i*g+j: " << i << " Rho_ij: " << Rho_dt[i] << "Mu: "  
+			<< mu << endl; }
 
 	        poisson = poisson_distribution<int>(lambda*lambda_exp*Rho_dt[i]);
-			cout << "Poisson Pill:\t" << poisson(rng) <<endl;
+			//cout << "Poisson Pill:\t" << poisson(rng) <<endl;
 	        gamma = gamma_distribution<double>(poisson(rng), 1.0);
 					//Defining shapes of poisson and gamma distributions.
 	        Rho_dt[i]= gamma(rng)/lambda;
-			cout << "Moulin Rouge:\t" << Rho_dt[i] <<endl;
+			//cout << "Moulin Rouge:\t" << Rho_dt[i] <<endl;
 	    	}
+			cout << "MOULIN ROUGE Final Rho(t):" <<endl;
+			for(int i=0;i<Rho_dt.size();i++)
+			{ cout<< Rho_dt[i] << " "; } cout<<endl;
+
+			
 
 			stringstream m4;     //To make cout thread-safe as well as non-garbled due to race conditions.
       		m4 << "SOCKET!" <<endl; cout << m4.str();
-			t+=dt; //Update timestep
+			
 
 			//Updating Pijm at end of sweep.
 
@@ -242,6 +265,8 @@ void percolation_2D(vector<vector<double>> &Rho, vector<double> &t_stop, double 
 			}
 
 		} // End of t loops
+
+
 
 		vector<double>().swap(Rho_M); vector<double>().swap(Rho_dt);
 		// Remove dynamic vectors from memory and free up allocated space.
