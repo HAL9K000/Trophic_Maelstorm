@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "random": "cpp",
+        "iomanip": "cpp",
+        "iosfwd": "cpp",
+        "ostream": "cpp"
+    }
+}

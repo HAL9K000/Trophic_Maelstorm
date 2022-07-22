@@ -38,7 +38,7 @@ int main()
   cout << "Enter the desired diffusion coefficient (D): ";
   cin >> D;
 
-  r= 2; g=5;
+  r= 3; g=5;
   double Rho_0[g*g] ={0.75};
   for(int i=0; i< g; i++)
   {   //
