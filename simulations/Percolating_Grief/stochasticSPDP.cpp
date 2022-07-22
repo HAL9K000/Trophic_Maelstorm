@@ -792,12 +792,12 @@ void percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, 
 			/**if(t == 7.4)
 			{
 				stringstream m10;     //To make cout thread-safe as well as non-garbled due to race conditions.
-        		m10 << "FML............." << endl; cout << m10.str();
+        		m10 << "BLACKBIRD............." << endl; cout << m10.str();
 			}
 			else if(t >= 7.4 -dt/2.0 && t < 7.4 +dt/2.0)
 			{
 				stringstream m10;     //To make cout thread-safe as well as non-garbled due to race conditions.
-        		m10 << "SUX............." << setprecision(16) << t <<  endl; cout << m10.str();
+        		m10 << "A HORSE, MY KINGDOM FOR A HORSE............." << setprecision(16) << t <<  endl; cout << m10.str();
 			}**/
 
 			
@@ -855,7 +855,7 @@ void percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, 
 		if(j == 0) //Namely, the first replicate, set up initial incremental SD and mean of replicates accordingly.
 		{
 			stringstream m7;     //To make cout thread-safe as well as non-garbled due to race conditions.
-        	m7 << "INITIAL BLOWHARD FOR Replicate:\t" << j << "\t for Thread Rank:\t " << omp_get_thread_num() 
+        	m7 << "INITIAL UPDATE FOR Replicate:\t" << j << "\t for Thread Rank:\t " << omp_get_thread_num() 
 			<< " THE SIZE OF RHO_M: " << Rho_M.size() << endl; cout << m7.str();
 			for(int i =0; i< tot_iter; i++)
 			{	rho_rep_avg_var[i][0] = Rho_M[i][0]; rho_rep_avg_var[i][1] = Rho_M[i][1]; rho_rep_avg_var[i][2] = 0.0;
@@ -865,7 +865,7 @@ void percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, 
 		else
 		{
 			/**stringstream m7;     //To make cout thread-safe as well as non-garbled due to race conditions.
-        	m7 << "LATER BLOWHARD FOR Replicate:\t" << j << "\t for Thread Rank:\t " << omp_get_thread_num() 
+        	m7 << "LATER UPDATE FOR Replicate:\t" << j << "\t for Thread Rank:\t " << omp_get_thread_num() 
 			<< " THE SIZE OF RHO_M: " << Rho_M.size() << endl; cout << m7.str();**/
 			// Second or higher replicate, use incremental advances.
 			var_mean_incremental(rho_rep_avg_var, Rho_M, tot_iter, j+1); 
