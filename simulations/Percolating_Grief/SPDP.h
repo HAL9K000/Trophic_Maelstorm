@@ -57,6 +57,8 @@ double mean_of_array(double array[],int size);
 double standard_deviation_of_array(double array[],int size);
 double mean_of_vector(vector<double> array,int size);
 double standard_deviation_of_vector(vector<double> array,int size);
+void var_mean_incremental_surv_runs(double rep_avg_var[][4], double X_curr[][2], int size);
+void var_mean_incremental_all_runs(double rep_avg_var[][3], double X_curr[][2], int size, int r);
 void var_mean_incremental(double rep_avg_var[][2], vector<vector <double>> &X_curr, int size, int r);
 template<typename T> std::vector<double> linspace(T start_in, T end_in, int num_in);
 std::vector<double> logarithmic_time_bins(double t_max, double dt);
