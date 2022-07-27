@@ -2,7 +2,7 @@
 
 int main()
 {
-  increase_stack_limit(512L); //Increase stack limit to 512 MB.
+  increase_stack_limit(2048L); //Increase stack limit to 512 MB.
 
   double a_start; double a_end; double b=1; int div; double t_max;
   double D; double sigma; double dt; double dx; int r;  int g;

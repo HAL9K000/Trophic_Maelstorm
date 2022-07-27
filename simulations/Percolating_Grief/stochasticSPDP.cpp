@@ -297,15 +297,19 @@ void determine_neighbours_S8(int neighbours_R2[][3][3], int g)
 int twilight_zoneS8(vector<double> &Rho_t, int neighbours_S8[][3][3], int i)
 {
 	//Checks if Rho_dt[i] is 0 and is surrounded by empty patches (radius of 1). Returns 0 if so, else 1.
-
+	//double epsi = 0.000000000001; //Define Epsilon as 10^{-12}
+	double sum=0.0;
 	for(int x =1; x<3; x++)
 	{
 		for(int y=1; y<3; y++) //Recall, S8 resembles Laplacian schematic.
 		{		
-			if(Rho_t[neighbours_S8[i][x][y]] != 0.0) 
+			if(Rho_t[neighbours_S8[i][x][y]] > 0.0) 
 				return 1;
+			sum += Rho_t[neighbours_S8[i][x][y]];
 		}
 	}
+	if(sum > 0.0)
+		return 1;
 	return 0; //Only occurs all neighbours in a radius of 1 are empty.
 
 }
@@ -804,7 +808,7 @@ void percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, 
 	int tot_iter = static_cast<int>(exp(2.0)/dt) + 1 + t_meas.size(); // Stores total number of iterations (i.e. time steps logged) per replicate.
 	double rho_rep_avg_var[tot_iter][4] ={0.0}; 
 	//Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
-	double diff_coefficient = D*(1/(6.0*dx*dx)); //Saves us some trouble later.
+	double diff_coefficient = D*(1.0/(6.0*dx*dx)); //Saves us some trouble later.
 	double beta = a - (10.0/3.0)*D/(dx*dx); //double beta = a - 4*D/(dx*dx);
 	double lambda_exp = exp( (beta)*dt); double lambda = 2*(beta)/(sigma*sigma*(lambda_exp -1.0));
 
@@ -838,12 +842,12 @@ void percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, 
 				DRho[i] = Rh0[i];
 	  	} //cout<<endl;
 
-		
+		poisson_distribution<int> poisson; gamma_distribution <double> gamma;
 
 		//int t_max = static_cast<int>(t_stop[t_stop.size() -1]); //Storing last element of the same here.
 		double t=0; //Initialise t
 		int s=0; int po=1; int so =1; int index = 0; 
-		int co=1; int eo=1;
+		int co=1; int eo=1; 
 
 		//stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
         //m6 << "INITIAL CONDITIONS ASSIGNED FOR Replicate:\t" << j << "\t for Thread Rank:\t " << omp_get_thread_num() <<endl; cout << m6.str();
@@ -855,12 +859,12 @@ void percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, 
 			{
 				rhox_avg = mean_of_vector(Rho_dt, g*g); //Finds spatial average of densities at given t.
 				Rho_M[s][0] = t; Rho_M[s][1] = rhox_avg;  s+=1;//Rho_M.push_back({t, rhox_avg});
+				if(rhox_avg == 0.0)
+					break; //Finish negotiations.
 				if( t >= exp(2.0))
 					index+=1;
 			}		
 			// Recall Rho is: | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |
-
-			poisson_distribution<int> poisson; gamma_distribution <double> gamma;
 
 			//Basic Dornic  Integration of Linear & Stochastic Term
 			//CREDITS: DORNIC.
@@ -869,7 +873,26 @@ void percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, 
 			int check= twilight_zoneS8(DRho, nR2, i);
 			//Checks if Rho_dt[i] is 0 and is surrounded by empty patches (Norm 1 radius of 1). Returns 0 if so, else 1.
 			if(check == 0) 
-			{	continue; } //Rho_dt[i] will remain 0 as neighbours are also at 0.
+			{
+					
+				/**double alpha_i = diff_coefficient*(1*(DRho[nR2[i][0][0]] + DRho[nR2[i][0][2]] 
+				+ DRho[nR2[i][2][0]] + DRho[nR2[i][2][2]]) +4*(DRho[nR2[i][0][1]] + DRho[nR2[i][2][1]] 
+				+ DRho[nR2[i][1][0]] + DRho[nR2[i][1][2]]));
+				double fork = (DRho[nR2[i][0][0]] + DRho[nR2[i][0][2]] + DRho[nR2[i][2][0]] + DRho[nR2[i][2][2]]) +
+				DRho[nR2[i][0][1]] + DRho[nR2[i][2][1]] + DRho[nR2[i][1][0]] + DRho[nR2[i][1][2]];
+			
+				double mu = -1.0 + 2.0*alpha_i/(sigma*sigma);
+
+				poisson = poisson_distribution<int>(lambda*lambda_exp*Rho_dt[i]);
+			
+	        	gamma = gamma_distribution<double>(mu + 1.0 + poisson(rng), 1.0);
+
+				stringstream m7;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		m7 << "For t:   " << t << "\t on Thread Rank:   " << omp_get_thread_num()  << " I: " << i
+				<< " ALPHA_I: " << alpha_i << " SUM-I: " << fork << " MU: " << mu << " RHO_DT: " 
+				<< Rho_dt[i] << " GAMMA: " << gamma(rng) <<  endl; cout << m7.str();**/
+				//continue; 
+			} //Rho_dt[i] will remain 0 as neighbours are also at 0. **/
 
 			/** double alpha_i = D/(dx*dx)*(1*(Rho_dt[nR2[i][0][1]] + Rho_dt[nR2[i][0][3]] +
 			Rho_dt[nR2[i][1][1]] + Rho_dt[nR2[i][1][3]]));*/
@@ -883,10 +906,10 @@ void percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, 
 				+ DRho[nR2[i][2][0]] + DRho[nR2[i][2][2]]) +4*(DRho[nR2[i][0][1]] + DRho[nR2[i][2][1]] 
 				+ DRho[nR2[i][1][0]] + DRho[nR2[i][1][2]]));
 			
-			double mu = -1 + 2.0*alpha_i/(sigma*sigma);
+			double mu = -1.0 + 2.0*alpha_i/(sigma*sigma);
 	        poisson = poisson_distribution<int>(lambda*lambda_exp*Rho_dt[i]);
 			
-	        gamma = gamma_distribution<double>(mu + 1 + poisson(rng), 1.0);
+	        gamma = gamma_distribution<double>(mu + 1.0 + poisson(rng), 1.0);
 					
 	        Rho_dt[i]= gamma(rng)/lambda;
 
@@ -927,7 +950,7 @@ void percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, 
 			//Updates SD and Mean values for <Rho>_x across replicates as new replicate data (Rho_M) becomes available.
 		}
 
-		vector<double>().swap(Rho_dt); //vector<vector <double>>().swap(Rho_M);
+		vector<double>().swap(Rho_dt); vector<double>().swap(DRho); //vector<vector <double>>().swap(Rho_M);
 		// Remove dynamic vectors from memory and free up allocated space.
 
 	} // End of r loop.
@@ -1053,22 +1076,24 @@ void spreading_exp_Dornic_2D(vector<vector<double>> &Rho, vector <double> &t_mea
         	m7 << "INITIAL UPDATE FOR Replicate:\t" << j << "\t for Thread Rank:\t " << omp_get_thread_num() 
 			<< " THE SIZE OF RHO_M: " << tot_iter << endl; cout << m7.str();
 			for(int i =0; i< tot_iter; i++)
-			{	rho_rep_avg_var[i][0] = Rho_M[i][0]; rho_rep_avg_var[i][1] = Rho_M[i][1]; rho_rep_avg_var[i][2] = 0.0; 
+			{	rho_t_N_R2_rep[i][0] = Rho_M[i][0]; rho_t_N_R2_rep[i][1] = Rho_M[i][1]; rho_t_N_R2_rep[i][2] = 0.0; 
 				if(Rho_M[i][1] > 0) //Ensuring only surviving runs are considered
-				{ rho_rep_avg_var[i][3] = 1;  } //One surviving run as of now
+				{ rho_t_N_R2_rep[i][3] = 1;  } //One surviving run as of now
 				else if(Rho_M[i][1] == 0) //Ensuring only surviving runs are considered
-				{ rho_rep_avg_var[i][3] = 0;  } //No surviving run as of now
+				{ rho_t_N_R2_rep[i][3] = 0;  } //No surviving run as of now
 
 			} //Namely Var(t,r=1) = 0, Mean_Rho(t, r=1) = Rho_M(t)
 		}
 		else
 		{
+
 			/**stringstream m7;     //To make cout thread-safe as well as non-garbled due to race conditions.
         	m7 << "LATER UPDATE FOR Replicate:\t" << j << "\t for Thread Rank:\t " << omp_get_thread_num() 
 			<< " THE SIZE OF RHO_M: " << Rho_M.size() << endl; cout << m7.str();**/
 			// Second or higher replicate, use incremental advances.
-			var_mean_incremental_surv_runs(rho_rep_avg_var, Rho_M, tot_iter); 
+			//var_mean_incremental_surv_runs(rho_t_N_R2_rep, Rho_M, tot_iter); 
 			//Updates SD and Mean values for <Rho>_x across replicates as new replicate data (Rho_M) becomes available.
+			continue;
 		}
 
 		vector<double>().swap(Rho_dt); //vector<vector <double>>().swap(Rho_M);
@@ -1078,7 +1103,7 @@ void spreading_exp_Dornic_2D(vector<vector<double>> &Rho, vector <double> &t_mea
 
 	for(int i=0; i< tot_iter; i++)
 	{	// Recall Rho is: | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |    #Surviving Runs    |
-		Rho.push_back({a, rho_rep_avg_var[i][0], rho_rep_avg_var[i][1], rho_rep_avg_var[i][2], rho_rep_avg_var[i][3]});
+		Rho.push_back({a, rho_t_N_R2_rep[i][0], rho_t_N_R2_rep[i][1], rho_t_N_R2_rep[i][2], rho_t_N_R2_rep[i][3]});
 	}
 }
 
