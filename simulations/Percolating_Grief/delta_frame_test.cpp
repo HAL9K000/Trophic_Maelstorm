@@ -11,8 +11,8 @@ int main()
   cout << "Enter desired time-step (dt): ";
   cin >> dt;
 
-  cout << "Enter desired step-distance (dx): ";
-  cin >> dx;
+  /**cout << "Enter desired step-distance (dx): ";
+  cin >> dx;**/
 
   cout << "Enter maximum duration of simulation (in hr): ";
   cin >> t_max;
@@ -32,11 +32,12 @@ int main()
   cout << "Enter number of divisions of p (n+1): ";
   cin >> div;
 
-  cout << "Enter the desired stochastic coefficient (Sigma): ";
+  /**cout << "Enter the desired stochastic coefficient (Sigma): ";
   cin >> sigma;
 
   cout << "Enter the desired diffusion coefficient (D): ";
-  cin >> D;
+  cin >> D;**/ 
+  D=0.25; sigma =sqrt(2.0); dx=1.0;
 
   //D=0.25; sigma=0.25; div=11; a_start= 0.1; a_end = 0.11;
   //r=5; g=128; t_max= 100; dt=0.1; dx=0.5;

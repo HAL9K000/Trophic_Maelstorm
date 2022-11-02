@@ -1,4 +1,4 @@
-#include <iostream>
+
 #include <string>
 #include <stdlib.h>
 #include <stdio.h>
@@ -49,19 +49,27 @@ struct zd_coordinates {
 };
 
 void increase_stack_limit(long stack_size);
+bool maxis(int a, int b);
 
 void init_fullframe(double array[], int size);
-void init_solitarytear(double array[], int size);
+void init_constframe(double array[], double constant, int size);
+void init_solitarytear(double array[], int length);
 
 double mean_of_array(double array[],int size);
 double standard_deviation_of_array(double array[],int size);
 double mean_of_vector(vector<double> array,int size);
 double standard_deviation_of_vector(vector<double> array,int size);
-void var_mean_incremental_surv_runs(double rep_avg_var[][4], double X_curr[][2], int size);
+double occupied_sites_of_vector(vector<double> array,int size);
+auto meansq_spread_of_vector(vector<double> array, int g, int c_x, int c_y);
+
+void var_mean_incremental_surv_runs(double t_avg_var_rep_N[][5], double X_curr[][2], int size);
 void var_mean_incremental_all_runs(double rep_avg_var[][3], double X_curr[][2], int size, int r);
+void spreading_incremental_surv_runs(double t_N_R2_rep[][4], double X_curr[][3], int size);
 void var_mean_incremental(double rep_avg_var[][2], vector<vector <double>> &X_curr, int size, int r);
 template<typename T> std::vector<double> linspace(T start_in, T end_in, int num_in);
+template<typename T>std::vector<double> lnspace(T start_in, T end_in, int log_points);
 std::vector<double> logarithmic_time_bins(double t_max, double dt);
+std::vector<double> logarithm10_time_bins(double t_max, double dt);
 
 //----------------------------- Stochastic SPDP RK4 Integration Machinery --------------------------------------------//
 
@@ -81,10 +89,12 @@ void percolation_2D(vector<vector<double>> &Rho, vector<double> &t_stop, double 
   double t_max, double p, double D, double sigma, double dt, double dx, int r,  int g);
 //void stoc_dem_percolation(double Rho_0[], vector<double> &t_stop, int div, double t_max,
 //	double p_start, double p_end, double D, double sigma, double dt, double dx, int r,  int g);
-
+//----------------------------- Dornic For DP --------------------------------------------//
 void fDo_2D(double f[], vector<double> &Rho_t, int n[][2][5], double b, double t, double dt, int g);
 void percolationDornic_2D(vector<vector<double>> &Rho, double Rh0[], 
 	 double t_max, double a, double b, double D, double sigma, double dt, double dx, int r,  int g);
+void spreading_exp_Dornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, double Rh0[],
+	 double t_max, double a, double b, double D, double sigma, double dt, double dx, int r, int g , int c_x, int c_y);
 void percolationHalfDornic_2D(vector<vector<double>> &Rho, vector<double> &t_stop, double Rh0[],
 	 double t_max, double p, double D, double sigma, double dt, double dx, int r,  int g);
 
@@ -92,6 +102,25 @@ void percolationHalfDornic_2D(vector<vector<double>> &Rho, vector<double> &t_sto
 //----------------------------- Crt Exp Determination Machinery --------------------------------------------//
 void critical_exp_delta(double Rho_0[], int div, double t_max, double a_start, double a_end, 
 double b, double D, double sigma, double dt, double dx, int r,  int g);
+void critical_exp_finite_scaling_collapse(int div, int g_st, int g_end, double t_max,  double a_c, 
+	double b, double D, double sigma, double dt, double dx, int r);
+void critical_exp_finite_scaling_stationary(int div, int g_st, int g_end, double t_lim,  double t_max, double a_c, 
+	double b, double D, double sigma, double dt, double dx, int r);
+void critical_exp_theta_delta(double Rho_0[], int div, double t_max, double a_c, double b, 
+		double D, double sigma, double dt, double dx, int r,  int g);
+
+//----------------------------- Dornic For Expanded DP --------------------------------------------//
+void f_exp2D(vector<double> &f, vector<double> &Rho_t, double a, double b, double c, double D, double t, double dt, double dx, int g);
+void RK4_Integrate(vector<double> &Rho_t, double a, double b, double c, double D, double t, double dt, double dx, int g);
+void expanded_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, double Rh0[],
+	 double t_max, double a, double b, double c, double D, double sigma, double dt, double dx, int r,  int g);
+
+void first_order_critical_exp_delta(double Rho_0[], int div, double t_max, double a_start, double a_end, 
+	double b, double c, double D, double sigma, double dt, double dx, int r,  int g);
+
+void capture_frame_decay(double Rho_0[], int div, double t_max, double t_event, double a_start, double a_end, 
+	double b, double c, double D, double sigma, double dt, double dx, int r,  int g)
+
 void test_gamma_poisson();
 #endif
 
