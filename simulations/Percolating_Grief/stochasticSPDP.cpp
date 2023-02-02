@@ -50,6 +50,43 @@ void init_constframe(double array[], double constant, int size)
 	{	array[i] =constant ;}
 }
 
+void init_randframe(double array[], double mean, double sd, int size)
+{
+	int rd = std::random_device{}();
+	std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
+	rng.seed(rd);
+	//Returns array with all elements initialised to random values drawn from a Gaussian distribution with mean mu and SD sigma,
+	// with all values 
+	for(int i=0; i< size; i++)
+	{	
+		normal_distribution<double> norm;
+		norm = normal_distribution<double>(mean, sd);
+		array[i] =norm(rng);
+		if(array[i] < 0)
+			array[i] = 0.0; //Values less than 0 are unrealistic and not permissible.
+	}
+}
+
+void init_quarterframe(double array[], double c1, double c2, double c3, double c4, int L)
+{
+	//Returns array with elements initialised to a constant values: "const1", "const2", "const3", "const4" in clockwise quadrants
+	// starting from the top left.
+	int l2 = static_cast<int>(L/2);
+	for(int i=0; i< l2; i++)
+	{
+		int il2 = i + l2;	
+		for(int j=0; j< l2; j++)
+		{
+			array[i*L + j] =c1; //Filling up top-left quadrant
+			array[i*L + l2 + j] =c2; //Filling up top-right quadrant
+			array[il2*L + l2 + j] =c3; //Filling up bottom-right quadrant
+			array[il2*L  + j] =c4; //Filling up bottom-right quadrant
+		}
+			
+		
+	}
+}
+
 void init_solitarytear(double array[], int length)
 {
 	//Returns array with only central element initalised to 1, all others 0.
@@ -2118,6 +2155,268 @@ void expanded_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> 
 }
 
 
+void terminal_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, double Rh0[],
+	 double t_max, double a, double b, double c, double D, double sigma, double dt, double dx, int r,  int g)
+{
+	//Integrating first order PDE: arho - brho^2 - crho^3 +Diff + Stocj
+	//int nR2[g*g][2][5] ={0}; //n_R2 stores neighbours of all sites in a ball of radius 2.
+	int nR2[g*g][3][3] ={0}; //nR2 stores neighbours of all sites in a ball of NORM 1 (SQUARE) radius 1.
+	//determine_neighbours_R2(nR2, g); //Assigning neigbours.
+	determine_neighbours_S8(nR2, g); //Assigning neigbours.
+
+	//int tot_iter = static_cast<int>(t_max/dt); // Stores total number of iterations (i.e. time steps logged) per replicate.
+	int tot_iter = 1 + t_meas.size(); // Stores total number of iterations (i.e. time steps logged) per replicate.
+	double rho_rep_avg_var[r][5] ={0.0}; 
+	//Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+	double diff_coefficient = D/(dx*dx); //= D*(1.0/(6.0*dx*dx)); //Saves us some trouble later.
+	double beta = a - 4*D/(dx*dx); //a - (10.0/3.0)*D/(dx*dx); //double beta = a - 4*D/(dx*dx);
+	double lambda_exp = exp( (beta)*dt); double lambda = 2*(beta)/(sigma*sigma*(lambda_exp -1.0));
+	double bdt = b*dt; double cdt = c*dt;
+
+	//double surv_rep[t_meas.size() -1] ={0.0}; //Measures number of surviving replicates at each time point.
+
+	t_max = t_meas[t_meas.size() -1] + 100; //Only compute until end of sampling events
+
+	for(int i =0; i< r; i++)
+	{ rho_rep_avg_var[i][0] = t_meas[t_meas.size() -1];}  //Setting up time index of rho_t_N_R2_rep
+
+	double alpha_prime = diff_coefficient*4; //Assume each Rho in neighbourhood for alpha estimation averages 1.
+	double poiss_ru = lambda*lambda_exp*2.5; //Mean
+	double mu_nought = 2.0*alpha_prime/(sigma*sigma) + poiss_ru;
+	poiss_ru += 4*sqrt(poiss_ru); //Mean of Poisson Sampler + 4 SD.
+	mu_nought += 6*sqrt(mu_nought); //Mean of  Mean of Gamma Sampler + 6 SD.
+
+
+	stringstream m0;     //To make cout thread-safe as well as non-garbled due to race conditions.
+    m0 << "Parameters:\t Lambda:\t" << lambda << "\t Beta:\t " << beta << "\t dt,dx:\t " << dt << "," << dx << "\t Poisson Cut-Off:\t " << poiss_ru 
+	<< "\t and  Gamma Cut-Off:\t " << mu_nought  <<endl; //cout << m1.str();
+	std::ofstream errout; //Save Error Logs
+	std::string thr = "ErrLog_" + std::to_string(omp_get_thread_num()) + ".txt";
+	errout.open(thr, std::ios_base::out); errout << m0.str(); errout.close();
+
+	
+	
+	for(int j=0; j< r; j++)
+	{
+		// Iterating over replicates.
+
+		stringstream m1;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        m1 << "Replicate:\t" << j << "\t for Thread Rank:\t " << omp_get_thread_num() 
+		<< "\t with Total Iterations:\t " << tot_iter  <<endl; cout << m1.str();
+		if(j%5 == 0)
+			errout.open(thr, std::ios_base::app); errout << m1.str(); errout.close();
+		int rd = std::random_device{}(); // random device engine, usually based on /dev/random on UNIX-like systems
+		//https://cplusplus.com/forum/beginner/220120/
+		std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
+		rng.seed(rd+j);
+		//thread_local std::default_random_engine rng(rd); //engine
+		//Credits: vsoftco, https://stackoverflow.com/questions/29549873/stdmt19937-doesnt-return-random-number
+		//Defining the Dornic variables
+		
+		//double K1[g*g] ={0.0}; double K2[g*g] ={0.0}; double K3[g*g] ={0.0}; double K4[g*g] ={0.0};	
+		//Initialise RK4 terms for future use.
+		vector <double> Rho_dt(g*g, 0.0); //Updated through the turn, in turn used to update DRho
+		vector <double> DRho(g*g, 0.0); //Dummy variable, Kept constant, only updated at end of turn.
+		vector <double> DummyRho(g*g, 0.0); //Dummy variable, Kept constant, only updated at end of turn.
+		
+		double Rho_M[2][2] ={0.0}; //Stores <rho>x values at t = 0 and t_meas[0] for a single replicate.
+
+		//double K1[g*g] ={0.0}; double K2[g*g] ={0.0}; double K3[g*g] ={0.0}; double K4[g*g] ={0.0}; //double Rho_Mid[g*g] ={0.0};
+
+		//cout<< "Initially: "<<endl;
+	  	for(int i=0; i< g*g; i++)
+	  	{
+				Rho_dt[i] = Rh0[i]; //Assigning initial conditions
+				DRho[i] = Rh0[i];
+	  	} //cout<<endl;
+
+		poisson_distribution<int> poisson; gamma_distribution <double> gamma;
+
+		//int t_max = static_cast<int>(t_stop[t_stop.size() -1]); //Storing last element of the same here.
+		double t=0; int index = 0;  //Initialise t
+		int s=0; int po=1; int so =1; int lo=1;
+		//int co=1; int eo=1; 
+
+		//stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        //m6 << "INITIAL CONDITIONS ASSIGNED FOR Replicate:\t" << j << "\t for Thread Rank:\t " << omp_get_thread_num() <<endl; cout << m6.str();
+		while (t < t_max + dt)
+		{
+
+			double rhox_avg, rhox_num;
+			//Start by updating the Rho vector.
+
+
+			if(t == 0.0 || t >= t_meas[0] -dt/2.0 && t < t_meas[0] +dt/2.0)
+			{
+				rhox_avg = mean_of_vector(Rho_dt, g*g); //Finds spatial average of densities at given t.
+				rhox_num = occupied_sites_of_vector(Rho_dt, g*g); //Finds number of occupied at given t.
+				Rho_M[s][0] = rhox_num; Rho_M[s][1] = rhox_avg;  s+=1;//Rho_M.push_back({t, rhox_avg});
+				if(rhox_num == 0.0)
+					break; //Finish negotiations.
+			}
+
+			//Basic Dornic  Integration of Linear & Stochastic Term
+			//CREDITS: DORNIC.
+			for(int i=0;i<Rho_dt.size();i++)
+			{
+			double alpha_i = diff_coefficient*(1*(DRho[nR2[i][0][1]] + DRho[nR2[i][2][1]] +
+			DRho[nR2[i][1][0]] + DRho[nR2[i][1][2]]));
+
+			
+			
+
+			if(alpha_i == 0 && DRho[nR2[i][1][1]] == 0) 
+			{
+				continue; 
+			} //Checks if Rho_dt[i] is 0 and is surrounded by empty patches (Norm 1 radius of 1). Returns 0 if so, else 1.
+
+			if(alpha_i < 0 && po ==1)
+			{
+				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		m6 << "We are NOT OKAY:\t" << Rho_dt[i] << "\t at index:  " << i << " at time:\t:" << t <<
+				" with Rho(t-dt,i):   " << DRho[i] << "\t and alpha_i:\t" << alpha_i << endl; cout << m6.str();
+				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+				//po=0;
+			}
+			double maxtek = max({DRho[nR2[i][0][1]],DRho[nR2[i][2][1]],DRho[nR2[i][1][0]], DRho[nR2[i][1][2]]}, maxis);
+			if(maxtek - DRho[nR2[i][1][1]] > 5 || maxtek - DRho[nR2[i][1][1]] < -5)
+			{
+				//Checking if Laplacian is causing our troubles.
+				
+				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		m6 << "ALPHA GO-GO-TRON Rho[t,i]:\t" << Rho_dt[i] << "\t at index:  " << i << " at time:\t:" << t <<
+				" with Max(Neighbour(Rho)):   " << maxtek << "\t and alpha_i:\t" << alpha_i << endl; cout << m6.str();
+				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+				//po=0;
+			}
+			
+			double mu = -1.0 + 2.0*alpha_i/(sigma*sigma);
+			double ziggy = lambda*lambda_exp*Rho_dt[i]; double gru;
+			if(ziggy == 0.0)
+			{	//stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		//m6 << "SICK!!" <<endl; cout << m6.str(); 
+				gru = mu + 1.0;  }
+			else if(ziggy < 0.0 || isnan(ziggy) == true || isinf(ziggy) == true)
+			{
+				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		m6 << "POISSON IS MESSED UP:\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
+				<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and alpha_i:\t" << alpha_i << endl; cout << m6.str();
+				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+			}
+			else
+			{
+				poisson = poisson_distribution<int>(lambda*lambda_exp*Rho_dt[i]);
+				gru = mu + 1.0 + poisson(rng);
+			}
+
+			gamma = gamma_distribution<double>(gru, 1.0);
+					
+	        Rho_dt[i]= gamma(rng)/lambda;
+
+			if(gru < 0 || isnan(gru) == true || isinf(gru) == true)
+			{
+				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		m6 << "GAMMA MESSED UP BIG TIME Rho*[t,i]:\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
+				<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and alpha_i:\t" << alpha_i <<  
+				"\t and GRU:\t" << gru <<endl; //cout << m6.str();
+				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+			}
+
+			if(gru > mu_nought || Rho_dt[i] > 5 || alpha_i > 20 || ziggy > poiss_ru)
+			{
+				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		m6 << "BLOWING UP, Rho*[t,i]:\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
+				<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and alpha_i:\t" << alpha_i <<  
+				"\t and GRU:\t" << gru << "\t and Poisson RU:\t" << ziggy << endl; //cout << m6.str();
+				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+			}
+
+			if(isnan(Rho_dt[i]) == true || isinf(Rho_dt[i]) == true)
+			{
+				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		m6 << "YOU HIT ROCK BOTTOM WITH: Rho*[t,i]\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
+				<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and alpha_i:\t" << alpha_i << 
+				"\t and GAMMA ENTRY:\t" << gru << endl; cout << m6.str();
+				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+			}
+			DummyRho[i] =Rho_dt[i];
+			}
+
+			//RK4 Integration of remaining terms
+
+			RK4_Integrate(Rho_dt, a, b, c, D, t, dt, dx, g);
+
+			for(int i=0;i<Rho_dt.size();i++)
+			{
+
+			if(isnan(Rho_dt[i]) == true )
+			{
+				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		m6 << "RK4 BLEW IT Rho[t,i]:\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
+				<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and Analytic Integration Term:\t"
+				<< DummyRho[i]<< endl; cout << m6.str();
+				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+				lo = -1;
+			}
+
+			if( Rho_dt[i] < 0 || isinf(Rho_dt[i]) == true and so==1)
+			{
+				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		m6 << "RHO FALLS BELOW O:\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
+				<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and Analytic Integration Term:\t" 
+				<< DummyRho[i]<<  endl; cout << m6.str(); //so=0;
+				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+			}
+			DRho[i] =Rho_dt[i]; //Updating dummy variable (necessary to prevent mixing of time in diffusion)
+			}
+
+			t+=dt; //Update timestep
+
+			if(lo == -1)
+			{
+				exit(3);
+			}
+
+		} // End of t loops
+
+		if(int(omp_get_thread_num()) == 5 && j%5 == 0)
+		{
+			size_t currentSize = getCurrentRSS( ); //Check Memory usage.
+			size_t peakSize    = getPeakRSS( );
+			stringstream m7;
+			m7 << "In replicate " << j << ", current size in MB: " << currentSize/(1024.0*1024.0) 
+			<< " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) << endl; cout << m7.str();
+			errout.open(thr, std::ios_base::app); errout << m7.str(); errout.close();
+		}
+
+		rho_rep_avg_var[j][1] = Rho_M[1][1]; rho_rep_avg_var[j][2] = Rho_M[0][1]; rho_rep_avg_var[j][3] = Rho_M[1][0];
+
+		vector<double>().swap(Rho_dt); vector<double>().swap(DRho); //vector<vector <double>>().swap(Rho_M);
+		// Remove dynamic vectors from memory and free up allocated space.
+
+	} // End of r loop.
+
+	size_t currentSize = getCurrentRSS( ); //Check Memory usage.
+	size_t peakSize    = getPeakRSS( );
+	stringstream m9;
+	m9 << "SA RE GA, for Thread Rank:\t " << omp_get_thread_num() << ", current size in MB: " << currentSize/(1024.0*1024.0) 
+	<< " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) << endl; cout << m9.str();
+	errout.open(thr, std::ios_base::app); errout << m9.str(); errout.close();
+
+	for(int j=0; j < r; j++)
+	{	// Recall Rho is: | 	a	 |	c	|    L 		|     r		|    t 		|     <Rho(0)>x			|    <Rho(t)>x	   |       #Active Sites (at t) |
+		
+		Rho.push_back({a,c, static_cast<double>(g), static_cast<double>(j), rho_rep_avg_var[j][0], rho_rep_avg_var[j][2], 
+			rho_rep_avg_var[j][1], rho_rep_avg_var[j][3]});
+		
+	}
+
+	stringstream m10;
+	m10 << "MA PA DHA, for Thread Rank:\t " << omp_get_thread_num() << ", current size in MB: " << currentSize/(1024.0*1024.0) 
+	<< " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) << endl; cout << m10.str();
+	errout.open(thr, std::ios_base::app); errout << m10.str(); errout.close();
+}
+
 
 
 void first_order_critical_exp_delta(double Rho_0[], int div, double t_max, double a_start, double a_end, 
@@ -2246,282 +2545,16 @@ void first_order_critical_exp_delta(double Rho_0[], int div, double t_max, doubl
 	output_1stdp.close();
 }
 
-void frames_expanded_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, double Rh0[],
-	 double t_max, double t_event, double a, double b, double c, double D, double sigma, double dt, double dx, int g)
-{
-	// Find frame ay a given time t_event
-	//Integrating first order PDE: arho - brho^2 - crho^3 +Diff + Stocj
-	
-	int nR2[g*g][3][3] ={0}; //nR2 stores neighbours of all sites in a ball of NORM 1 (SQUARE) radius 1.
-	//determine_neighbours_R2(nR2, g); //Assigning neigbours.
-	determine_neighbours_S8(nR2, g); //Assigning neigbours.
-	int tot_iter = static_cast<int>(1.0/dt) + 1 + t_meas.size(); // Stores total number of iterations (i.e. time steps logged) per replicate.
-	double time[tot_iter] ={0.0}; 
-	//Stores time.
-	double diff_coefficient = D/(dx*dx); //= D*(1.0/(6.0*dx*dx)); //Saves us some trouble later.
-	double beta = a - 4*D/(dx*dx); //a - (10.0/3.0)*D/(dx*dx); //double beta = a - 4*D/(dx*dx);
-	double lambda_exp = exp( (beta)*dt); double lambda = 2*(beta)/(sigma*sigma*(lambda_exp -1.0));
-	double bdt = b*dt; double cdt = c*dt;
-	t_max = t_meas[t_meas.size() -1]; //Only compute until end of sampling events
-
-	int ind=0;
-	for(double t =0; t <= 1; t+=dt)
-	{ time[ind]= t; ind+=1; }
-	for(int i =0; i< t_meas.size(); i++)
-	{ time[ind+i] = t_meas[i];}  //Setting up time index of rho_t_N_R2_rep
-
-	double alpha_prime = diff_coefficient*4; //Assume each Rho in neighbourhood for alpha estimation averages 1.
-	double poiss_ru = lambda*lambda_exp*2.5; //Mean
-	double mu_nought = 2.0*alpha_prime/(sigma*sigma) + poiss_ru;
-	poiss_ru += 4*sqrt(poiss_ru); //Mean of Poisson Sampler + 4 SD.
-	mu_nought += 6*sqrt(mu_nought); //Mean of  Mean of Gamma Sampler + 6 SD.
-
-
-	stringstream m0;     //To make cout thread-safe as well as non-garbled due to race conditions.
-    m0 << "Parameters:\t Lambda:\t" << lambda << "\t Beta:\t " << beta << "\t dt,dx:\t " << dt << "," << dx << "\t Poisson Cut-Off:\t " << poiss_ru 
-	<< "\t and  Gamma Cut-Off:\t " << mu_nought  <<endl; //cout << m1.str();
-	std::ofstream errout; //Save Error Logs
-	std::string thr = "ErrLog_" + std::to_string(omp_get_thread_num()) + ".txt";
-	errout.open(thr, std::ios_base::out); errout << m0.str(); errout.close();
-
-
-	stringstream m1;     //To make cout thread-safe as well as non-garbled due to race conditions.
-    m1 << "For Thread Rank:\t " << omp_get_thread_num() 
-	<< "\t with Total Iterations:\t " << tot_iter  <<endl; cout << m1.str();
-	errout.open(thr, std::ios_base::app); errout << m1.str(); errout.close();
-	int rd = std::random_device{}(); // random device engine, usually based on /dev/random on UNIX-like systems
-	//https://cplusplus.com/forum/beginner/220120/
-	std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
-	rng.seed(rd);
-
-	//Defining the Dornic variables
-	vector <double> Rho_dt(g*g, 0.0); //Updated through the turn, in turn used to update DRho
-	vector <double> DRho(g*g, 0.0); //Dummy variable, Kept constant, only updated at end of turn.
-	vector <double> DummyRho(g*g, 0.0); //Dummy variable, Kept constant, only updated at end of turn.
-		
-	double Rho_M[tot_iter][2] ={0.0}; //Stores # Active Sites, <rho>x  values per time step for a single replicate.
-
-	//cout<< "Initially: "<<endl;
-	for(int i=0; i< g*g; i++)
-	{
-		Rho_dt[i] = Rh0[i]; //Assigning initial conditions
-		DRho[i] = Rh0[i];
-	} //cout<<endl;
-
-	poisson_distribution<int> poisson; gamma_distribution <double> gamma;
-
-	double t=0; int index = 0;  //Initialise t
-	int s=0; int po=1; int so =1; int lo=1;
-	//int co=1; int eo=1; 
-
-		while (t < t_max + dt)
-		{
-
-			double rhox_avg, rhox_num;
-			//Start by updating the Rho vector.
-
-			if(t <= 1.0 || t >= t_meas[index] -dt/2.0 && t < t_meas[index] +dt/2.0)
-			{
-				rhox_avg = mean_of_vector(Rho_dt, g*g); //Finds spatial average of densities at given t.
-				rhox_num = occupied_sites_of_vector(Rho_dt, g*g); //Finds number of occupied at given t.
-				Rho_M[s][0] = rhox_num; Rho_M[s][1] = rhox_avg;  s+=1;//Rho_M.push_back({t, rhox_avg});
-				if(rhox_num == 0.0)
-					break; //Finish negotiations.
-				if( t > 1.0)
-					index+=1;
-			}
-
-			if(t >= t_event -dt/2.0 &&  t < t_event +dt/2.0)
-			{
-
-				//Dump frame.
-				stringstream L, tm ,d3, p1, dX, Dm, Sm;
-
-  				L << g; tm << t_event; d3 << setprecision(3) << dt; p1 << setprecision(4) << a;
-  				dX << setprecision(3) << dx; Sm << setprecision(3) << sigma; Dm << setprecision(3) << D;
-				ofstream output_frame;
-  				// Creating a file instance called output to store output data as CSV.
-				output_frame.open("../Data/SPDP/Frames/FRAME_P_c_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a1_"+ p1.str() +
-				"_Sig_"+ Sm.str() + "_dx_" + dX.str() + ".csv");
-				output_frame << " a, c, t , x,  Rho(x; t)\n";
-				for(int i=0; i< g*g; i++)
-				{	// Recall Rho is: | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |    #Surviving Runs    |   #Active Sites |
-					if(i < ind)
-					{ output_frame << a << ","<< c << "," << t << "," << i << "," << Rho_dt[i] <<endl; }
-				}
-				output_frame.close();
-
-			}
-			
-
-			// Recall Rho is: | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |
-
-			//Basic Dornic  Integration of Linear & Stochastic Term
-			//CREDITS: DORNIC.
-			for(int i=0;i<Rho_dt.size();i++)
-			{
-				double alpha_i = diff_coefficient*(1*(DRho[nR2[i][0][1]] + DRho[nR2[i][2][1]] +
-				DRho[nR2[i][1][0]] + DRho[nR2[i][1][2]]));
-
-
-				if(alpha_i == 0 && DRho[nR2[i][1][1]] == 0) 
-				{
-					continue; 
-				} //Checks if Rho_dt[i] is 0 and is surrounded by empty patches (Norm 1 radius of 1). Returns 0 if so, else 1.
-
-				if(alpha_i < 0 && po ==1)
-				{
-					stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
-        			m6 << "We are NOT OKAY:\t" << Rho_dt[i] << "\t at index:  " << i << " at time:\t:" << t <<
-					" with Rho(t-dt,i):   " << DRho[i] << "\t and alpha_i:\t" << alpha_i << endl; cout << m6.str();
-					errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
-					//po=0;
-				}
-				double maxtek = max({DRho[nR2[i][0][1]],DRho[nR2[i][2][1]],DRho[nR2[i][1][0]], DRho[nR2[i][1][2]]}, maxis);
-				if(maxtek - DRho[nR2[i][1][1]] > 5 || maxtek - DRho[nR2[i][1][1]] < -5)
-				{
-				//Checking if Laplacian is causing our troubles.
-				
-				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
-        		m6 << "ALPHA GO-GO-TRON Rho[t,i]:\t" << Rho_dt[i] << "\t at index:  " << i << " at time:\t:" << t <<
-				" with Max(Neighbour(Rho)):   " << maxtek << "\t and alpha_i:\t" << alpha_i << endl; cout << m6.str();
-				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
-				//po=0;
-				}
-			
-				double mu = -1.0 + 2.0*alpha_i/(sigma*sigma);
-				double ziggy = lambda*lambda_exp*Rho_dt[i]; double gru;
-				if(ziggy == 0.0)
-				{	//stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
-        		//m6 << "SICK!!" <<endl; cout << m6.str(); 
-				gru = mu + 1.0;  }
-				else if(ziggy < 0.0 || isnan(ziggy) == true || isinf(ziggy) == true)
-				{
-				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
-        		m6 << "POISSON IS MESSED UP:\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
-				<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and alpha_i:\t" << alpha_i << endl; cout << m6.str();
-				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
-				}
-				else
-				{
-					poisson = poisson_distribution<int>(lambda*lambda_exp*Rho_dt[i]);
-					gru = mu + 1.0 + poisson(rng);
-				}
-
-				gamma = gamma_distribution<double>(gru, 1.0);
-					
-	        	Rho_dt[i]= gamma(rng)/lambda;
-
-				if(gru < 0 || isnan(gru) == true || isinf(gru) == true)
-				{
-					stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
-        			m6 << "GAMMA MESSED UP BIG TIME Rho*[t,i]:\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
-					<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and alpha_i:\t" << alpha_i <<  
-					"\t and GRU:\t" << gru <<endl; //cout << m6.str();
-					errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
-				}
-
-				if(gru > mu_nought || Rho_dt[i] > 5 || alpha_i > 20 || ziggy > poiss_ru)
-				{
-					stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
-        			m6 << "BLOWING UP, Rho*[t,i]:\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
-					<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and alpha_i:\t" << alpha_i <<  
-					"\t and GRU:\t" << gru << "\t and Poisson RU:\t" << ziggy << endl; //cout << m6.str();
-					errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
-				}
-	        
-	        
-
-				if(isnan(Rho_dt[i]) == true || isinf(Rho_dt[i]) == true)
-				{
-					stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
-        			m6 << "YOU HIT ROCK BOTTOM WITH: Rho*[t,i]\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
-					<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and alpha_i:\t" << alpha_i << 
-					"\t and GAMMA ENTRY:\t" << gru << endl; cout << m6.str();
-					errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
-				}
-				DummyRho[i] =Rho_dt[i];
-			}
-
-			//RK4 Integration of remaining terms
-
-			RK4_Integrate(Rho_dt, a, b, c, D, t, dt, dx, g);
-
-			for(int i=0;i<Rho_dt.size();i++)
-			{
-			//Euler Integration of remaining terms
-			//Rho_dt[i] = (1 - (bdt + cdt*Rho_dt[i])*Rho_dt[i])*Rho_dt[i];
-			//Rho_dt[i] = Rho_dt[i]/(1 + (dt*Rho_dt[i]*(c*Rho_dt[i] + b)));
-
-			if(isnan(Rho_dt[i]) == true )
-			{
-				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
-        		m6 << "RK4 BLEW IT Rho[t,i]:\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
-				<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and Analytic Integration Term:\t"
-				<< DummyRho[i]<< endl; cout << m6.str();
-				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
-				lo = -1;
-			}
-
-			if( Rho_dt[i] < 0 || isinf(Rho_dt[i]) == true and so==1)
-			{
-				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
-        		m6 << "RHO FALLS BELOW O:\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
-				<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and Analytic Integration Term:\t" 
-				<< DummyRho[i]<<  endl; cout << m6.str(); //so=0;
-				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
-			}
-			DRho[i] =Rho_dt[i]; //Updating dummy variable (necessary to prevent mixing of time in diffusion)
-			}
-
-			t+=dt; //Update timestep
-
-			if(lo == -1)
-			{
-				exit(3); //Exit as soon as Rho_dt[i] becomes NaN to prevent infinite simulations.
-			}
-
-		} // End of t loops
-		
-		vector<double>().swap(Rho_dt); vector<double>().swap(DRho); //vector<vector <double>>().swap(Rho_M);
-		// Remove dynamic vectors from memory and free up allocated space.
-
-	size_t currentSize = getCurrentRSS( ); //Check Memory usage.
-	size_t peakSize    = getPeakRSS( );
-	stringstream m9;
-	m9 << "SA RE GA, for Thread Rank:\t " << omp_get_thread_num() << ", current size in MB: " << currentSize/(1024.0*1024.0) 
-	<< " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) << endl; cout << m9.str();
-	errout.open(thr, std::ios_base::app); errout << m9.str(); errout.close();
-
-	for(int i=0; i< tot_iter; i++)
-	{	// Recall Rho is: | 	a		|	 c		|    L 		|    t 		|     <<Rho(t)>>x,r			|   #Active Sites |
-		if(i < ind)
-		{ Rho.push_back({a, c, static_cast<double>(g), time[i], Rho_M[i][1], Rho_M[i][0]}); }
-		else
-		{
-			Rho.push_back({a,c, static_cast<double>(g), time[i], Rho_M[i][1], Rho_M[i][0]});
-		}
-	}
-
-	stringstream m10;
-	m10 << "MA PA DHA, for Thread Rank:\t " << omp_get_thread_num() << ", current size in MB: " << currentSize/(1024.0*1024.0) 
-	<< " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) << endl; cout << m10.str();
-	errout.open(thr, std::ios_base::app); errout << m10.str(); errout.close();
-}
-
-
-void capture_frame_decay(double Rho_0[], int div, double t_max, double t_event, double a_start, double a_end, 
+void first_order_terminal_diff(int div, double t_event, double p_start, double p_end, double a,
 	double b, double c, double D, double sigma, double dt, double dx, int r,  int g)
 {
 
-	//Get histograms for rho(x,t) for all x at a given t in the stationary phase. Use this to construct Prob density.
-
 	//init_fullframe(Rho_0, g*g); //Returns Rho_0 with a full initial frame filled with ones.
-	init_constframe(Rho_0, 1.00, g*g); //Returns Rho_0 with a full initial frame filled with 0.2.
-	vector<double> a_space = linspace(a_start, a_end, div);
+	//init_constframe(Rho_0, 0.25, g*g); //Returns Rho_0 with a full initial frame filled with 0.2.
+	vector<double> p_space = linspace(p_start, p_end, div);
 	cout << "NOSTRA" <<endl;
   // The pspace to iterate over.
-    vector <double> t_measure = logarithm10_time_bins(t_max, dt);
+    vector <double> t_measure; t_measure.push_back(t_event);
 	// Computes and returns ln-distributed points from t= 10^{0} to log10(t_max) (the latter rounded down to 1 decimal place) 
   // Returns time-points measured on a natural logarithmic scale from e^{2} to e^ln(t_max) rounded down to one decimal place.
 
@@ -2541,6 +2574,462 @@ void capture_frame_decay(double Rho_0[], int div, double t_max, double t_event, 
 
   	size_t currentSize = getCurrentRSS( ); //Check Memory usage.
 	size_t peakSize    = getPeakRSS( );
+
+	cout << "On initialisation, current size in MB: " << currentSize/(1024.0*1024.0) << " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) << endl;
+
+	auto start = high_resolution_clock::now();
+
+	int nProcessors=omp_get_max_threads();
+	if(nProcessors > 33)
+	{
+		omp_set_num_threads(33); //Limiting use on Chunk.
+	}
+
+	#pragma omp parallel
+  {
+      std::vector<vector<double>> vec_private;
+	  double Rho_0[g*g];
+
+      //Grants a static schedule with a chunk size of 1.
+      /* Based on procedure suggested in:
+      https://stackoverflow.com/questions/18669296/c-openmp-parallel-for-loop-alternatives-to-stdvector */
+	  
+      #pragma omp for nowait schedule(static)
+      for (int i=0; i < p_space.size(); i++)
+      {
+        //type="Gam";
+        stringstream message;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        message << "We are working on initial Rho Value:\t" << p_space[i] << "\t on Thread No:\t" << omp_get_thread_num() <<endl;
+        cout << message.str();
+		
+		init_constframe(Rho_0, p_space[i], g*g); //Returns Rho_0 with a full initial frame filled with p_space[i].
+
+        std::vector<vector <double>> CExpRho_a; //Stores relevant details for each time step to compute delta.
+		/**
+		 * Namely CExpRho_a is structured as:
+		 * | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |
+		**/
+		terminal_percolationDornic_2D(CExpRho_a, t_measure, Rho_0,  t_event, a, b, c, D, sigma, dt, dx, r, g);
+        //crtexp_DP_Basic(grid_size, comp_data, p_space[i], r_init, length);
+
+        vec_private.insert(vec_private.end(), CExpRho_a.begin(), CExpRho_a.end());
+		vector<vector <double>>().swap(CExpRho_a);
+		// Remove dynamic vectors from memory and free up allocated space.
+      }
+
+      #pragma omp for schedule(static) ordered
+      for(int i=0; i< omp_get_num_threads(); i++)
+      {
+        #pragma omp ordered
+          vec.insert(vec.end(), vec_private.begin(), vec_private.end());
+          // Inserting critical exponent data for each grid size in order.
+          stringstream message3;
+		  size_t currSize = getCurrentRSS( ); //Check Memory usage.
+		  size_t peaksSize    = getPeakRSS( );
+			 
+          message3 << "Is this happening?\n" << "In replicate " << i << ", current size in MB: " << currSize/(1024.0*1024.0) 
+		  << " and Peak Size (in MB): " << peaksSize/(1024.0*1024.0) << endl;
+          cout << message3.str();
+
+      }
+	  vector<vector <double>>().swap(vec_private);
+	  // Remove dynamic vectors from memory and free up allocated space.
+  } //End of Pragma.
+
+	auto stop = high_resolution_clock::now();
+	auto duration = duration_cast<seconds>(stop - start);
+
+	cout << endl << "Dornic Integration Time: " << duration.count() << " seconds" << endl;
+
+	stringstream L, coco, tm ,d3, p1, p2, rini, Dm, Sm, dix, aoili;
+
+  L << g; tm << t_event; d3 << setprecision(3) << dt; p1 << setprecision(4) << p_start; p2 << setprecision(4) << p_end;
+  rini << r; Dm << setprecision(3) << D; Sm << setprecision(3) << sigma; coco << setprecision(4) << c; dix << setprecision(2) << dx;
+  aoili << setprecision(4) << a;
+  // setprecision() is a stream manipulator that sets the decimal precision of a variable.
+	ofstream output_1stdp;
+  // Creating a file instance called output to store output data as CSV.
+	output_1stdp.open("../Data/SPDP/1stOrder_Rep_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ aoili.str() + "_c_"+ coco.str() +
+	"_p1_"+ p1.str() + "_p2_"+ p2.str() + "_dx_"+ dix.str() + "_Sig_"+ Sm.str() + "_R_"+ rini.str() + ".csv");
+
+	cout << "Save file name: " <<endl;
+	cout << "../Data/SPDP/1stOrder_Rep_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ aoili.str() + "_c_"+ coco.str() +
+	"_p1_"+ p1.str() + "_p2_"+ p2.str() + "_dx_"+ dix.str() + "_Sig_"+ Sm.str() + "_R_"+ rini.str() + ".csv";
+
+	// Output =  | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |
+	output_1stdp << "  a , c , L, r, t ,  <<Rho(x; 0)>_x>, <<Rho(x; t)>_x>, # Active Sites \n";
+	cout << "The vector elements are: "<< endl;
+  	cout << "  a , c , L, r, t ,  <<Rho(x; 0)>_x>, <<Rho(x; t)>_x>, # Active Sites \n";
+
+	for(int i=0; i< vec.size(); i++)
+	{
+		output_1stdp << setprecision(8) << vec[i][0] << "," << vec[i][1] << "," << vec[i][2] << "," << vec[i][3] 
+		<< "," <<  vec[i][4] << "," << setprecision(16) << vec[i][5] << "," << setprecision(16) <<
+		 vec[i][6] << "," << setprecision(16) << vec[i][7] <<  endl;
+		if( i%(1000) ==1)
+    {
+			cout << setprecision(5) << vec[i][0] << "," << vec[i][1] << "," << vec[i][2] << "," << vec[i][3] << "," 
+			<<  vec[i][4] << "," << setprecision(9) << vec[i][5] << "," << setprecision(9) <<  vec[i][6] << "," << vec[i][7] << endl;
+    }
+	}
+	output_1stdp.close();
+}
+
+void frames_expanded_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, double Rh0[],
+	 double t_max, double t_event, double a, double b, double c, double D, double sigma, double dt, double dx, int g, int r)
+{
+	// Find frame ay a given time t_event
+	//Integrating first order PDE: arho - brho^2 - crho^3 +Diff + Stocj
+	
+	int nR2[g*g][3][3] ={0}; //nR2 stores neighbours of all sites in a ball of NORM 1 (SQUARE) radius 1.
+	//determine_neighbours_R2(nR2, g); //Assigning neigbours.
+	determine_neighbours_S8(nR2, g); //Assigning neigbours.
+	int tot_iter = static_cast<int>(1.0/dt) + 1 + t_meas.size(); // Stores total number of iterations (i.e. time steps logged) per replicate.
+	double rho_rep_avg_var[tot_iter][5] ={0.0}; 
+	//Stores time.
+	double diff_coefficient = D/(dx*dx); //= D*(1.0/(6.0*dx*dx)); //Saves us some trouble later.
+	double beta = a - 4*D/(dx*dx); //a - (10.0/3.0)*D/(dx*dx); //double beta = a - 4*D/(dx*dx);
+	double lambda_exp = exp( (beta)*dt); double lambda = 2*(beta)/(sigma*sigma*(lambda_exp -1.0));
+	double bdt = b*dt; double cdt = c*dt;
+	t_max = t_meas[t_meas.size() -1]; //Only compute until end of sampling events
+
+	int ind=0;
+	for(double t =0; t <= 1; t+=dt)
+	{ rho_rep_avg_var[ind][0] = t; ind+=1; }
+	for(int i =0; i< t_meas.size(); i++)
+	{ rho_rep_avg_var[ind+i][0] = t_meas[i];}  //Setting up time index of rho_t_N_R2_rep
+
+	double alpha_prime = diff_coefficient*4; //Assume each Rho in neighbourhood for alpha estimation averages 1.
+	double poiss_ru = lambda*lambda_exp*2.5; //Mean
+	double mu_nought = 2.0*alpha_prime/(sigma*sigma) + poiss_ru;
+	poiss_ru += 4*sqrt(poiss_ru); //Mean of Poisson Sampler + 4 SD.
+	mu_nought += 6*sqrt(mu_nought); //Mean of  Mean of Gamma Sampler + 6 SD.
+
+	double rho_cut_off =0.55*g*g; //Used as cut_off to capture frames.
+
+	t_max = t_event + 50;
+
+
+	stringstream m0;     //To make cout thread-safe as well as non-garbled due to race conditions.
+    m0 << "Parameters:\t Lambda:\t" << lambda << "\t Beta:\t " << beta << "\t dt,dx:\t " << dt << "," << dx << "\t Poisson Cut-Off:\t " << poiss_ru 
+	<< "\t and  Gamma Cut-Off:\t " << mu_nought  <<endl; //cout << m1.str();
+	std::ofstream errout; //Save Error Logs
+	std::string thr = "ErrLog_" + std::to_string(omp_get_thread_num()) + ".txt";
+	errout.open(thr, std::ios_base::out); errout << m0.str(); errout.close();
+
+	for(int j=0; j < r; j++)
+	{
+		stringstream m1;     //To make cout thread-safe as well as non-garbled due to race conditions.
+    	m1 << "For Thread Rank:\t " << omp_get_thread_num() 
+		<< "\t with Total Iterations:\t " << tot_iter  << "  in Replicate:\t" << j << endl; cout << m1.str();
+		errout.open(thr, std::ios_base::app); errout << m1.str(); errout.close();
+		int rd = std::random_device{}(); // random device engine, usually based on /dev/random on UNIX-like systems
+		//https://cplusplus.com/forum/beginner/220120/
+		std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
+		rng.seed(rd+j);
+
+		//Defining the Dornic variables
+		vector <double> Rho_dt(g*g, 0.0); //Updated through the turn, in turn used to update DRho
+		vector <double> DRho(g*g, 0.0); //Dummy variable, Kept constant, only updated at end of turn.
+		vector <double> DummyRho(g*g, 0.0); //Dummy variable, Kept constant, only updated at end of turn.
+		
+		double Rho_M[tot_iter][2] ={0.0}; //Stores # Active Sites, <rho>x  values per time step for a single replicate.
+
+		//cout<< "Initially: "<<endl;
+		for(int i=0; i< g*g; i++)
+		{
+			Rho_dt[i] = Rh0[i]; //Assigning initial conditions
+			DRho[i] = Rh0[i];
+		} //cout<<endl;
+
+		poisson_distribution<int> poisson; gamma_distribution <double> gamma;
+
+		double t=0; int index = 0;  //Initialise t
+		int s=0; int po=1; int so =1; int lo=1; int glo =1;
+		//int co=1; int eo=1; 
+	
+		
+
+		while (t < t_max + dt)
+		{
+
+			double rhox_avg, rhox_num;
+			//Start by updating the Rho vector.
+			
+
+			if(t <= 1.0 || t >= t_meas[index] -dt/2.0 && t < t_meas[index] +dt/2.0)
+			{
+				rhox_num = occupied_sites_of_vector(Rho_dt, g*g);
+				rhox_avg = mean_of_vector(Rho_dt, g*g); //Finds spatial average of densities at given t.
+				//rhox_num = occupied_sites_of_vector(Rho_dt, g*g); //Finds number of occupied at given t.
+				Rho_M[s][0] = rhox_num; Rho_M[s][1] = rhox_avg;  s+=1;//Rho_M.push_back({t, rhox_avg});
+				//if(rhox_num == 0.0)
+					//break; //Finish negotiations.
+				if( t > 1.0)
+					index+=1;
+			}
+			/**
+			if(glo == 1 && rhox_num < rho_cut_off )
+			{
+				glo =0;
+				//Dump frame.
+				stringstream L, tm ,d3, p1, dX, Dm, Sm;
+
+  				L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(4) << a;
+  				dX << setprecision(3) << dx; Sm << setprecision(3) << sigma; Dm << setprecision(3) << D;
+				ofstream output_frame;
+  				// Creating a file instance called output to store output data as CSV.
+				output_frame.open("../Data/SPDP/Frames/HFRAME_P_c_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a1_"+ p1.str() +
+				"_Sig_"+ Sm.str() + "_dx_" + dX.str() + ".csv");
+				output_frame << " a, c, t , x,  Rho(x; t)\n";
+				for(int i=0; i< g*g; i++)
+				{	// Recall Rho is: | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |    #Surviving Runs    |   #Active Sites |
+					
+					output_frame << a << ","<< c << "," << t << "," << i << "," << Rho_dt[i] <<endl;
+				}
+				output_frame.close();
+			} */
+			else if(t >= t_event -dt/2.0 &&  t < t_event +dt/2.0) //&& glo == 1 )
+			{
+				glo =0;
+				//Dump frame.
+				stringstream L, tm ,d3, p1, dX, Dm, Sm , repli;
+
+  				L << g; tm << t_event; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; repli << r;
+  				dX << setprecision(3) << dx; Sm << setprecision(3) << sigma; Dm << setprecision(3) << D;
+				ofstream output_frame;
+				std::string filename;
+				filename = "../Data/SPDP/Frames/1RBOKCHOYFRAME_P_c_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a1_"+ p1.str() +
+					"_Sig_"+ Sm.str() + "_dx_" + dX.str() + "_R_" +repli.str() + ".csv";
+				if(j == 0)
+					output_frame.open(filename, std::ios_base::out); //If first replicate initiate fresh CSV
+				else
+					output_frame.open(filename, std::ios_base::app); //Else append.
+  				// Creating a file instance called output to store output data as CSV.
+				output_frame << " a, c, t , x,  Rho(x; t)\n";
+				for(int i=0; i< g*g; i++)
+				{	// Recall Rho is: | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |    #Surviving Runs    |   #Active Sites |
+					
+					output_frame << a << ","<< c << "," << t << "," << i << "," << Rho_dt[i] <<endl;
+				}
+				output_frame.close();
+
+			}
+
+			//Basic Dornic  Integration of Linear & Stochastic Term
+			//CREDITS: DORNIC.
+			for(int i=0;i<Rho_dt.size();i++)
+			{
+				double alpha_i = diff_coefficient*(1*(DRho[nR2[i][0][1]] + DRho[nR2[i][2][1]] +
+				DRho[nR2[i][1][0]] + DRho[nR2[i][1][2]]));
+
+
+				if(alpha_i == 0 && DRho[nR2[i][1][1]] == 0) 
+				{
+					continue; 
+				} //Checks if Rho_dt[i] is 0 and is surrounded by empty patches (Norm 1 radius of 1). Returns 0 if so, else 1.
+
+				if(alpha_i < 0)
+				{
+					stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        			m6 << "In Replicate:\t" << j << " \tWe are NOT OKAY:\t" << Rho_dt[i] << "\t at index:  " << i << " at time:\t:" << t <<
+					" with Rho(t-dt,i):   " << DRho[i] << "\t and alpha_i:\t" << alpha_i << endl; cout << m6.str();
+					errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+					//po=0;
+				}
+				/**
+				double maxtek = max({DRho[nR2[i][0][1]],DRho[nR2[i][2][1]],DRho[nR2[i][1][0]], DRho[nR2[i][1][2]]}, maxis);
+				if(maxtek - DRho[nR2[i][1][1]] > 5 || maxtek - DRho[nR2[i][1][1]] < -5)
+				{
+				//Checking if Laplacian is causing our troubles.
+				
+				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		m6 << "ALPHA GO-GO-TRON Rho[t,i]:\t" << Rho_dt[i] << "\t at index:  " << i << " at time:\t:" << t <<
+				" with Max(Neighbour(Rho)):   " << maxtek << "\t and alpha_i:\t" << alpha_i << endl; cout << m6.str();
+				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+				//po=0;
+				}
+				*/
+				double mu = -1.0 + 2.0*alpha_i/(sigma*sigma);
+				double ziggy = lambda*lambda_exp*Rho_dt[i]; double gru;
+				if(ziggy == 0.0)
+				{	//stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		//m6 << "SICK!!" <<endl; cout << m6.str(); 
+				gru = mu + 1.0;  }
+				/**
+				else if(ziggy < 0.0 || isnan(ziggy) == true || isinf(ziggy) == true)
+				{
+				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		m6 << "POISSON IS MESSED UP:\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
+				<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and alpha_i:\t" << alpha_i << endl; cout << m6.str();
+				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+				} */
+				else
+				{
+					poisson = poisson_distribution<int>(lambda*lambda_exp*Rho_dt[i]);
+					gru = mu + 1.0 + poisson(rng);
+				}
+
+				gamma = gamma_distribution<double>(gru, 1.0);
+					
+	        	Rho_dt[i]= gamma(rng)/lambda;
+
+				if(gru < 0 || isnan(gru) == true || isinf(gru) == true)
+				{
+					stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        			m6 << "GAMMA MESSED UP BIG TIME Rho*[t,i]:\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
+					<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and alpha_i:\t" << alpha_i <<  
+					"\t and GRU:\t" << gru <<  "  in Replicate:\t" << j <<  endl; //cout << m6.str();
+					errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+				}
+
+				if(gru > mu_nought || Rho_dt[i] > 5 || alpha_i > 20 || ziggy > poiss_ru)
+				{
+					stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        			m6 << "BLOWING UP, Rho*[t,i]:\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
+					<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and alpha_i:\t" << alpha_i <<  
+					"\t and GRU:\t" << gru << "\t and Poisson RU:\t" << ziggy << "  in Replicate:\t" << j <<  endl; //cout << m6.str();
+					errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+				}
+	        
+	        
+				/**
+				if(isnan(Rho_dt[i]) == true || isinf(Rho_dt[i]) == true)
+				{
+					stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        			m6 << "YOU HIT ROCK BOTTOM WITH: Rho*[t,i]\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
+					<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and alpha_i:\t" << alpha_i << 
+					"\t and GAMMA ENTRY:\t" << gru << endl; cout << m6.str();
+					errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+				} */
+				DummyRho[i] =Rho_dt[i];
+			}
+
+			//RK4 Integration of remaining terms
+
+			RK4_Integrate(Rho_dt, a, b, c, D, t, dt, dx, g);
+
+			for(int i=0;i<Rho_dt.size();i++)
+			{
+			//Euler Integration of remaining terms
+			//Rho_dt[i] = (1 - (bdt + cdt*Rho_dt[i])*Rho_dt[i])*Rho_dt[i];
+			//Rho_dt[i] = Rho_dt[i]/(1 + (dt*Rho_dt[i]*(c*Rho_dt[i] + b)));
+
+			if(isnan(Rho_dt[i]) == true )
+			{
+				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		m6 << "RK4 BLEW IT Rho[t,i]:\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
+				<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and Analytic Integration Term:\t"
+				<< DummyRho[i]<< "  in Replicate:\t" << j <<  endl; cout << m6.str();
+				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+				lo = -1;
+			}
+
+			if( Rho_dt[i] < 0 || isinf(Rho_dt[i]) == true and so==1)
+			{
+				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		m6 << "RHO FALLS BELOW O:\t" << Rho_dt[i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
+				<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[i] << "\t and Analytic Integration Term:\t" 
+				<< DummyRho[i]<< "  in Replicate:\t" << j <<   endl; cout << m6.str(); //so=0;
+				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+			}
+			DRho[i] =Rho_dt[i]; //Updating dummy variable (necessary to prevent mixing of time in diffusion)
+			}
+
+			t+=dt; //Update timestep
+
+			if(lo == -1)
+			{
+				exit(3); //Exit as soon as Rho_dt[i] becomes NaN to prevent infinite simulations.
+			}
+
+		} // End of t loops
+
+		/**
+
+		if(j == 0) //Namely, the first replicate, set up initial incremental SD and mean of replicates accordingly.
+		{
+			for(int i =0; i< tot_iter; i++)
+			{	rho_rep_avg_var[i][1] = Rho_M[i][1]; rho_rep_avg_var[i][2] = 0.0; rho_rep_avg_var[i][4] = Rho_M[i][0];
+				if(Rho_M[i][1] > 0) //Ensuring only surviving runs are considered
+				{ rho_rep_avg_var[i][3] = 1;  } //One surviving run as of now
+				else if(Rho_M[i][1] == 0) //Ensuring only surviving runs are considered
+				{ rho_rep_avg_var[i][3] = 0;  } //No surviving run as of now
+
+			} //Namely Var(t,r=1) = 0, Mean_Rho(t, r=1) = Rho_M(t)
+		}
+		else
+		{
+			// Second or higher replicate, use incremental advances.
+			var_mean_incremental_surv_runs(rho_rep_avg_var, Rho_M, tot_iter); 
+			//Updates SD and Mean values for <Rho>_x across replicates as new replicate data (Rho_M) becomes available.
+		}
+
+		**/
+		
+		vector<double>().swap(Rho_dt); vector<double>().swap(DRho); //vector<vector <double>>().swap(Rho_M);
+		// Remove dynamic vectors from memory and free up allocated space.
+
+	} //End of r loop.
+
+	size_t currentSize = getCurrentRSS( ); //Check Memory usage.
+	size_t peakSize    = getPeakRSS( );
+	stringstream m9;
+	m9 << "SA RE GA, for Thread Rank:\t " << omp_get_thread_num() << ", current size in MB: " << currentSize/(1024.0*1024.0) 
+	<< " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) << endl; cout << m9.str();
+	errout.open(thr, std::ios_base::app); errout << m9.str(); errout.close();
+
+	/**
+	for(int i=0; i< tot_iter; i++)
+	{	// Recall Rho is: | 	a		|	 c		|    L 		|    t 		|     <<Rho(t)>>x,r			|   #Active Sites | #Surviving Runs
+		Rho.push_back({a,c, static_cast<double>(g), rho_rep_avg_var[i][0], rho_rep_avg_var[i][1], rho_rep_avg_var[i][4], rho_rep_avg_var[i][3]});	
+	}
+	**/
+
+	stringstream m10;
+	m10 << "MA PA DHA, for Thread Rank:\t " << omp_get_thread_num() << ", current size in MB: " << currentSize/(1024.0*1024.0) 
+	<< " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) << endl; cout << m10.str();
+	errout.open(thr, std::ios_base::app); errout << m10.str(); errout.close();
+}
+
+
+
+void capture_frame_decay(double Rho_0[], int div, double t_max, double t_event, double a_start, double a_end, 
+  double b, double c, double D, double sigma, double dt, double dx, int r,  int g)
+{
+
+  //Get histograms for rho(x,t) for all x at a given t in the stationary phase. Use this to construct Prob density.
+
+  //init_fullframe(Rho_0, g*g); //Returns Rho_0 with a full initial frame filled with ones.
+  init_randframe(Rho_0, 1.00, 0.25, g*g); //Returns Rho_0 with a full initial frame filled with 0.2.
+  //init_quarterframe(Rho_0, 1.0, 1.0, 1.0 , 0.0, g); //Returns Rho_0 with a initial frame filled with right side set to 1 and left to 0.
+
+  cout << " A subset of the initial frame:\t" << endl;
+  for(int i = 0; i < 10; i++)
+  {
+	for(int j =0; j < 10; j++)
+		cout << setprecision(3) << Rho_0[i*g + j] << " ";
+	cout << endl;
+  }
+
+  vector<double> a_space = linspace(a_start, a_end, div);
+  cout << "NOSTRA" <<endl;
+  // The pspace to iterate over.
+  vector <double> t_measure = logarithm10_time_bins(t_max, dt);
+	// Computes and returns ln-distributed points from t= 10^{0} to log10(t_max) (the latter rounded down to 1 decimal place) 
+  // Returns time-points measured on a natural logarithmic scale from e^{2} to e^ln(t_max) rounded down to one decimal place.
+
+  cout << "Values in t_measure (which is of total size " << t_measure.size() << ") are :" <<endl;
+  for (int i=0; i< t_measure.size(); i++)
+  {
+	cout << t_measure[i] << " ";
+  } cout << endl;
+
+  std::vector<vector <double>> vec;
+  // Stores collated output from parallel method calls in proper ascending order of p values.
+
+  size_t currentSize = getCurrentRSS( ); //Check Memory usage.
+  size_t peakSize    = getPeakRSS( );
 
 	cout << "On initialisation, current size in MB: " << currentSize/(1024.0*1024.0) << " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) << endl;
 
@@ -2572,7 +3061,7 @@ void capture_frame_decay(double Rho_0[], int div, double t_max, double t_event, 
 		 * Namely CExpRho_a is structured as:
 		 * | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |
 		**/
-		frames_expanded_percolationDornic_2D(CExpRho_a, t_measure, Rho_0,  t_max, t_event, a_space[i], b, c, D, sigma, dt, dx, g);
+		frames_expanded_percolationDornic_2D(CExpRho_a, t_measure, Rho_0,  t_max, t_event, a_space[i], b, c, D, sigma, dt, dx, g, r);
         //Spit out frames at time "t_event"
 
         vec_private.insert(vec_private.end(), CExpRho_a.begin(), CExpRho_a.end());
@@ -2609,13 +3098,15 @@ void capture_frame_decay(double Rho_0[], int div, double t_max, double t_event, 
   L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << setprecision(4) << a_start; p2 << setprecision(4) << a_end;
   rini << r; Dm << setprecision(3) << D; Sm << setprecision(3) << sigma; coco << setprecision(4) << c; dix << setprecision(2) << dx;
   // setprecision() is a stream manipulator that sets the decimal precision of a variable.
+
+  /**
 	ofstream output_1stdp;
   // Creating a file instance called output to store output data as CSV.
-	output_1stdp.open("../Data/SPDP/1stOrder_P_c_Delta_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_c_"+ coco.str() +
+	output_1stdp.open("../Data/SPDP/1stOrder_FRAME_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_c_"+ coco.str() +
 	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + "_Sig_"+ Sm.str() + "_R_"+ rini.str() + ".csv");
 
 	cout << "Save file name: " <<endl;
-	cout << "../Data/SPDP/1stOrder_P_c_Delta_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_c_"+ coco.str() +
+	cout << "../Data/SPDP/1stOrderBOK_FRAME_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_c_"+ coco.str() +
 	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + "_Sig_"+ Sm.str() + "_R_"+ rini.str() + ".csv";
 
 	// Output =  | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |
@@ -2635,5 +3126,5 @@ void capture_frame_decay(double Rho_0[], int div, double t_max, double t_event, 
 			<< "," << vec[i][8] << endl;
     }
 	}
-	output_1stdp.close();
+	output_1stdp.close(); */
 }

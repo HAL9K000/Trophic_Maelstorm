@@ -52,7 +52,9 @@ void increase_stack_limit(long stack_size);
 bool maxis(int a, int b);
 
 void init_fullframe(double array[], int size);
+void init_randframe(double array[], double mean, double sd, int size);
 void init_constframe(double array[], double constant, int size);
+void init_quarterframe(double array[], double c1, double c2, double c3, double c4, int L);
 void init_solitarytear(double array[], int length);
 
 double mean_of_array(double array[],int size);
@@ -118,8 +120,16 @@ void expanded_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> 
 void first_order_critical_exp_delta(double Rho_0[], int div, double t_max, double a_start, double a_end, 
 	double b, double c, double D, double sigma, double dt, double dx, int r,  int g);
 
+void terminal_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, double Rh0[],
+	 double t_max, double a, double b, double c, double D, double sigma, double dt, double dx, int r,  int g);
+void first_order_terminal_diff(int div, double t_event, double p_start, double p_end, double a,
+	double b, double c, double D, double sigma, double dt, double dx, int r,  int g);
+
+
+void frames_expanded_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, double Rh0[],
+	 double t_max, double t_event, double a, double b, double c, double D, double sigma, double dt, double dx, int g, int r);
 void capture_frame_decay(double Rho_0[], int div, double t_max, double t_event, double a_start, double a_end, 
-	double b, double c, double D, double sigma, double dt, double dx, int r,  int g)
+	double b, double c, double D, double sigma, double dt, double dx, int r,  int g);
 
 void test_gamma_poisson();
 #endif

@@ -1,0 +1,98 @@
+
+#include "2species_stochastic.h"
+#include "Debug.h"
+
+int main()
+{
+  increase_stack_limit(512LL); //Increase stack limit to 512 MB.
+
+
+  int Sp=2;
+
+  
+
+  double a_start, a_end; double r;
+  double dt, dx, t_max; int g, div;
+
+  double p0i = 1.0; double p0j= 0.05;
+  
+  double mR = 1; double mC = 10; double mP=100; //Mass of creatures.
+  double a = (1)*1.71*pow(10.0,-6.0)*pow(mR,-0.25)*3600; double c=0;
+  double b = a*1*pow(mR, 0.25); double aij =pow(10,-3.08)*pow(mC,-0.37)*3600;
+  double hij = 1*pow(mC,-0.02)/3600.0; double m= 4.15*pow(10,-8.0)*pow(mC,-0.25)*3600;
+  double ajm = pow(10,-3.08)*pow(mP,-0.37)*3600; double hjm = 1*pow(mP,-0.02)/3600.0;
+  double mm= 4.15*pow(10,-8.0)*pow(mP,-0.25)*3600; double ej =0.45; double em = 0.85;
+  double d0 = pow(10,-5.0); double d1 = pow(10,-3.0); double d2 = pow(10,-3.0);
+
+  double H[Sp][Sp] ={0, hij, 
+                    hij, 0.0};    // Handling time matrix [T]. No canabilism, symmetric effects.
+  double A[Sp][Sp] ={0, aij, 
+                     aij, 0.0};  // Attack rate matrix []. No canabilism, symmetric effects.
+  double M[Sp] = {0.0, m};     // Mortality Rate of Species.
+  double E[Sp] ={1.0, ej}; //Efficiency of consumption.
+  double D[Sp] ={d0, d1}; //Diffusion coefficients for species.
+
+  double sigma[Sp] ={sqrt(2.0),sqrt(2.0)}; dx=1.0;
+
+  cout << "Enter desired time-step: ";
+  cin >> dt;
+
+  cout << "Enter maximum duration of simulation (in hr): ";
+  cin >> t_max;
+
+  cout << "Enter the desired grid-size (L): ";
+  cin >> g;
+
+  cout << "Enter the desired number of replicates (r): ";
+  cin >> r;
+
+  cout << "Note that a relevant value of 'a' may be construed as:\t" << setprecision(10) << a <<endl;
+
+  cout << "Enter starting a-value: ";
+  cin >> a_start;
+
+  cout << "Enter ending a-value: ";
+  cin >> a_end;
+
+  cout << "Enter number of divisions of p (n+1): ";
+  cin >> div;
+
+  //cout << "Enter 1 to read from csv or 0 to input standardised initial condions"
+
+  /* cout << "Enter initial density of Primary Producer (kg/m^2): ";
+  cin >> p0i;
+
+  cout << "Enter initial density of Primary Consumer (kg/m^2): ";
+  cin >> p0j;
+
+	cout << "Enter initial density of Secondary Producer (kg/m^2): ";
+  cin >> p0m; */
+
+  createVec<2, double> Rho_0( Sp, g*g, 1.0);
+  //nR2 is 2D [Spx(L*L)] vector initialised to 1.00.
+
+  //init_fullframe(Rho_0, Sp, g*g); //Returns Rho_0 with a full initial frame filled with ones.
+
+  double mean[Sp] = {p0i, p0j}; double sd[Sp] = {p0i/4.0, p0j/4.0};
+	init_randframe(Rho_0, Sp,  g*g, mean, sd); //Returns Rho_0 with a full initial frame filled with 0.2.
+
+  cout << " A subset of the initial frame:\t" << endl;
+  for(int s =0; s < Sp; s++)
+  {
+      cout << " For SPECIES:\t" << s << endl;
+      for(int i = 0; i < 10; i++)
+      {
+	    for(int j =0; j < 10; j++)
+		    cout << setprecision(3) << Rho_0[s][i*g + j] << " ";
+	    cout << endl;
+      }
+  }
+
+
+  first_order_critical_exp_delta(Rho_0, div, t_max, a_start, a_end, b, c, D, sigma, A,H,E,M, dt, dx, r, g);
+
+  //tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, auto &Rh0,
+	 //double t_max, double a[], double b[], double c[], double D[], double sigma[], double dt, double dx, int r,  int g)
+
+  return 0;
+}

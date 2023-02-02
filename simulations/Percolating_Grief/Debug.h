@@ -34,7 +34,8 @@
 
 
 
-
+#ifndef RSS_H
+#define RSS_H
 /**
  * Returns the peak (maximum so far) resident set size (physical
  * memory use) measured in bytes, or zero if the value cannot be
@@ -122,3 +123,5 @@ size_t getCurrentRSS( )
     return (size_t)0L;          /* Unsupported. */
 #endif
 }
+
+#endif
