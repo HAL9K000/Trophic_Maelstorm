@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <cstdlib>
+#include <iostream>
 
 #include <random>
 #include <vector>
@@ -22,7 +23,22 @@ using namespace std;
 
 #include <map>
 
+#ifndef tuSP_DYNAMICS_H
+
+#define tuSP_DYNAMICS_H
+
 inline const int Sp = 2; //Number of species in the system.
+
+//------------------------- TYPEDEFS --------------------------------------------------------------//
+
+typedef std::vector<std::vector <double>> D2Vec_Double;
+typedef std::vector<std::vector <int>> D2Vec_Int;
+
+typedef std::vector<std::vector <std::vector <double>>> D3Vec_Double;
+typedef std::vector<std::vector <std::vector <int>>> D3Vec_Int;
+
+typedef std::vector<std::vector <std::vector <std::vector <double>>>> D4Vec_Double;
+typedef std::vector<std::vector <std::vector <std::vector <int>>>> D4Vec_Int;
 
 
 
@@ -33,6 +49,8 @@ inline const int Sp = 2; //Number of species in the system.
 
 // Meta programming template used to create a vector of dimension D, with specified lengths of each dimension (given by Args)
 // with default length of each dimension set to 0 if not specified. Last parameter
+
+/**
 
 template<int D, typename T> struct createVec : public vector<createVec<D - 1, T>> 
 {
@@ -47,6 +65,8 @@ template<typename T> struct createVec<1, T> : public vector<T>
   {
   }
 };
+
+*/
 
 
 
@@ -71,12 +91,15 @@ struct zd_coordinates {
    double z;
 };
 
-#ifndef tuPAC_DYNAMICS_H
 
-#define tuPAC_DYNAMICS_H
 
-void increase_stack_limit(long stack_size);
+void increase_stack_limit(long long stack_size);
 bool maxis(int a, int b);
+void add_three(int a, int b, int c);
+
+void init_randframe(D2Vec_Double &array, int Sp, int size, double mean[], double sd[]);
+
+/**
 
 void init_fullframe(auto &array, int Sp, int size);
 void init_constframe(auto &array, int Sp, int size, double constant[]);
@@ -109,14 +132,14 @@ void find_neighbours_R2(double neighbours_R2[2][5], vector<double> &Rho_t, int p
 
 //----------------------------- Stochastic 2PAC Dornic Integration Machinery --------------------------------------------//
 
-void RK4_Integrate(auto &Rho_t, auto &Rho_tsar, double a, double b, double D[], double A[][Sp], 
-	double H[][Sp], double E[], double M[], double t, double dt, double dx, int g);
+void RK4_Integrate(auto &Rho_t, auto &Rho_tsar, double a, double b, double D[], double A[Sp][Sp], 
+	double H[Sp][Sp], double E[], double M[], double t, double dt, double dx, int g);
 void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, auto &Rh0, double t_max, double a, double b, double c,
-	  double D[], double sigma[], double A[][Sp], double H[][Sp], double E[], double M[], double dt, double dx, int r,  int g);
+	  double D[], double sigma[], double A[Sp][Sp], double H[Sp][Sp], double E[], double M[], double dt, double dx, int r,  int g);
 
-void first_order_critical_exp_delta(auto &Rho_0, int div, double t_max, double a_start, double a_end, double b, double c, 
+void first_order_critical_exp_delta(auto &Rh0, int div, double t_max, double a_start, double a_end, double b, double c, 
 	double D[], double sigma[], double A[Sp][Sp], double H[Sp][Sp], double E[], double M[], double dt, double dx, int r,  int g);
-
+*/
 #endif
 
 
@@ -190,7 +213,7 @@ void RK4_Integrate(auto &Rho_t, auto &Rho_tsar, double a, double b, double D[], 
 			if( Rho_t[s][i] < 0 || isfinite(Rho_t[s][i]) == false || Rho_t[s][i] > 5)
 			{
 				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
-        		m6 << "RK4 WAS KO'ED WITH:\t" << Rho_t[s][i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
+        		m6 << "RK4 WAS KO'ED WITH :\t" << Rho_t[s][i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
 				<< " at time:\t:" << t << " For Species:\t:" << s << " with K1[s][i]:   " << K1[s][i] << "\t, K2[s][i]:\t" << K2[s][i] 
 				<< "\t, K3[s][i]:\t" << K3[s][i] << "\t AND K4[s][i]:\t" << K4[s][i] << endl; //cout << m6.str();
 				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();

@@ -1,6 +1,27 @@
 #include "2species_stochastic.h"
 #include "Debug.h"
 
+
+//-------------- Template definitions and declarations must occur in each individual file.
+
+/**
+template<int D, typename T> struct createVec : public vector<createVec<D - 1, T>> 
+{
+  static_assert(D >= 1, "Vector dimension must be > 0!");
+  template<typename... Args> createVec(int n = 0, Args... args) : vector<createVec<D - 1, T>>(n, createVec<D - 1, T>(args...)) 
+  {
+  }
+};
+template<typename T> struct createVec<1, T> : public vector<T> 
+{
+  createVec(int n = 0, const T& val = T()) : vector<T>(n, val) 
+  {
+  }
+};
+
+**/
+
+
 //--------------------Defining Primitives------------------------------------//
 
 void increase_stack_limit(long long stack_size){
@@ -36,6 +57,12 @@ bool maxis(int a, int b)
  	return (a < b); 
 }
 
+
+void add_three(int a, int b, int c)
+{
+	int d = a + b +c; cout << d << endl;
+}
+
 void init_fullframe(auto &array, int Sp, int size)
 {
 	//Returns array with all elements initialised to 1
@@ -56,7 +83,7 @@ void init_constframe(auto &array, int Sp, int size, double constant[])
 	}
 }
 
-void init_randframe(auto &array, int Sp, int size, double mean[], double sd[])
+void init_randframe(D2Vec_Double &array, int Sp, int size, double mean[], double sd[])
 {
 	int rd = std::random_device{}();
 	std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
@@ -548,8 +575,8 @@ void RK4_Integrate(auto &Rho_t, auto &Rho_tsar, double a, double b, double D[], 
 **/
 
 
-void RK4_Integrate(auto &Rho_t, auto &Rho_tsar, double a, double b, double D[], double A[][Sp], 
-	double H[][Sp], double E[], double M[], double t, double dt, double dx, int g)
+void RK4_Integrate(auto &Rho_t, auto &Rho_tsar, double a, double b, double D[], double A[Sp][Sp], 
+	double H[Sp][Sp], double E[], double M[], double t, double dt, double dx, int g)
 {
 	// Rho_tstar stores value of rho*, provided by sampling Gaussian.
 
@@ -620,7 +647,7 @@ void RK4_Integrate(auto &Rho_t, auto &Rho_tsar, double a, double b, double D[], 
 }
 
 void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, auto &Rh0, double t_max, double a, double b, double c,
-	double D[], double sigma[], double A[][Sp], double H[][Sp], double E[], double M[], double dt, double dx, int r,  int g)
+	double D[], double sigma[], double A[Sp][Sp], double H[Sp][Sp], double E[], double M[], double dt, double dx, int r,  int g)
 {
     int Sp=2; //Number of species.
 	//Integrating first order PDE: arho - brho^2 - crho^3 +Diff + Stocj
@@ -860,7 +887,7 @@ void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_
 
 			//RK4 Integration of remaining terms
 
-			RK4_Integrate(Rho_dt, DummyRho, a, b, c, D, t, dt, dx, g);
+			RK4_Integrate(Rho_dt, DummyRho, a, b, D, A, H,E,M, t, dt, dx, g);
 
             for(int s=0; s< Sp; s++)
             {
@@ -955,7 +982,7 @@ void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_
 			//Updates SD and Mean values for <Rho>_x across replicates as new replicate data (Rho_M) becomes available.
 		}
 
-		vector<vector <double>>().swap(Rho_dt); vector<vector <double>>().swap(DRho); //vector<vector <double>>().swap(Rho_M);
+		//vector<vector <double>>().swap(Rho_dt); vector<vector <double>>().swap(DRho); //vector<vector <double>>().swap(Rho_M);
 		// Remove dynamic vectors from memory and free up allocated space.
 
 		if(j == 2)
@@ -976,7 +1003,7 @@ void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_
 			{	// Recall Rho is: | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |    #Surviving Runs    |   #Active Sites |
 
 				output_dp << a << ","<< c << "," << g << "," << rho_rep_avg_var[i][0] << ",";
-				for(s=0; s <Sp; s++)
+				for(int s=0; s <Sp; s++)
 				{ output_dp << rho_rep_avg_var[i][4*s + 1] << "," <<
 				rho_rep_avg_var[i][4*s +2] << "," << rho_rep_avg_var[i][4*s +3] << "," << rho_rep_avg_var[i][4*s +4] <<endl; 
 				}
@@ -995,7 +1022,7 @@ void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_
 	<< " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) << endl; cout << m9.str();
 	errout.open(thr, std::ios_base::app); errout << m9.str(); errout.close();
 
-	for(s=0;s < Sp; s++)
+	for(int s=0;s < Sp; s++)
 	{
 		for(int i=0; i< tot_iter; i++)
 		{	// Recall Rho is: | 	a		|    L 		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |    #Surviving Runs    |   #Active Sites |
@@ -1021,9 +1048,11 @@ void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_
 }
 
 
-void first_order_critical_exp_delta(auto &Rho_0, int div, double t_max, double a_start, double a_end, double b, double c, 
+void first_order_critical_exp_delta(auto &Rh0, int div, double t_max, double a_start, double a_end, double b, double c, 
 	double D[], double sigma[], double A[Sp][Sp], double H[Sp][Sp], double E[], double M[], double dt, double dx, int r,  int g)
 {
+
+	
 
 	//init_fullframe(Rho_0, g*g); //Returns Rho_0 with a full initial frame filled with ones.
 	//double mean[Sp] = {1.0, 0.05}; double sd[Sp] = {0.25, 0.0125};
@@ -1083,7 +1112,7 @@ void first_order_critical_exp_delta(auto &Rho_0, int div, double t_max, double a
 		 * | 	a		|    t 		|     <<Rho1(t)>>x,r			|    Var[<Rho1(t)>x],r    |
 		**/
 
-		tupac_percolationDornic_2D(CExpRho_a, t_measure, Rho_0, t_max, a_space[i], b, c, D, sigma, A,H,E,M, dt, dx, r, g)
+		tupac_percolationDornic_2D(CExpRho_a, t_measure, Rh0, t_max, a_space[i], b, c, D, sigma, A,H,E,M, dt, dx, r, g);
 		//expanded_percolationDornic_2D(CExpRho_a, t_measure, Rho_0,  t_max, a_space[i], b, c, D, sigma, dt, dx, r, g);
         //crtexp_DP_Basic(grid_size, comp_data, p_space[i], r_init, length);
 
