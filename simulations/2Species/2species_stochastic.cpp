@@ -63,7 +63,7 @@ void add_three(int a, int b, int c)
 	int d = a + b +c; cout << d << endl;
 }
 
-void init_fullframe(auto &array, int Sp, int size)
+void init_fullframe(D2Vec_Double &array, int Sp, int size)
 {
 	//Returns array with all elements initialised to 1
 	for(int s=0; s< Sp; s++) 
@@ -73,7 +73,7 @@ void init_fullframe(auto &array, int Sp, int size)
 	}
 }
 
-void init_constframe(auto &array, int Sp, int size, double constant[])
+void init_constframe(D2Vec_Double &array, int Sp, int size, double constant[])
 {
 	//Returns array with all elements initialised to a constant value: "const"
 	for(int s=0; s< Sp; s++) 
@@ -103,7 +103,7 @@ void init_randframe(D2Vec_Double &array, int Sp, int size, double mean[], double
 	}
 }
 
-void init_quarterframe(auto &array, int Sp, int g, double c1[], double c2[], double c3[], double c4[])
+void init_quarterframe(D2Vec_Double &array, int Sp, int g, double c1[], double c2[], double c3[], double c4[])
 {
 	//Returns array with elements initialised to a constant values: "const1", "const2", "const3", "const4" in clockwise quadrants
 	// starting from the top left.
@@ -125,7 +125,7 @@ void init_quarterframe(auto &array, int Sp, int g, double c1[], double c2[], dou
 	}
 }
 
-void init_solitarytear(auto &array, int Sp, int length)
+void init_solitarytear(D2Vec_Double &array, int Sp, int length)
 {
 	//Returns array with only central element initalised to 1, all others 0.
 	for(int s=0; s< Sp; s++) 
@@ -211,7 +211,7 @@ auto meansq_spread_of_vector(vector<double> array, int g, int c_x, int c_y){
 
 
 
-void var_mean_incremental_surv_runs(double t_avg_var_rep_N[][4*Sp+1], double X_curr[][2*Sp], int size)
+void var_mean_incremental_surv_runs(double t_avg_var_rep_N[][Sp4_1], double X_curr[][Sp2], int size)
 {
 	/** X_curr contains time-series data (indexed as (N(t), <rho(t)>x)) from the current surviving replicate (given by r) with a length "size".
 	 *  rep_avg_var stores the time(t), running density average and variance of X_curr, as well as N(t) and number of survivng replicates 
@@ -296,6 +296,8 @@ void spreading_incremental_surv_runs(double t_N_R2_rep[][4], double X_curr[][3],
 		}
 	}
 }
+
+// --------------------------- Partitioning functions to make life easier -----------------------------------//
 
 template<typename T>std::vector<double> linspace(T start_in, T end_in, int num_in)
 {
@@ -426,19 +428,23 @@ std::vector<double> logarithm10_time_bins(double t_max, double dt)
 
 //----------------------------- Misc. Supporting Add-ons ------------------------------------------------- //
 
-int theborderwall(vector<double> &Rho_t, int g)
+int theborderwall(D2Vec_Double &Rho_t, int g)
 {
 	//Checks if the border sites are occupied.
-	int g2 = g*(g-1);
-	for(int i =0; i< g; i++)
+	for(int s=0; s <Sp; s++)
 	{
-		if(Rho_t[i] > 0 || Rho_t[g*i] > 0  || Rho_t[g2 + i] > 0 || Rho_t[g*i + g - 1 ] > 0)
-			return 1; //Top, left, bottom and right borders are occupied by active sites.
+		int g2 = g*(g-1);
+		for(int i =0; i< g; i++)
+		{
+			if(Rho_t[s][i] > 0 || Rho_t[s][g*i] > 0  || Rho_t[s][g2 + i] > 0 || Rho_t[s][g*i + g - 1 ] > 0)
+				return 1; //Top, left, bottom and right borders are occupied by active sites.
+		}
+		
 	}
 	return 0; //No active sites detected at the edges.
 }
 
-void determine_neighbours_R2( int g, auto &neighbours_R2)
+void determine_neighbours_R2( int g, D3Vec_Int &neighbours_R2)
 {
 	//Stores neighbouring sites (Van-Neumann Radius of 2) of each cell site in a 
 	// S*(g^2)*2*5 matrix.
@@ -460,7 +466,7 @@ void determine_neighbours_R2( int g, auto &neighbours_R2)
 
 }
 
-void determine_neighbours_Sq8(int g, auto &neighbours_Sq8)
+void determine_neighbours_Sq8(int g, D3Vec_Int &neighbours_Sq8)
 {
     
 	//Stores neighbouring sites of species s and at site i in a square (Norm 1) radius of 1
@@ -575,7 +581,7 @@ void RK4_Integrate(auto &Rho_t, auto &Rho_tsar, double a, double b, double D[], 
 **/
 
 
-void RK4_Integrate(auto &Rho_t, auto &Rho_tsar, double a, double b, double D[], double A[Sp][Sp], 
+void RK4_Integrate(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, double a, double b, double D[], double A[Sp][Sp], 
 	double H[Sp][Sp], double E[], double M[], double t, double dt, double dx, int g)
 {
 	// Rho_tstar stores value of rho*, provided by sampling Gaussian.
@@ -629,7 +635,7 @@ void RK4_Integrate(auto &Rho_t, auto &Rho_tsar, double a, double b, double D[], 
 		{
 			Rho_t[s][i]+= (dt6)*( K1[s] + 2.0*K2[s] + 2.0*K3[s] + K4[s]);
 
-			if( Rho_t[s][i] < 0 || isfinite(Rho_t[s][i]) == false || Rho_t[s][i] > 5)
+			if( Rho_t[s][i] < 0 || isfinite(Rho_t[s][i]) == false || Rho_t[s][i] > 10)
 			{
 				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
         		m6 << "RK4 WAS KO'ED WITH:\t" << Rho_t[s][i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
@@ -646,29 +652,31 @@ void RK4_Integrate(auto &Rho_t, auto &Rho_tsar, double a, double b, double D[], 
 	
 }
 
-void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, auto &Rh0, double t_max, double a, double b, double c,
+void tupac_percolationDornic_2D(D2Vec_Double &Rho, vector <double> &t_meas, D2Vec_Double &Rh0, double t_max, double a, double b, double c,
 	double D[], double sigma[], double A[Sp][Sp], double H[Sp][Sp], double E[], double M[], double dt, double dx, int r,  int g)
 {
     int Sp=2; //Number of species.
 	//Integrating first order PDE: arho - brho^2 - crho^3 +Diff + Stocj
-	//int nR2[g*g][2][5] ={0}; //n_R2 stores neighbours of all sites in a ball of radius 2.
-	//int nR2[2][g*g][3][3] ={0}; 
-    createVec<3, int> nR2( g*g, 3, 3, 0);
+	
+    //createVec<3, int> nR2( g*g, 3, 3, 0);
+	D3Vec_Int nR2 (g*g, D2Vec_Int (3, vector<int> (3, 0)));
     //nR2 is 3D [(L*L)x3x3] vector initialised to 0, which stores neighbours of all sites i (second dim) in a ball of NORM 1 (SQUARE) radius 1 (2ND & 3RD dim).
 	//determine_neighbours_R2(nR2, g); //Assigning neigbours.
 	determine_neighbours_Sq8(g, nR2); //Assigning neigbours.
 
 	//int tot_iter = static_cast<int>(t_max/dt); // Stores total number of iterations (i.e. time steps logged) per replicate.
 	int tot_iter = static_cast<int>(1.0/dt) + 1 + t_meas.size(); // Stores total number of iterations (i.e. time steps logged) per replicate.
-	double rho_rep_avg_var[tot_iter][4*Sp+1] ={0.0}; 
+	//const int sp4_1 = (const int)(4*Sp + 1);
+	double rho_rep_avg_var[tot_iter][Sp4_1] ={0.0}; 
 	//Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
 	/**
 	double diff_coefficient = D/(dx*dx); //= D*(1.0/(6.0*dx*dx)); //Saves us some trouble later.
 	double beta = a - 4*D/(dx*dx); //a - (10.0/3.0)*D/(dx*dx); //double beta = a - 4*D/(dx*dx);
 	double lambda_exp = exp( (beta)*dt); double lambda = 2*(beta)/(sigma*sigma*(lambda_exp -1.0));
 	*/
-	double bdt = b*dt; double cdt = c*dt;
 
+	//Defining Dornic variables for integration schema.
+	double bdt = b*dt; double cdt = c*dt;
 	double diff_coefficient[Sp]={0.0}; double beta[Sp]={0.0}; double lambda_exp[Sp]={0.0}; double lambda[Sp]={0.0};
 
 	beta[0] = a - 4*D[0]/(dx*dx); beta[1] = -M[1] - 4*D[1]/(dx*dx);
@@ -691,12 +699,12 @@ void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_
 	double alpha_prime = diff_coefficient[0]*4; //Assume each Rho in neighbourhood for alpha estimation averages 1.
 	double poiss_ru = lambda[0]*lambda_exp[0]*2.5; //Mean
 	double mu_nought = 2.0*alpha_prime/(sigma[0]*sigma[0]) + poiss_ru;
-	poiss_ru += 4*sqrt(poiss_ru); //Mean of Poisson Sampler + 4 SD.
+	poiss_ru += 5*sqrt(poiss_ru); //Mean of Poisson Sampler + 5 SD.
 	mu_nought += 6*sqrt(mu_nought); //Mean of  Mean of Gamma Sampler + 6 SD.
 
 
 	stringstream m0;     //To make cout thread-safe as well as non-garbled due to race conditions.
-    m0 << "Parameters:\t Lambda:\t" << lambda << "\t Beta:\t " << beta << "\t dt,dx:\t " << dt << "," << dx << "\t Poisson Cut-Off:\t " << poiss_ru 
+    m0 << "Parameters:\t Lambda:\t" << lambda[0] << "\t Beta:\t " << beta[0] << "\t dt,dx:\t " << dt << "," << dx << "\t Poisson Cut-Off:\t " << poiss_ru 
 	<< "\t and  Gamma Cut-Off:\t " << mu_nought  <<endl; //cout << m1.str();
 	std::ofstream errout; //Save Error Logs
 	std::string thr = "ErrLog_" + std::to_string(omp_get_thread_num()) + ".txt";
@@ -716,22 +724,14 @@ void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_
 		//https://cplusplus.com/forum/beginner/220120/
 		std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
 		rng.seed(rd+j);
-		//thread_local std::default_random_engine rng(rd); //engine
 		//Credits: vsoftco, https://stackoverflow.com/questions/29549873/stdmt19937-doesnt-return-random-number
 		//Defining the Dornic variables
-		
-		//double K1[g*g] ={0.0}; double K2[g*g] ={0.0}; double K3[g*g] ={0.0}; double K4[g*g] ={0.0};	
-		//Initialise RK4 terms for future use.
 
-		//vector <double> Rho_dt(g*g, 0.0); //Updated through the turn, in turn used to update DRho
-		//vector <double> DRho(g*g, 0.0); //Dummy variable, Kept constant, only updated at end of turn.
-		//vector <double> DummyRho(g*g, 0.0); //Dummy variable, Kept constant, only updated at end of turn.
+		D2Vec_Double Rho_dt(Sp, vector<double> (g*g, 0.0)); // 2D vector of dim: Sx(L*l) Updated through the turn, in turn used to update DRho.
+		D2Vec_Double DRho(Sp, vector<double> (g*g, 0.0)); // 2D vector of dim: Sx(L*l) Dummy variable, Kept constant, only updated at end of turn.
+        D2Vec_Double DummyRho(Sp, vector<double> (g*g, 0.0)); // 2D vector of dim: Sx(L*l) Dummy variable, Kept constant, only updated at end of turn.
 
-        createVec<2, double> Rho_dt(Sp, g*g, 0.0); // 2D vector of dim: Sx(L*l) Updated through the turn, in turn used to update DRho.
-        createVec<2, double> DRho(Sp, g*g, 0.0);  // 2D vector of dim: Sx(L*l) Dummy variable, Kept constant, only updated at end of turn.
-        createVec<2, double> DummyRho(Sp, g*g, 0.0); // 2D vector of dim: Sx(L*l) Dummy variable, Kept constant, only updated at end of turn.
-		
-		double Rho_M[tot_iter][2*Sp] ={0.0}; //Stores <rho>x values per time step for a single replicate.
+		double Rho_M[tot_iter][Sp2] ={0.0}; //Stores <rho>x values per time step for a single replicate.
 
 		//double K1[g*g] ={0.0}; double K2[g*g] ={0.0}; double K3[g*g] ={0.0}; double K4[g*g] ={0.0}; //double Rho_Mid[g*g] ={0.0};
 
@@ -779,6 +779,8 @@ void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_
 				    rhox_num = occupied_sites_of_vector(temp, g*g); //Finds number of occupied at given t.
 				    Rho_M[iter_index][2*s] = rhox_num; Rho_M[iter_index][2*s +1] = rhox_avg; 
 
+					vector<double>().swap(temp); //Flush temp out of memory.0
+
                     if(rhox_num == 0.0 and s== 0)
 					    break; //Finish negotiations as all basal species are dead.
                 }
@@ -818,16 +820,17 @@ void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_
 				    //po=0;
 			        }
 			        double maxtek = max({DRho[s][nR2[i][0][1]],DRho[s][nR2[i][2][1]],DRho[s][nR2[i][1][0]], DRho[s][nR2[i][1][2]]}, maxis);
+					/**
 			        if(maxtek - DRho[s][nR2[i][1][1]] > 5 || maxtek - DRho[s][nR2[i][1][1]] < -5)
 			        {
 				    //Checking if Laplacian is causing our troubles.
 				
 				    stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
         		    m6 << "ALPHA GO-GO-TRON for species:\t" << s << " ,Rho[t,i]:\t" << Rho_dt[s][i] << "\t at index:  " << i << " at time:\t:" << t <<
-				    " with Max(Neighbour(Rho)):   " << maxtek << "\t and alpha_i:\t" << alpha_i << endl; cout << m6.str();
-				    errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+				    " with Max(Neighbour(Rho)):   " << maxtek << "\t and alpha_i:\t" << alpha_i << endl; //cout << m6.str();
+				    //errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
 				    //po=0;
-			        }
+			        } */
 			
 			        double mu = -1.0 + 2.0*alpha_i/(sigma[s]*sigma[s]);
 			        double ziggy = lambda[s]*lambda_exp[s]*Rho_dt[s][i]; double gru;
@@ -851,7 +854,7 @@ void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_
 
 			        gamma = gamma_distribution<double>(gru, 1.0);
 					
-	                Rho_dt[s][i]= gamma(rng)/lambda;
+	                Rho_dt[s][i]= gamma(rng)/lambda[s];
 
 			        if(gru < 0 || isnan(gru) == true || isinf(gru) == true)
 			        {
@@ -862,7 +865,7 @@ void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_
 				        errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
 			        }
 
-			        if(gru > mu_nought || Rho_dt[s][i] > 5 || alpha_i > 20 || ziggy > poiss_ru)
+			        if(gru > mu_nought || Rho_dt[s][i] > 10 || alpha_i > 50 || ziggy > poiss_ru)
 			        {
 				        stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
         		        m6 << "BLOWING UP, Rho*[t,i]:\t" << Rho_dt[s][i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
@@ -960,7 +963,9 @@ void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_
 			{	
 				for(int s =0; s< Sp; s++)
 				{
-					rho_rep_avg_var[i][4*s+ 1] = Rho_M[i][2*s + 1]; rho_rep_avg_var[i][4*s+ 2] = 0.0; rho_rep_avg_var[i][4*s+ 4] = Rho_M[i][2*s];
+					rho_rep_avg_var[i][4*s+ 1] = Rho_M[i][2*s + 1]; // Avg density of frame at given time point i.
+					rho_rep_avg_var[i][4*s+ 2] = 0.0; // Variance in avg frame density.
+					rho_rep_avg_var[i][4*s+ 4] = Rho_M[i][2*s]; // Number of active sites in frame at given time point i.
 
 					if(Rho_M[i][2*s] > 0) //Ensuring only surviving runs are considered
 					{ rho_rep_avg_var[i][4*s+3 ] = 1;  } //One surviving run as of now
@@ -1034,7 +1039,7 @@ void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_
 			}
 			else
 			{ 	//Extend rows, don't create them.
-				Rho[i].push_back({ rho_rep_avg_var[i][4*s +1], rho_rep_avg_var[i][4*s +2], 
+				Rho[i].insert(Rho[i].end(), { rho_rep_avg_var[i][4*s +1], rho_rep_avg_var[i][4*s +2], 
 				rho_rep_avg_var[i][4*s +3], rho_rep_avg_var[i][4*s +4]}); 
 			}
 		}
@@ -1048,7 +1053,7 @@ void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_
 }
 
 
-void first_order_critical_exp_delta(auto &Rh0, int div, double t_max, double a_start, double a_end, double b, double c, 
+void first_order_critical_exp_delta(D2Vec_Double &Rh0, int div, double t_max, double a_start, double a_end, double b, double c, 
 	double D[], double sigma[], double A[Sp][Sp], double H[Sp][Sp], double E[], double M[], double dt, double dx, int r,  int g)
 {
 
@@ -1064,11 +1069,11 @@ void first_order_critical_exp_delta(auto &Rh0, int div, double t_max, double a_s
 	// Computes and returns ln-distributed points from t= 10^{0} to log10(t_max) (the latter rounded down to 1 decimal place) 
   // Returns time-points measured on a natural logarithmic scale from e^{2} to e^ln(t_max) rounded down to one decimal place.
 
-  cout << "Values in t_measure (which is of total size " << t_measure.size() << ") are :" <<endl;
-  for (int i=0; i< t_measure.size(); i++)
-  {
-	cout << t_measure[i] << " ";
-  } cout << endl;
+  	cout << "Values in t_measure (which is of total size " << t_measure.size() << ") are :" <<endl;
+  	for (int i=0; i< t_measure.size(); i++)
+  	{
+		cout << t_measure[i] << " ";
+  	} 	cout << endl;
 
   	//usleep will pause the program in micro-seconds (1000000 micro-seconds is 1 second)
     const int microToSeconds = 1000000;   
@@ -1145,19 +1150,19 @@ void first_order_critical_exp_delta(auto &Rh0, int div, double t_max, double a_s
 
 	cout << endl << "Dornic Integration Time: " << duration.count() << " seconds" << endl;
 
-	stringstream L, coco, tm ,d3, p1, p2, rini, Dm, Sm, dix, dimitri;
+	stringstream L, coco, tm ,d3, p1, p2, rini, Dm0, Dm1, Sm0, Sm1, dix, dimitri;
 
-  L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << setprecision(4) << a_start; p2 << setprecision(4) << a_end;
-  rini << r; Dm << setprecision(3) << D[0]; Sm << setprecision(3) << sigma[0]; coco << setprecision(4) << c; dix << setprecision(2) << dx;
+  L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << setprecision(4) << a_start; p2 << setprecision(4) << a_end; rini << r; 
+  Dm0 << setprecision(3) << D[0]; Dm1 << setprecision(3) << D[1]; Sm0 << setprecision(3) << sigma[0]; coco << setprecision(4) << c; dix << setprecision(2) << dx;
   // setprecision() is a stream manipulator that sets the decimal precision of a variable.
 	ofstream output_1stdp;
   // Creating a file instance called output to store output data as CSV.
-	output_1stdp.open("../Data/2PAC/1stOrder_2PAC_P_c_Delta_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_D0_"+ Dm.str() +
-	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + "_Sig0_"+ Sm.str() + "_R_"+ rini.str() + ".csv");
+	output_1stdp.open("../Data/2PAC/1stOrder_2PAC_P_c_Delta_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_D0_"+ Dm0.str() + "_D1_"+ Dm1.str() +
+	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + "_Sig0_"+ Sm0.str() + "_R_"+ rini.str() + ".csv");
 
 	cout << "Save file name: " <<endl;
-	cout << "../Data/2PAC/1stOrder_2PAC_P_c_Delta_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_D0_"+ Dm.str() +
-	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_Sig0_"+ Sm.str() + "_R_"+ rini.str() + ".csv";
+	cout << "../Data/2PAC/1stOrder_2PAC_P_c_Delta_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_D0_"+ Dm0.str() + "_D1_"+ Dm1.str() +
+	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_Sig0_"+ Sm0.str() + "_R_"+ rini.str() + ".csv";
 
 	// Output =  | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |
 

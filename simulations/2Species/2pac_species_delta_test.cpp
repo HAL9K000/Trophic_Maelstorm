@@ -1,46 +1,28 @@
 #include "2species_stochastic.h"
-//#include "test_multdimarraypass.h"
-
-/**
-//-------------- Template definitions and declarations must occur in each individual file.
-
-template<int D, typename T> struct createVec : public vector<createVec<D - 1, T>> 
-{
-  static_assert(D >= 1, "Vector dimension must be > 0!");
-  template<typename... Args> createVec(int n = 0, Args... args) : vector<createVec<D - 1, T>>(n, createVec<D - 1, T>(args...)) 
-  {
-  }
-};
-template<typename T> struct createVec<1, T> : public vector<T> 
-{
-  createVec(int n = 0, const T& val = T()) : vector<T>(n, val) 
-  {
-  }
-};
-
-**/
 
 int main()
 {
-  //increase_stack_limit(2048L); //Increase stack limit to 512 MB.
+  increase_stack_limit(2048L); //Increase stack limit to 512 MB.
 
 
-  //int Sp=2;
-
-  /**
 
   double a_start, a_end; double r;
   double dt, dx, t_max; int g, div;
 
   double p0i = 1.0; double p0j= 0.05;
   
-  double mR = 1; double mC = 10; double mP=100; //Mass of creatures.
-  double a = (1)*1.71*pow(10.0,-6.0)*pow(mR,-0.25)*3600; double c=0;
+  /**
+  double mR = 1; double mC = 10; double mP=100; //Mass of creatures. [in kg]
+  double a = (1)*1.71*pow(10.0,-6.0)*pow(mR,-0.25)*3600;
   double b = a*1*pow(mR, 0.25); double aij =pow(10,-3.08)*pow(mC,-0.37)*3600;
   double hij = 1*pow(mC,-0.02)/3600.0; double m= 4.15*pow(10,-8.0)*pow(mC,-0.25)*3600;
   double ajm = pow(10,-3.08)*pow(mP,-0.37)*3600; double hjm = 1*pow(mP,-0.02)/3600.0;
   double mm= 4.15*pow(10,-8.0)*pow(mP,-0.25)*3600; double ej =0.45; double em = 0.85;
   double d0 = pow(10,-5.0); double d1 = pow(10,-3.0); double d2 = pow(10,-3.0);
+  */
+
+ double a =1; double b=1; double aij, hij, ej, m; double d0, d1; //Slightly 
+ aij= 0.25; hij = 0.25; m = 0.1; ej =0.5; d0 = 0.1; d1 = 0.5;
 
   double H[Sp][Sp] ={0, hij, 
                     hij, 0.0};    // Handling time matrix [T]. No canabilism, symmetric effects.
@@ -50,7 +32,7 @@ int main()
   double E[Sp] ={1.0, ej}; //Efficiency of consumption.
   double D[Sp] ={d0, d1}; //Diffusion coefficients for species.
 
-  double sigma[Sp] ={sqrt(2.0),sqrt(2.0)}; dx=1.0;
+  double sigma[Sp] ={sqrt(1.0),sqrt(1.0)}; dx=1.0;
 
   cout << "Enter desired time-step: ";
   cin >> dt;
@@ -90,25 +72,17 @@ int main()
   cout << maxis(3.14, 1.78) <<endl;
 
   int c =8;
-  add_three(1,2,c); int g =2; 
+  add_three(1,2,c);
 
   D2Vec_Double Rho_0(Sp, vector<double> (g*g, 1.0));
   // Rho_0 is 2D [Spx(L*L)] vector initialised to 1.00.
-  //createVec<2, double> Rho_0( Sp, g*g, 1.0);
-  //nR2 is 2D [Spx(L*L)] vector initialised to 1.00.
-  //init_fullframe(Rho_0, 2,4);
-
-  
-
-  //createVec<2, double> Rho_0( Sp, g*g, 1.0);
-  //nR2 is 2D [Spx(L*L)] vector initialised to 1.00.
 
   //init_fullframe(Rho_0, Sp, g*g); //Returns Rho_0 with a full initial frame filled with ones.
-  double p0i = 1.0; double p0j= 0.05;
+  //double p0i = 1.0; double p0j= 0.05;`
   double mean[Sp] = {p0i, p0j}; double sd[Sp] = {p0i/4.0, p0j/4.0};
 	init_randframe(Rho_0, Sp,  g*g, mean, sd); //Returns Rho_0 with a full initial frame filled with 0.2.
 
-  /**
+  
 
   cout << " A subset of the initial frame:\t" << endl;
   for(int s =0; s < Sp; s++)
@@ -128,5 +102,5 @@ int main()
   //tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, auto &Rh0,
 	 //double t_max, double a[], double b[], double c[], double D[], double sigma[], double dt, double dx, int r,  int g)
 
-  return 0; */
+  return 0;
 }
