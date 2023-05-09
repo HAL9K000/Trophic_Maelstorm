@@ -1,0 +1,23 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}",
+                "D:/cygwin64/lib/gcc/x86_64-pc-cygwin/11/include/c++",
+                "D:/cygwin64/usr/include/sys",
+                "D:/cygwin64/usr/include",
+                "D:/cygwin64/lib/gcc/x86_64-pc-cygwin/11/include",
+                "D:/cygwin64/lib/gcc/x86_64-pc-cygwin/11/include/c++/x86_64-pc-cygwin",
+                "D:/cygwin64/usr/include/w32api"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ]
+        }
+    ],
+    "version": 4
+}
