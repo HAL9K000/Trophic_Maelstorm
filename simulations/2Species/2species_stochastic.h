@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <cstdlib>
 #include <iostream>
+#include <fstream>
 
 #include <random>
 #include <vector>
@@ -28,6 +29,8 @@ using namespace std;
 #define tuSP_DYNAMICS_H
 
 inline const int Sp = 2; //Number of species in the system.
+inline const int Sp4_1 = 4*Sp +1; // Used for generating statistics on surviving runs
+inline const int Sp2 = 2*Sp; // Used for generating statistics on surviving runs
 
 //------------------------- TYPEDEFS --------------------------------------------------------------//
 
@@ -95,17 +98,13 @@ struct zd_coordinates {
 
 void increase_stack_limit(long long stack_size);
 bool maxis(int a, int b);
-void add_three(int a, int b, int c);
+void add_three(int a, int b, int c); //Test function.
 
+void init_fullframe(D2Vec_Double &array, int Sp, int size);
+void init_constframe(D2Vec_Double &array, int Sp, int size, double constant[]);
 void init_randframe(D2Vec_Double &array, int Sp, int size, double mean[], double sd[]);
-
-/**
-
-void init_fullframe(auto &array, int Sp, int size);
-void init_constframe(auto &array, int Sp, int size, double constant[]);
-void init_randframe(auto &array, int Sp, int size, double mean[], double sd[]);
-void init_quarterframe(double array[], double c1, double c2, double c3, double c4, int L);
-void init_solitarytear(double array[], int length);
+void init_quarterframe(D2Vec_Double &array, double c1, double c2, double c3, double c4, int L);
+void init_solitarytear(D2Vec_Double &array, int length);
 
 double mean_of_array(double array[],int size);
 double standard_deviation_of_array(double array[],int size);
@@ -114,10 +113,14 @@ double standard_deviation_of_vector(vector<double> array,int size);
 double occupied_sites_of_vector(vector<double> array,int size);
 auto meansq_spread_of_vector(vector<double> array, int g, int c_x, int c_y);
 
-void var_mean_incremental_surv_runs(double t_avg_var_rep_N[][4*Sp+1], double X_curr[][2*Sp], int size);
+void var_mean_incremental_surv_runs(double t_avg_var_rep_N[][Sp4_1], double X_curr[][Sp2], int size);
+
 void var_mean_incremental_all_runs(double rep_avg_var[][3], double X_curr[][2], int size, int r);
 void spreading_incremental_surv_runs(double t_N_R2_rep[][4], double X_curr[][3], int size);
 void var_mean_incremental(double rep_avg_var[][2], vector<vector <double>> &X_curr, int size, int r);
+
+// --------------------------- Partitioning functions to make life easier -----------------------------------//
+
 template<typename T> std::vector<double> linspace(T start_in, T end_in, int num_in);
 template<typename T>std::vector<double> lnspace(T start_in, T end_in, int log_points);
 std::vector<double> logarithmic_time_bins(double t_max, double dt);
@@ -125,21 +128,20 @@ std::vector<double> logarithm10_time_bins(double t_max, double dt);
 
 //----------------------------- Misc. Supporting Add-ons -------------------------------------------------
 
-int theborderwall(vector<double> &Rho_t, int g);
-void determine_neighbours_R2( int g, int S, auto &neighbours_R2);
-void determine_neighbours_Sq8(int g, int S, auto &neighbours_Sq8);
-void find_neighbours_R2(double neighbours_R2[2][5], vector<double> &Rho_t, int p, int q, int g);
+int theborderwall(D2Vec_Double &Rho_t, int g);
+void determine_neighbours_R2( int g, int S, D3Vec_Int &neighbours_R2);
+void determine_neighbours_Sq8(int g, int S, D3Vec_Int &neighbours_Sq8);
 
 //----------------------------- Stochastic 2PAC Dornic Integration Machinery --------------------------------------------//
 
-void RK4_Integrate(auto &Rho_t, auto &Rho_tsar, double a, double b, double D[], double A[Sp][Sp], 
+void RK4_Integrate(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, double a, double b, double D[], double A[Sp][Sp], 
 	double H[Sp][Sp], double E[], double M[], double t, double dt, double dx, int g);
-void tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, auto &Rh0, double t_max, double a, double b, double c,
+void tupac_percolationDornic_2D(D2Vec_Double &Rho, vector <double> &t_meas, D2Vec_Double &Rh0, double t_max, double a, double b, double c,
 	  double D[], double sigma[], double A[Sp][Sp], double H[Sp][Sp], double E[], double M[], double dt, double dx, int r,  int g);
 
-void first_order_critical_exp_delta(auto &Rh0, int div, double t_max, double a_start, double a_end, double b, double c, 
+void first_order_critical_exp_delta(D2Vec_Double &Rh0, int div, double t_max, double a_start, double a_end, double b, double c, 
 	double D[], double sigma[], double A[Sp][Sp], double H[Sp][Sp], double E[], double M[], double dt, double dx, int r,  int g);
-*/
+
 #endif
 
 
