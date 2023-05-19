@@ -21,15 +21,10 @@ int main()
   double d0 = pow(10,-5.0); double d1 = pow(10,-3.0); double d2 = pow(10,-3.0);
   */
 
-<<<<<<< HEAD
  double a =1; double b= 0.5/1.349; double aij, hij, ej, m; double d0, d1; //Slightly 
  aij= 1.161; hij = 0.000389; m = 0.000007605; ej =0.1; 
  
   d0 = 0.0012; d1 = 48420;
-=======
- double a =1; double b=1; double aij, hij, ej, m; double d0, d1; //Slightly 
- aij= 0.25; hij = 0.25; m = 0.1; ej =0.5; d0 = 0.1; d1 = 0.5;
->>>>>>> c1d9a8cc3e7948e831a134e960943d98df4f6152
 
   double H[Sp][Sp] ={0, hij, 
                     hij, 0.0};    // Handling time matrix [T]. No canabilism, symmetric effects.
@@ -39,11 +34,7 @@ int main()
   double E[Sp] ={1.0, ej}; //Efficiency of consumption.
   double D[Sp] ={d0, d1}; //Diffusion coefficients for species.
 
-<<<<<<< HEAD
   double sigma[Sp] ={sqrt(4.8*pow(10.0, -7.0)),sqrt(2.0)}; dx=50.0;
-=======
-  double sigma[Sp] ={sqrt(1.0),sqrt(1.0)}; dx=1.0;
->>>>>>> c1d9a8cc3e7948e831a134e960943d98df4f6152
 
   cout << "Enter desired time-step: ";
   cin >> dt;
@@ -90,16 +81,9 @@ int main()
 
   //init_fullframe(Rho_0, Sp, g*g); //Returns Rho_0 with a full initial frame filled with ones.
   //double p0i = 1.0; double p0j= 0.05;`
-<<<<<<< HEAD
-  //double mean[Sp] = {p0i, p0j}; double sd[Sp] = {p0i/4.0, p0j/4.0};
-	//init_randframe(Rho_0, Sp,  g*g, mean, sd); //Returns Rho_0 with a full initial frame filled with 0.2.
-  double mean[Sp] = {p0i, p0j};
-  init_constframe(Rho_0, Sp,  g*g, mean); //Returns Rho_0 with a full initial frame filled with 0.2.
-=======
   double mean[Sp] = {p0i, p0j}; double sd[Sp] = {p0i/4.0, p0j/4.0};
 	init_randframe(Rho_0, Sp,  g*g, mean, sd); //Returns Rho_0 with a full initial frame filled with 0.2.
 
->>>>>>> c1d9a8cc3e7948e831a134e960943d98df4f6152
   
 
   cout << " A subset of the initial frame:\t" << endl;

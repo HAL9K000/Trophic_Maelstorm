@@ -655,13 +655,9 @@ void RK4_Integrate(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, double a, double
 		{
 			Rho_t[s][i]+= (dt6)*( K1[s] + 2.0*K2[s] + 2.0*K3[s] + K4[s]);
 
-<<<<<<< HEAD
 			/**
 
 			if( Rho_t[s][i] < 0 || isfinite(Rho_t[s][i]) == false )//|| Rho_t[s][i] > 10)
-=======
-			if( Rho_t[s][i] < 0 || isfinite(Rho_t[s][i]) == false || Rho_t[s][i] > 10)
->>>>>>> c1d9a8cc3e7948e831a134e960943d98df4f6152
 			{
 				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
         		m6 << "RK4 WAS KO'ED WITH:\t" << Rho_t[s][i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
@@ -878,13 +874,9 @@ void tupac_percolationDornic_2D(D2Vec_Double &Rho, vector <double> &t_meas, D2Ve
 				    errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
 				    //po=0;
 			        }
-<<<<<<< HEAD
 					
 			        double maxtek = max({DRho[s][nR2[i][0][1]],DRho[s][nR2[i][2][1]],DRho[s][nR2[i][1][0]], DRho[s][nR2[i][1][2]]}, maxis); 
 					*/
-=======
-			        double maxtek = max({DRho[s][nR2[i][0][1]],DRho[s][nR2[i][2][1]],DRho[s][nR2[i][1][0]], DRho[s][nR2[i][1][2]]}, maxis);
->>>>>>> c1d9a8cc3e7948e831a134e960943d98df4f6152
 					/**
 			        if(maxtek - DRho[s][nR2[i][1][1]] > 5 || maxtek - DRho[s][nR2[i][1][1]] < -5)
 			        {
@@ -921,11 +913,7 @@ void tupac_percolationDornic_2D(D2Vec_Double &Rho, vector <double> &t_meas, D2Ve
 			        gamma = gamma_distribution<double>(gru, 1.0);
 					
 	                Rho_dt[s][i]= gamma(rng)/lambda[s];
-<<<<<<< HEAD
 					/**
-=======
-
->>>>>>> c1d9a8cc3e7948e831a134e960943d98df4f6152
 			        if(gru < 0 || isnan(gru) == true || isinf(gru) == true)
 			        {
 				        stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
@@ -1229,7 +1217,6 @@ void first_order_critical_exp_delta(D2Vec_Double &Rh0, int div, double t_max, do
 
 	stringstream L, coco, tm ,d3, p1, p2, rini, Dm0, Dm1, Sm0, Sm1, dix, dimitri;
 
-<<<<<<< HEAD
 	// Creating a string stream instance to store the values of the parameters in the file name.
 	// This is done to avoid overwriting of files.
 
@@ -1247,26 +1234,16 @@ void first_order_critical_exp_delta(D2Vec_Double &Rh0, int div, double t_max, do
 		}
 	}	
 
-=======
->>>>>>> c1d9a8cc3e7948e831a134e960943d98df4f6152
   L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << setprecision(4) << a_start; p2 << setprecision(4) << a_end; rini << r; 
   Dm0 << setprecision(3) << D[0]; Dm1 << setprecision(3) << D[1]; Sm0 << setprecision(3) << sigma[0]; coco << setprecision(4) << c; dix << setprecision(2) << dx;
   // setprecision() is a stream manipulator that sets the decimal precision of a variable.
 	ofstream output_1stdp;
   // Creating a file instance called output to store output data as CSV.
-<<<<<<< HEAD
 	output_1stdp.open("../Data/2PAC/1stOrderCC_2PAC_P_c_Delta_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_D0_"+ Dm0.str() + "_D1_"+ Dm1.str() +
 	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + "_Sig0_"+ Sm0.str() + "_R_"+ rini.str() + ".csv");
 
 	cout << "Save file name: " <<endl;
 	cout << "../Data/2PAC/1stOrderCC_2PAC_P_c_Delta_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_D0_"+ Dm0.str() + "_D1_"+ Dm1.str() +
-=======
-	output_1stdp.open("../Data/2PAC/1stOrder_2PAC_P_c_Delta_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_D0_"+ Dm0.str() + "_D1_"+ Dm1.str() +
-	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + "_Sig0_"+ Sm0.str() + "_R_"+ rini.str() + ".csv");
-
-	cout << "Save file name: " <<endl;
-	cout << "../Data/2PAC/1stOrder_2PAC_P_c_Delta_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_D0_"+ Dm0.str() + "_D1_"+ Dm1.str() +
->>>>>>> c1d9a8cc3e7948e831a134e960943d98df4f6152
 	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_Sig0_"+ Sm0.str() + "_R_"+ rini.str() + ".csv";
 
 	// Output =  | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |
