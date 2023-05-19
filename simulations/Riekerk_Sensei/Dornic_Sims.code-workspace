@@ -1,0 +1,34 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../2Species"
+		},
+		{
+			"path": "."
+		},
+		{
+			"path": "../../../../../../../PhD Vivant/PhD Prepper Stash/ModellingCommunities/ARS Data"
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"random": "cpp",
+			"iomanip": "cpp",
+			"iosfwd": "cpp",
+			"ostream": "cpp",
+			"*.tcc": "cpp",
+			"fstream": "cpp",
+			"chrono": "cpp",
+			"list": "cpp",
+			"string": "cpp",
+			"vector": "cpp",
+			"cmath": "cpp",
+			"sstream": "cpp",
+			"regex": "cpp",
+			"iostream": "cpp"
+		}
+	}
+}
