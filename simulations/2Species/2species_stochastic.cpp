@@ -721,7 +721,7 @@ void tupac_percolationDornic_2D(D2Vec_Double &Rho, vector <double> &t_meas, D2Ve
 
 	double alpha_prime = diff_coefficient[0]*4; //Assume each Rho in neighbourhood for alpha estimation averages 1.
 	double poiss_ru = lambda[0]*lambda_exp[0]*2.5; //Mean
-	double mu_nought = 2.0*alpha_prime/(sigma[0]*sigma[0]) + poiss_ru;
+	double mu_nought = 2.0*alpha_prime/(sigma[0]*sigma[0]) + poiss_ru;  // For Gamma, Beta =1. So Mean = 2*alpha/(sigma^2) + lambda = alpha/beta
 	poiss_ru += 5*sqrt(poiss_ru); //Mean of Poisson Sampler + 5 SD.
 	mu_nought += 6*sqrt(mu_nought); //Mean of  Mean of Gamma Sampler + 6 SD.
 
@@ -944,7 +944,7 @@ void tupac_percolationDornic_2D(D2Vec_Double &Rho, vector <double> &t_meas, D2Ve
 				    "\t and GAMMA ENTRY:\t" << gru << endl; cout << m6.str();
 				    errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
 			        }
-			        DummyRho[s][i] =Rho_dt[s][i];
+			        DummyRho[s][i] =Rho_dt[s][i];		// This is the rho* value (refer to Dornic et 2005)
 			    }
             }
 

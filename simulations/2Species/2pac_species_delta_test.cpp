@@ -9,7 +9,7 @@ int main()
   double a_start, a_end; double r;
   double dt, dx, t_max; int g, div;
 
-  double p0i = 1.2; double p0j= 0.05; // In kg/m^2
+  double p0i = 40000; double p0j= 8000; // In kg/km^2
   
   /**
   double mR = 1; double mC = 10; double mP=100; //Mass of creatures. [in kg]
@@ -21,10 +21,14 @@ int main()
   double d0 = pow(10,-5.0); double d1 = pow(10,-3.0); double d2 = pow(10,-3.0);
   */
 
- double a =1; double b= 0.5/1.349; double aij, hij, ej, m; double d0, d1; //Slightly 
- aij= 1.161; hij = 0.000389; m = 0.000007605; ej =0.1; 
+  //double a =1; double b= 0.5/1.349; double aij, hij, ej, m; double d0, d1; //Slightly 
+  //aij= 1.161; hij = 0.000389; m = 0.000007605; ej =0.1; 
+  //double sigma[Sp] ={sqrt(4.8*pow(10.0, -7.0)),sqrt(2.0)}; dx=0.5;
+
+  double a =1; double b= 0.1/245; double aij, hij, ej, m; double d0, d1; //Slightly 
+  aij= 0.00003043; hij = 0.1667; m = 0.0000016297; ej =0.1; 
  
-  d0 = 0.0012; d1 = 48420;
+  d0 = 0.322; d1 = 4.188;
 
   double H[Sp][Sp] ={0, hij, 
                     hij, 0.0};    // Handling time matrix [T]. No canabilism, symmetric effects.
@@ -34,7 +38,7 @@ int main()
   double E[Sp] ={1.0, ej}; //Efficiency of consumption.
   double D[Sp] ={d0, d1}; //Diffusion coefficients for species.
 
-  double sigma[Sp] ={sqrt(4.8*pow(10.0, -7.0)),sqrt(2.0)}; dx=50.0;
+  double sigma[Sp] ={1.0, sqrt(2.0)}; dx=0.5;
 
   cout << "Enter desired time-step: ";
   cin >> dt;
