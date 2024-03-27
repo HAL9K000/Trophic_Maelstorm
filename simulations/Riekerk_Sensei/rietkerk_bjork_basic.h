@@ -200,5 +200,16 @@ void first_order_critical_exp_delta_stochastic_2Sp(int div, double t_max, double
 
 //------------------- Vegetation + Grazer + Predator (+ Soil Water + Surface Water) -------------------//
 
+void f_2Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, 
+	double alpha, double rW, double W0, double D[], double K[], double A[Sp][Sp], double H[Sp][Sp], double E[], double t, double dt, double dx1_2, double g);
+void RK4_Integrate_Stochastic_3Sp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D3Vec_Int &nR2,double a,double c,double gmax,double alpha,
+	double rW, double W0, double D[], double K[], double A[Sp][Sp], double H[Sp][Sp], double E[], double t,double dt,double dx, int g);
+void rietkerk_Dornic_2D_3Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double c, double gmax, double alpha, double rW, double W0, 
+	double D[], double v[], double K[], double sigma[], double a_st, double a_end, double A[Sp][Sp], double H[Sp][Sp], double E[], double M[], double pR[], 
+	double dt, double dx, double dP, int r, int g);
+void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double a_start, double a_end,  double c, double gmax, double alpha,
+	double rW, double W0,  double D[], double v[], double K[], double sigma[], double A[Sp][Sp], double H[Sp][Sp], double E[], double M[], double pR[],
+	double dt, double dx, double dP, int r,  int g);
+
 
 #endif

@@ -2163,23 +2163,23 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
   	double p0istar, p0jstar, p0mstar, p0nstar; // Analytic steady state values.
 
 	//Represent soil water, surface water, basal vegetation and grazer respectively.
-	/**
+	
 	double astar = rW*M[0]*K[1]/kappa; //Analytic critical point for a.
 	if(a < 1/24.0)
 	{
-		p0istar = 0.0; p0mstar = a/rW; p0nstar = a/(alpha*W0); p0jstar =  dP/50000.0; 
+		p0istar = 0.0; p0mstar = a/rW; p0nstar = a/(alpha*W0); p0jstar =  dP/50000.0; //= 0.4
 		//p0istar = a/rW; p0jstar = a/(alpha*W0); p0mstar = 0; p0nstar = dP/50.0;
 	}
 	else
 	{
 		//p0jstar = M[0]*K[1]/kappa; p0istar = (c/M[0])*(a - rW*p0jstar); p0mstar = (a/alpha)*(p0istar + K[2] )/(p0istar + K[2]*W0);
-		p0mstar = M[0]*K[1]/kappa; 
+		p0mstar = M[0]*K[1]/kappa; //rhoi*= 8000; pojstar = 160;
  		p0istar = (c/M[0])*(a - rW*p0mstar);  p0jstar = p0istar/50.0;
   		p0nstar = (a/alpha)*(p0istar + K[2] )/(p0istar + K[2]*W0);
 	}
-	*/
+	
 	//const vector<int> initcsv_columns = {2, 3, 4}; //Columns to be read from csv file.
-	D2Vec_Double const_ind_val = {{1, dP/50000.0 }}; 
+	//D2Vec_Double const_ind_val = {{1, dP/50000.0 }}; 
 	// Const value of dp/50000 for Rho indexed 1 (i.e. GRAZER). Other initial values determined by burn-in csv files through init_csvconstframe(...)
 
 	auto start_t = high_resolution_clock::now();
@@ -2206,8 +2206,11 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 		D2Vec_Double Rho_tsar(Sp, vector<double> (g*g, 0.0)); // 2D vector of dim: Sx(L*l) Dummy variable, Kept constant, only updated at end of turn.
 		double Rho_M[tot_iter][Sp2] ={0.0}; //Stores <rho>x values per time step for a single replicate.
 
-		//double perc = 0.015; double c_high[Sp] ={p0istar +dP, p0jstar, p0mstar, p0nstar}; double c_low[Sp] ={p0istar, p0jstar, p0mstar, p0nstar};
-		//init_randconstframe(Rho_dt, Sp,  g*g, perc, c_high, c_low); // Returns a frame with random speckles of high and low density.
+		double perc = 0.015; double c_high[Sp] ={p0istar +dP, p0jstar, p0mstar, p0nstar}; double c_low[Sp] ={p0istar, p0jstar, p0mstar, p0nstar};
+		init_randconstframe(Rho_dt, Sp,  g*g, perc, c_high, c_low); // Returns a frame with random speckles of high and low density.
+
+
+		/**
 
 		stringstream  rain, rep_j, grid; 
 		rain  << a; rep_j << int(j%2); grid << g;
@@ -2219,6 +2222,8 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 		vector<double> temp_vec= {Rho_dt[0].begin(),Rho_dt[0].end()}; //Rho_dt for species 's'
 		double init_veg_num = occupied_sites_of_vector(temp_vec, g*g); //Finds number of occupied at given t.
 		vector<double>().swap(temp_vec); //Flush temp_vec out of memory.
+
+		
 
 		if(init_veg_num == 0.0)
 		{
@@ -2233,6 +2238,8 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 		<< "  with a_value:\t" << a << "\t and Replicate:\t" << j << endl; 
 		cout << m1_1.str(); errout.open(thr, std::ios_base::app); errout << m1_1.str(); errout.close();
 
+		*/
+
 		
 		for(int i=0; i < g*g; i++)
 		{
@@ -2242,7 +2249,7 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 				Rho_tsar[s][i] =Rho_dt[s][i];
 			}
 		}
-		/**
+		
 		stringstream m1_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
     	m1_1 << "Initial Conditions:\t Per:\t" << perc  << "\t C_High[0], C_High[1], C_High[2], C_High[3] :\t " << c_high[0] << "," << c_high[1] << "," << c_high[2] << "," << c_high[3]   
 		<< "\t C_Lo[0], C_Lo[1], C_Lo[2], C_Lo[3]:\t " << c_low[0] << "," << c_low[1] << "," << c_low[2] << "," << c_low[3] << ",\t R: " << a << endl; //cout << m1.str();
@@ -2250,7 +2257,7 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 		//std::ofstream errout; //Save Error Logs
 		//std::string thr = "ErrLog_" + std::to_string(omp_get_thread_num()) + ".txt";
 		errout.open(thr, std::ios_base::app); errout << m1_1.str(); errout.close();
-		**/
+		
 
 		poisson_distribution<int> poisson; gamma_distribution <double> gamma; 
 		uniform_real_distribution<double> unif; normal_distribution<double> norm(0.0, 1.0);
@@ -2290,7 +2297,7 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 				m4 << "STATUS UPDATE AT TIME [t,i]\t" << t_meas[index] << " with # non-zero sites in VEG Rho_dt_0:  " << Rho_M[0][0] 
 				<< " AND # Non-Zero in VEG DRho_0:  " << rhox_num <<   "  and # Non-Zero in Grazer Rho_dt_1:  " <<  Rho_M[0][2] << endl; cout << m4.str();
 				errout.open(thr, std::ios_base::app); errout << m4.str(); errout.close(); */
-				if( t >= 2000 && t <= 5250 || t== 0 ||  index >= tot_iter -2 &&  index <= tot_iter-1)
+				if( t >= 99 && t <= 10000 || t== 0 ||  index >= tot_iter -6 &&  index <= tot_iter-1)
 				{
 					//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
 					
@@ -2304,7 +2311,66 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 					// Three replicates are over.
 
 					ofstream frame_dp;
+
+					if(t < 760)
+					{
+						//Only save one in three frames here.
+						if(index%3 ==2 || t== 0)
+						{
+							frame_dp.open("../Data/Rietkerk/Frames/Stochastic/2Sp/" + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/FRAME_RAND_TwoSp_P_c_DP_G_" 
+							+ L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str()  
+							+ "_D1_"+ Dm1.str() + "_dx_"+ dix.str() + "_R_"+ rini.str() + ".csv");
+
+							// Output =  | 	x		|    Rho0(x, tmax) 		|    Rho1(x, tmax) 		|   W(x, tmax) 		|    O(x, tmax) 		|
+							frame_dp << "a_c,  x,  P(x; t), G(x; t), W(x; t), O(x; t) \n";
+							for(int i=0; i< g*g; i++)
+							{	frame_dp << a << "," << i << ","<< Rho_dt[0][i] << "," << Rho_dt[1][i] << "," << Rho_dt[2][i] << "," << Rho_dt[3][i] << endl;	}
+
+							frame_dp.close();
+
+							stringstream m3;
+							m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
+							cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
+						}
+					}
+					else if(t >= 760 && t < 6000)
+					{
+						//Only save one in two frames here.
+						if(index%2 ==0)
+						{
+							frame_dp.open("../Data/Rietkerk/Frames/Stochastic/2Sp/" + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/FRAME_RAND_TwoSp_P_c_DP_G_" 
+							+ L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str()  
+							+ "_D1_"+ Dm1.str() + "_dx_"+ dix.str() + "_R_"+ rini.str() + ".csv");
+
+							// Output =  | 	x		|    Rho0(x, tmax) 		|    Rho1(x, tmax) 		|   W(x, tmax) 		|    O(x, tmax) 		|
+							frame_dp << "a_c,  x,  P(x; t), G(x; t), W(x; t), O(x; t) \n";
+							for(int i=0; i< g*g; i++)
+							{	frame_dp << a << "," << i << ","<< Rho_dt[0][i] << "," << Rho_dt[1][i] << "," << Rho_dt[2][i] << "," << Rho_dt[3][i] << endl;	}
+
+							frame_dp.close();
+							stringstream m3;
+							m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
+							cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
+						}
+					}
+					else
+					{
+						//Save all frames here.
+						frame_dp.open("../Data/Rietkerk/Frames/Stochastic/2Sp/" + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/FRAME_RAND_TwoSp_P_c_DP_G_"
+						+ L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str()
+						+ "_D1_"+ Dm1.str() + "_dx_"+ dix.str() + "_R_"+ rini.str() + ".csv");
+
+						// Output =  | 	x		|    Rho0(x, tmax) 		|    Rho1(x, tmax) 		|   W(x, tmax) 		|    O(x, tmax) 		|
+						frame_dp << "a_c,  x,  P(x; t), G(x; t), W(x; t), O(x; t) \n";
+						for(int i=0; i< g*g; i++)
+						{	frame_dp << a << "," << i << ","<< Rho_dt[0][i] << "," << Rho_dt[1][i] << "," << Rho_dt[2][i] << "," << Rho_dt[3][i] << endl;	}
+
+						frame_dp.close();
+						stringstream m3;
+						m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
+					}
   					// Creating a file instance called output to store output data as CSV
+					/**
 					frame_dp.open("../Data/Rietkerk/Frames/Stochastic/2Sp/BURNIN_" + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/FRAME_RANDBURNIN_TwoSp_P_c_DP_G_" 
 					+ L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str()  
 					+ "_D1_"+ Dm1.str() + "_dx_"+ dix.str() + "_R_"+ rini.str() + ".csv");
@@ -2315,6 +2381,7 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 					{	frame_dp << a << "," << i << ","<< Rho_dt[0][i] << "," << Rho_dt[1][i] << "," << Rho_dt[2][i] << "," << Rho_dt[3][i] << endl;	}
 
 					frame_dp.close();
+					
 
 
 					if(index%2 ==0)
@@ -2322,7 +2389,7 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 						stringstream m3;
 						m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
 						cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
-					}
+					} */
 					
 				}
 				index+=1;
@@ -2698,7 +2765,7 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 
 			ofstream output_dp;
   			// Creating a file instance called output to store output data as CSV.
-			output_dp.open("../Data/Rietkerk/Prelims/Stochastic/2Sp/BURNIN_" + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/PRELIM_AGGRAND_BURNIN_P_c_Delta_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+			output_dp.open("../Data/Rietkerk/Prelims/Stochastic/2Sp/" + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/PRELIM_AGGRAND_P_c_Delta_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
 			"_D0_"+ Dm.str() + "_cgmax_"+ cgm.str() + "_R_"+ rini.str() + ".csv");
 
 			// Output =  | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |
@@ -2861,13 +2928,13 @@ void first_order_critical_exp_delta_stochastic_2Sp(int div, double t_max, double
 
 	ofstream output_1stdp;
   // Creating a file instance called output to store output data as CSV.
-	output_1stdp.open("../Data/Rietkerk/Stochastic/2Sp/1stOrderCC_Rietkerk_BURNIN_STOC_P_c_Delta_DP_G_" + L.str() 
+	output_1stdp.open("../Data/Rietkerk/Stochastic/2Sp/1stOrderCC_Rietkerk_STOC_P_c_Delta_DP_G_" + L.str() 
 	+ "_T_" + tm.str() + "_dt_" + d3.str() + "_D1_"+ Dm1.str() +
 	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + 
 	"_alpha_"+ alph.str() + "_R_"+ rini.str() + ".csv");
 
 	cout << "Save file name: " <<endl;
-	cout << "../Data/Rietkerk/Stochastic/2Sp/1stOrderCC_Rietkerk_BURNIN_STOC_P_c_Delta_DP_G_" + L.str() 
+	cout << "../Data/Rietkerk/Stochastic/2Sp/1stOrderCC_Rietkerk_STOC_P_c_Delta_DP_G_" + L.str() 
 	+ "_T_" + tm.str() + "_dt_" + d3.str() + "_D1_"+ Dm1.str() + "_S0_" + Sig0.str() +
 	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_aij_"+ aij.str() + "_hij_"+ hij.str() + "_dx_"+ dix.str() + 
 	"_gmax_"+ gm.str() + "_alpha_"+ alph.str() + "_R_"+ rini.str() + ".csv" <<endl;

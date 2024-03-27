@@ -151,7 +151,7 @@ int main()
   stringstream ast, est, dPo; ast << a_start; est  << a_end; dPo << dP;
 
   stringstream foldername;
-	foldername << "../Data/Rietkerk/Frames/Stochastic/2Sp/BURNIN_" << ast.str() << "-" << est.str() << "_dP_" << dPo.str() << "/";
+	foldername << "../Data/Rietkerk/Frames/Stochastic/2Sp/" << ast.str() << "-" << est.str() << "_dP_" << dPo.str() << "/";
 	// Creating a string stream instance to store the values of the parameters in the file name.
 	// This is done to avoid overwriting of files.
 
@@ -168,7 +168,7 @@ int main()
 	}
 
   stringstream foldername2;
-	foldername2 << "../Data/Rietkerk/Prelims/Stochastic/2Sp/BURNIN_" << ast.str() << "-" << est.str() << "_dP_" << dPo.str() << "/";
+	foldername2 << "../Data/Rietkerk/Prelims/Stochastic/2Sp/" << ast.str() << "-" << est.str() << "_dP_" << dPo.str() << "/";
 	// Creating a string stream instance to store the values of the parameters in the file name.
 	// This is done to avoid overwriting of files.
 

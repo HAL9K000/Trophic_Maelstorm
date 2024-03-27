@@ -5,7 +5,8 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}",
-                "D:/cygwin64/lib/gcc/x86_64-pc-cygwin/11/include/c++"
+                "D:/cygwin64/lib/gcc/x86_64-pc-cygwin/11/include/c++",
+                "D:/cygwin64/usr/include"
             ],
             "defines": [
                 "_DEBUG",
@@ -13,7 +14,8 @@
                 "_UNICODE"
             ],
             "compilerPath": "D:/cygwin64/bin/gcc.exe",
-            "cStandard": "c17"
+            "cStandard": "c17",
+            "cppStandard": "c++23"
         }
     ],
     "version": 4
