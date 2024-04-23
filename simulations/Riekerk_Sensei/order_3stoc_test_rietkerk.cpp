@@ -5,7 +5,7 @@ int main()
   increase_stack_limit(1024L); //Increase stack limit to 1024 MB.
 
 
-  double a =0.7;
+  double a_c =1/24.0;
   double c, gmax, alpha, d, rW, W0, t_max, dt, dx; //int g, div;
   double a_start, a_end; double r; double dP; // Kick for high initial state
   int g, div;
@@ -19,26 +19,28 @@ int main()
   */
 
   // Using units of mass = kg, length = km, time = hr.
-
+  // ASSUMING MASS OF  GRAZER = 20 kg, MASS OF PREDATOR = 100 kg.
   c = 10000; gmax = 0.05*pow(10, -3.0)/24.0; d = 0.25/24.0; alpha =0.2/24.0; W0 = 0.2; rW = 0.2/24.0; // From Bonachela et al 2015
 
   //double p0i = 0.5; double p0j= p0i/200; double p0j= 2.25; double p0m= 8; // In g/m^2
 
-  double k0, k1, k2; double d0, d1, d2, d3; double s0, s1; double v1;//Slightly 
+  double k0, k1, k2; double d0, d1, d2, d3, d4; double s0, s1, s2; double v1, v2;//Slightly 
   
   dx= 0.1 ; //From Bonachela et al 2015 (in km)
-  d0 = 0.00025/24.0; d1=0.0298; d2 = 0.00025/24.0; d3= 0.025/24.0; //From Bonachela et al 2015 (in km^2/hr)
+  d0 = 0.00025/24.0; d1=0.0298; d2= 0.05221; d3 = 0.00025/24.0; d4= 0.025/24.0; //From Bonachela et al 2015 (in km^2/hr)
   k0= 0; k1 = 5; k2 =5000;
   s0 = sqrt(d0/(dx*dx)); // ~ D0/(dx)^2 (in kg^{0.5}/(km hr))
   s1 = 1; // ~ D/(dx)^2 (in kg^{0.5}/(km hr))
+  s2 = 3; // ~ D/(dx)^2 (in kg^{0.5}/(km hr))
   
 
   v1 = 0.416582; //In km/hr
+  v2 = 0.38375; //In km/hr (about e^(5.95) m/hr))
 
-  double D[Sp] ={d0, d1, d2, d3}; //Diffusion coefficients for species.
-  double K[Sp] ={k0, k1, k2}; //Diffusion coefficients for species.
-  double sigma[Sp] ={s0, s1, 0, 0}; //Demographic stochasticity coefficients for species.
-  double v[Sp] ={0, v1, 0, 0}; //Velocity of species.
+  double D[Sp] ={d0, d1, d2, d3, d4}; //Diffusion coefficients for species.
+  double K[3] ={k0, k1, k2}; //Diffusion coefficients for species.
+  double sigma[Sp] ={s0, s1, s2, 0, 0}; //Demographic stochasticity coefficients for species.
+  double v[Sp] ={0, v1, v2, 0, 0}; //Velocity of species.
 
   /**
 
@@ -49,36 +51,45 @@ int main()
   p0istar = (c/d)*(R - rW*p0jstar);
   p0mstar = (R/alpha)*(p0istar + K[2] )/(p0istar + K[2]*W0);
   */
- double aij, hij, ej, m;
+ double aij, hij, ej, mj; double ajm, hjm, em, mm;
   aij = 3.6*pow(10.0, -6.08)*pow(20.0, -0.37); // in km^2/(hr kg)
   hij = 1; // Handling time in hrs
-  ej =0.45; m = 0.061609*pow(20.0, -0.25)/8760.0; // Mortality rate in hr^{-1}
-  double H[Sp][Sp] ={{0, hij, 0, 0}, 
-                     {hij, 0.0, 0, 0}, 
-                     {0, 0, 0, 0}, 
-                     {0, 0, 0, 0}};    // Handling time matrix [T]. No canabilism, symmetric effects.
-  double A[Sp][Sp] ={{0, aij, 0, 0}, 
-                      {aij, 0.0, 0, 0}, 
-                      {0, 0, 0, 0}, 
-                      {0, 0, 0, 0}};  // Attack rate matrix []. No canabilism, symmetric effects. 
-  double M[Sp] = {d, m};     // Mortality Rate of Species. (in hr^{-1})
-  double E[Sp] ={1.0, ej}; //Efficiency of consumption.
-  //double D[Sp] ={d0, d1}; //Diffusion coefficients for species. (in km^2/hr)
-  double pR[Sp] ={0.0, 0.51}; //Perception rate of species (in km)
+  ej =0.45; mj = 0.061609*pow(20.0, -0.25)/8760.0; // Mortality rate in hr^{-1}
+  //Predator of mass 100 kg.
+  ajm = 3.6*pow(10.0, -6.08)*pow(100.0, -0.37); // in km^2/(hr kg)
+  hjm = 1; // Handling time in hrs
+  em =0.85; mm = 0.061609*pow(100.0, -0.25)/8760.0; // Mortality rate in hr^{-1}
 
+  double Gstar = mm/((em -mm*hjm)*ajm); //Steady state for grazer.
+  double H[SpB][SpB] ={{0, hij, 0}, 
+                     {hij, 0.0, hjm}, 
+                     {0, hjm, 0}};    // Handling time matrix [T]. No canabilism, symmetric effects.
+  double A[SpB][SpB] ={{0, aij, 0}, 
+                      {aij, 0.0, ajm}, 
+                      {0, ajm, 0}};  // Attack rate matrix []. No canabilism, symmetric effects. 
+  double M[SpB] = {d, mj, mm};     // Mortality Rate of Species. (in hr^{-1})
+  double E[SpB] ={1.0, ej, em}; //Efficiency of consumption.
+  //double D[Sp] ={d0, d1}; //Diffusion coefficients for species. (in km^2/hr)
+  double pR[Sp] ={0.0, 1.04285/2.0, 1.25536/2.0}; //Perception rate of species (in km)
+
+
+  
   cout << "Presets are as follows:\n";
   cout << "For the vegetation:\n";
   cout << "c = " << c << "\t gmax = " << gmax << "\t d = " << d << "\t alpha = " << alpha << "\t W0 = " << W0 << "\t rW = " << rW << endl;
   cout << "For the grazer:\n";
-  cout << "aij = " << aij << "\t hij = " << hij << "\t ej = " << ej << "\t m = " << m << endl;
+  cout << "aij = " << aij << "\t hij = " << hij << "\t ej = " << ej << "\t mj = " << mj << endl;
+  cout << "\nMFT biomass density of Grazer = " << Gstar << " kg/km^2\n" << endl;
+  cout << "For the predator:\n";
+  cout << "ajm = " << ajm << " " << A[1][2] << "\t hjm = " << hjm << " " << H[1][2] 
+       << "\t em = " << em << " " << E[2] <<  "\t mm = " << mm <<  " " << M[2] << endl;
   cout << "\n System-level details:\n";
   cout << "pi = " << PI  << endl;
 
   cout << "Diffusion Constants For Species:\n";
   cout << "D0 = " << setprecision(16) << D[0] << "\t D1 = " << D[1] << "\t D2 = " << setprecision(16) << D[2] << "\t D3 = " << setprecision(16) << D[3] << endl;
 
-
-  cout << "This is a 2Sp (Two) Stochastic Rietkerk Model Script\n";
+  cout << "This is a 3Sp (Three) Stochastic Rietkerk Model Script\n";
 
   cout << "Enter desired time-step (~0.1 is a good choice): ";
   cin >> dt;
@@ -92,7 +103,7 @@ int main()
   cout << "Enter the desired number of replicates (r): ";
   cin >> r;
 
-  cout << "Note that a relevant value of 'a' may be construed as:\t" << setprecision(10) << a <<endl;
+  cout << "Note that a relevant value of 'a' may be construed as:\t" << setprecision(10) << a_c <<endl;
 
   cout << "Enter starting a-value: ";
   cin >> a_start;
@@ -106,12 +117,25 @@ int main()
   cout << "Enter kick for high state: ";
   cin >> dP;
 
+  //INITIAL CONDITIONS:
+
+  double clow[2*Sp] = {0, dP/50000.0, dP/500000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};
+  double chigh[2*Sp] = {dP, dP/50000.0, dP/500000.0, 4, 20, 10000.0 + dP, Gstar, 10, 4, 10};
+  //c_high and c_low are arrays of size 2*Sp, with the values of the constants for each species.
+	// If R < R_c, then the first Sp elements of c_high and c_low are passed to init_randconstframe() to initialise the frame.
+	// If R >= R_c, then the last Sp elements of c_high and c_low are passed to init_randconstframe() to initialise the frame.
+
+
   cout << "\n System-level details:\n";
   cout << "dx = " << dx << "\t dt = " << dt << "\t t_max = " << t_max << "\t g = " << g << "\t r = " << r << endl;
 
   if( 2*v[1]*dt/dx > 1)
   {
     cout << "Warning: CFL condition violated. The velocity of the grazer is too high for the given dx and dt. Please reduce the velocity and dt or increase dx ." << endl;
+  }
+  else if( 2*v[2]*dt/dx > 1)
+  {
+    cout << "Warning: CFL condition violated. The velocity of the predator is too high for the given dx and dt. Please reduce the velocity and dt or increase dx ." << endl;
   }
   else
   {
@@ -151,10 +175,11 @@ int main()
 
   //init_constframe(Rho_0, Sp,  g*g, mean); //Returns Rho_0 with a full initial frame filled with 0.2.
 
-  stringstream ast, est, dPo; ast << a_start; est  << a_end; dPo << dP;
+  stringstream ast, est, dPo, geq; ast << a_start; est  << a_end; dPo << dP, geq << setprecision(5) << Gstar;
 
   stringstream foldername;
-	foldername << "../Data/Rietkerk/Frames/Stochastic/2Sp/" << ast.str() << "-" << est.str() << "_dP_" << dPo.str() << "/";
+	foldername << frame_folder 
+  << ast.str() << "-" << est.str() << "_dP_" << dPo.str() << "_Geq_" << geq.str() << "/";
 	// Creating a string stream instance to store the values of the parameters in the file name.
 	// This is done to avoid overwriting of files.
 
@@ -171,7 +196,8 @@ int main()
 	}
 
   stringstream foldername2;
-	foldername2 << "../Data/Rietkerk/Prelims/Stochastic/2Sp/" << ast.str() << "-" << est.str() << "_dP_" << dPo.str() << "/";
+	foldername2 << prelim_folder 
+  << ast.str() << "-" << est.str() << "_dP_" << dPo.str() << "_Geq_" << geq.str() << "/";
 	// Creating a string stream instance to store the values of the parameters in the file name.
 	// This is done to avoid overwriting of files.
 
@@ -189,7 +215,7 @@ int main()
 
     
   stringstream foldername3;
-	foldername3 << "../Data/Rietkerk/Stochastic/2Sp/";
+	foldername3 << "../Data/Rietkerk/Stochastic/3Sp/";
 	// Creating a string stream instance to store the values of the parameters in the file name.
 	// This is done to avoid overwriting of files.
 
@@ -205,8 +231,7 @@ int main()
 		}
 	}
   //first_order_critical_exp_delta_stochastic(div, t_max, a_start, a_end, c, gmax, alpha, d, rW, W0, D, K, sigma, dt, dx, dP, r, g);
-  first_order_critical_exp_delta_stochastic_2Sp(div, t_max, a_start, a_end, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR,dt, dx, dP, r, g);
-
+  first_order_critical_exp_delta_stochastic_3Sp(div, t_max, a_start, a_end, a_c, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR, chigh, clow, dt, dx, dP, r, g);
   //tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, auto &Rh0,
 	 //double t_max, double a[], double b[], double c[], double D[], double sigma[], double dt, double dx, int r,  int g)
 

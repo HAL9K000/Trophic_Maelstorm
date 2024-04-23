@@ -48,6 +48,7 @@ int main()
   p0mstar = (R/alpha)*(p0istar + K[2] )/(p0istar + K[2]*W0);
   */
   
+  cout << "This is a 1Sp Stochastic Rietkerk Vegetation Model Script\n";
 
   cout << "Enter desired time-step: ";
   cin >> dt;

@@ -9,6 +9,8 @@
 #include <fstream>
 #include <sstream>
 
+
+
 #include <limits>
 #include <random>
 #include <vector>
@@ -28,15 +30,30 @@ using namespace std;
 
 #include <map>
 
+#if defined(__GNUC__) && (__GNUC__ >= 9)
+#include <filesystem>
+namespace fs = std::filesystem;
+#endif
+
 #ifndef BERSERK_DYNAMICS_H
 
 #define BERSERK_DYNAMICS_H
 
 
 
-inline const int Sp = 4; //Number of species in the system.
+inline const int Sp = 5; //Total number of species in the system.
+inline const int SpB = Sp -2; //Number of biota species in the system.
+inline const int Sp_NV = Sp-3; //Number of grazer and predator species in system.
 inline const int Sp4_1 = 4*(Sp -2) +3; // Used for generating statistics on surviving runs
 inline const int Sp2 = 2*Sp; // Used for generating statistics on surviving runs
+
+inline const string frame_folder = "../Data/Rietkerk/Frames/Stochastic/3Sp/DDM_DiC_"; //Folder to store frames.
+inline const string prelim_folder = "../Data/Rietkerk/Prelims/Stochastic/3Sp/DDM_DiC_"; //Folder to store preliminary data.
+inline const string frame_prefix = "/FRAME_RANDDDMDiC_ThreeSp_P_c_DP_G_"; //Prefix for frame files.
+inline const string frame_header = "a_c,  x,  P(x; t), G(x; t), Pr(x; t), W(x; t), O(x; t) \n"; //Header for frame files.
+inline const string stat_prefix = "../Data/Rietkerk/Stochastic/3Sp/1stOrderCC_Rietkerk_DDM_DiC_STOC_P_c_G_";
+
+
 
 
 //------------------------- TYPEDEFS --------------------------------------------------------------//
@@ -155,6 +172,7 @@ int theborderwall(D2Vec_Double &Rho_t, int g);
 void determine_neighbours_R2( int g, int S, D3Vec_Int &neighbours_R2);
 void determine_neighbours_Sq4(int g, D3Vec_Int &neighbours_Sq4);
 void determine_neighbours_Sq8(int g, int S, D3Vec_Int &neighbours_Sq8);
+void set_density_dependentmortality(double m);
 std::vector<std::pair<int, int>> computeNeighboringSitesCentral(int R);
 std::vector<int> getNeighborsInBall(const vector<int>& sortedNeighboringSites, double f);
 std::vector<int> generateNeighboringSitesFromCentral(const vector<pair<int, int>>& centralNeighboringSites, int i, int j, int L); 
@@ -200,16 +218,22 @@ void first_order_critical_exp_delta_stochastic_2Sp(int div, double t_max, double
 
 //------------------- Vegetation + Grazer + Predator (+ Soil Water + Surface Water) -------------------//
 
-void f_2Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, 
-	double alpha, double rW, double W0, double D[], double K[], double A[Sp][Sp], double H[Sp][Sp], double E[], double t, double dt, double dx1_2, double g);
-void RK4_Integrate_Stochastic_3Sp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D3Vec_Int &nR2,double a,double c,double gmax,double alpha,
-	double rW, double W0, double D[], double K[], double A[Sp][Sp], double H[Sp][Sp], double E[], double t,double dt,double dx, int g);
-void rietkerk_Dornic_2D_3Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double c, double gmax, double alpha, double rW, double W0, 
-	double D[], double v[], double K[], double sigma[], double a_st, double a_end, double A[Sp][Sp], double H[Sp][Sp], double E[], double M[], double pR[], 
-	double dt, double dx, double dP, int r, int g);
-void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double a_start, double a_end,  double c, double gmax, double alpha,
-	double rW, double W0,  double D[], double v[], double K[], double sigma[], double A[Sp][Sp], double H[Sp][Sp], double E[], double M[], double pR[],
-	double dt, double dx, double dP, int r,  int g);
+//Calculates gamma for 3 Sp Rietkerk model (details in PDF)
+void save_frame(D2Vec_Double &Rho_t, double a, double a_st, double a_end, double c,double gmax,double alpha, double rW, double W0, double (&D)[Sp], double (&K)[3],
+	double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double dx, double dP, int r, int g, double Gstar= -1);
+
+void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec_Double &Rho_t, vector <double> &gamma_i,  
+			double (&Rho_avg)[Sp], vector <std::pair<double, int>>& rfrac, double nVeg_frac, int r_max, int i, int L);
+void f_2Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, double alpha, double rW, double W0, 
+	double (&D)[Sp], double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double dx1_2, double g /*double mm =0*/);
+void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D3Vec_Int &nR2,double a,double c,double gmax,double alpha,
+		double rW, double W0, double (&D)[Sp], double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t,double dt,double dx, int g);
+void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double c, double gmax, double alpha, double rW, double W0, 
+	double (&D)[Sp], double v[], double (&K)[3], double sigma[], double a_st, double a_end, double a_c, double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], 
+	double chigh[], double clow[], double dt, double dx, double dP, int r, int g);
+void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double a_start, double a_end, double a_c,  double c, double gmax, double alpha,
+	double rW, double W0,  double (&D)[Sp], double v[], double (&K)[3], double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[],
+	double ch[], double clo[], double dt, double dx, double dP, int r,  int g);
 
 
 #endif
