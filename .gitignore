@@ -5,9 +5,14 @@ figures/
 simulations/NSLE_Mage/
 # simulations/*/
 *.zip
+*.tar.gz
+*.tar
+*.gz
+*.7z
 *.png
 !MSThesisFigures/NPDPSchema.png
 !MSThesisFigures/TCPSchema.png
 !MSThesisFigures/DensityTable.png
 *.gif
 *.csv
+*.txt
