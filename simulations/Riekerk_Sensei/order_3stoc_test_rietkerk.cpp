@@ -1,6 +1,6 @@
 #include "rietkerk_bjork_basic.h"
 
-int main()
+int main(int argc, char *argv[])
 {
   increase_stack_limit(1024L); //Increase stack limit to 1024 MB.
 
@@ -91,36 +91,72 @@ int main()
 
   cout << "This is a 3Sp (Three) Stochastic Rietkerk Model Script\n";
 
-  cout << "Enter desired time-step (~0.1 is a good choice): ";
-  cin >> dt;
+  // There are eight user-defined parameters, as follow below: dt, t_max, g, r, a_start, a_end, div, dP.
 
-  cout << "Enter maximum duration of simulation (in hrs): ";
-  cin >> t_max;
+  //Check if the user has entered the correct number of arguments. If not prompt the user to enter all the arguments within the script.
+  // First check if no arguments are entered. In this case, the user will be prompted to enter all the arguments using cin.
 
-  cout << "Enter the desired grid-size (L) (dx = 100 m): ";
-  cin >> g;
+  if(argc == 1)
+  {
+    cout << "Please enter all the arguments within the script.\n";
+    cout << "Enter desired time-step (~0.1 is a good choice): ";
+    cin >> dt;
 
-  cout << "Enter the desired number of replicates (r): ";
-  cin >> r;
+    cout << "Enter maximum duration of simulation (in hrs): ";
+    cin >> t_max;
 
-  cout << "Note that a relevant value of 'a' may be construed as:\t" << setprecision(10) << a_c <<endl;
+    cout << "Enter the desired grid-size (L) (dx = 100 m): ";
+    cin >> g;
 
-  cout << "Enter starting a-value: ";
-  cin >> a_start;
+    cout << "Enter the desired number of replicates (r): ";
+    cin >> r;
 
-  cout << "Enter ending a-value: ";
-  cin >> a_end;
+    cout << "Note that a relevant value of 'a' may be construed as:\t" << setprecision(10) << a_c <<endl;
 
-  cout << "Enter number of divisions of p (n+1): ";
-  cin >> div;
+    cout << "Enter starting a-value: ";
+    cin >> a_start;
 
-  cout << "Enter kick for high state: ";
-  cin >> dP;
+    cout << "Enter ending a-value: ";
+    cin >> a_end;
+
+    cout << "Enter number of divisions of p (n+1): ";
+    cin >> div;
+
+    cout << "Enter kick for high state: ";
+    cin >> dP;
+  }
+  // If the user has entered the correct number of arguments, then the arguments are read from the command line.
+  else if(argc == 9)
+  {
+    dt = atof(argv[1]);
+    t_max = atof(argv[2]);
+    g = atoi(argv[3]);
+    r = atoi(argv[4]);
+    a_start = atof(argv[5]);
+    a_end = atof(argv[6]);
+    div = atoi(argv[7]);
+    dP = atof(argv[8]);
+  }
+  // If there are otherwise an arbitrary number of arguements, terminate the program.
+  else
+  {
+    cout << "Please enter the correct number of arguments.\n";
+    cout << "The correct number of arguments is 8.\n";
+    cout << "The arguments are as follows: dt, t_max, g, r, a_start, a_end, div, dP.\n";
+    exit(1);
+  }
+
 
   //INITIAL CONDITIONS:
 
-  double clow[2*Sp] = {0, dP/50000.0, dP/500000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};
-  double chigh[2*Sp] = {dP, dP/50000.0, dP/500000.0, 4, 20, 10000.0 + dP, Gstar, 10, 4, 10};
+  //double clow[2*Sp] = {0, dP/50000.0, dP/500000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};
+  double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, Gstar*1.5, 15, 4, 10};
+  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, 2, 0.6, 4, 10};
+  //double clow[2*Sp] = {0, dP/10000.0, dP/100000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};
+  //double chigh[2*Sp] = {dP, dP/10000.0, dP/100000.0, 4, 20, 10000.0 + dP, Gstar, 10, 4, 10};
+  double chigh[2*Sp] = {dP, dP/dP, dP/(10.0*dP), 4, 20, 10000.0 + dP, Gstar*1.5, 15, 4, 10};
+  //double chigh[2*Sp] = {dP, dP/dP, dP/(10.0*dP), 4, 20, 10000.0 + dP, 2, 0.6, 4, 10};
+  
   //c_high and c_low are arrays of size 2*Sp, with the values of the constants for each species.
 	// If R < R_c, then the first Sp elements of c_high and c_low are passed to init_randconstframe() to initialise the frame.
 	// If R >= R_c, then the last Sp elements of c_high and c_low are passed to init_randconstframe() to initialise the frame.
@@ -132,10 +168,12 @@ int main()
   if( 2*v[1]*dt/dx > 1)
   {
     cout << "Warning: CFL condition violated. The velocity of the grazer is too high for the given dx and dt. Please reduce the velocity and dt or increase dx ." << endl;
+    exit(2);
   }
   else if( 2*v[2]*dt/dx > 1)
   {
     cout << "Warning: CFL condition violated. The velocity of the predator is too high for the given dx and dt. Please reduce the velocity and dt or increase dx ." << endl;
+    exit(2);
   }
   else
   {
@@ -191,7 +229,7 @@ int main()
 		if (-1 == dir_err)
 		{
 			printf("Error creating directory!n");
-			exit(1);
+			exit(3);
 		}
 	}
 
@@ -209,7 +247,7 @@ int main()
 		if (-1 == dir_err)
 		{
 			printf("Error creating directory!n");
-			exit(1);
+			exit(3);
 		}
 	}
 
@@ -227,7 +265,7 @@ int main()
 		if (-1 == dir_err)
 		{
 			printf("Error creating directory!n");
-			exit(1);
+			exit(3);
 		}
 	}
   //first_order_critical_exp_delta_stochastic(div, t_max, a_start, a_end, c, gmax, alpha, d, rW, W0, D, K, sigma, dt, dx, dP, r, g);

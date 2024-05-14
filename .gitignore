@@ -8,6 +8,7 @@ simulations/NSLE_Mage/
 *.tar.gz
 *.tar
 *.gz
+*.mp4
 *.7z
 *.png
 !MSThesisFigures/NPDPSchema.png

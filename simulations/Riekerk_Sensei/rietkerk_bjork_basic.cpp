@@ -627,6 +627,34 @@ std::vector<double> logarithm10_time_bins(double t_max, double dt)
 
 //----------------------------- Misc. Supporting Add-ons ------------------------------------------------- //
 
+// This function finds the maximum replicate number in the directory, given the filename pattern, so to avoid overwriting files.
+int findMaxRepNo(string& parendir, const string& filenamePattern)
+{
+	 int maxRepNo = 0;
+    //Filenamepattern is of the form: "/FRAME_RAND_ThreeSp_P_c_DP_G_128_T_57544_dt_0.12_a_0.049_D1_0.0298_D2_0.0522_dx_0.1_R_"
+	// The pattern is used to match the filenames in the directory.
+
+    std::regex pattern(filenamePattern + "(\\d+).csv");
+
+    for (const auto& entry : std::filesystem::directory_iterator(parendir)) 
+	{
+        std::smatch match;
+        string matchStr = "/" + entry.path().filename().string();
+        //cout << "Checking: " << matchStr << " against " << filenamePattern << endl;
+        // matchStr stores the filename
+        //cout << regex_match (matchStr, match, pattern) << endl;
+        if (regex_match (matchStr, match, pattern)) 
+        {   
+            //stringstream m0;
+            int repNo = std::stoi(match[1]);
+            //m0 << "For pattern: " << filenamePattern + "(\\d+).csv" << "  Matched: " << match[1] << endl; cout << m0.str();
+            if (repNo > maxRepNo) 
+            	maxRepNo = repNo;
+        }
+    }
+    return maxRepNo;
+}
+
 int theborderwall(D2Vec_Double &Rho_t, int g)
 {
 	//Checks if the border sites are occupied.
@@ -2475,7 +2503,7 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 					{
 						/**
 						stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
-						m6 << "MUCHO GUSTO VEG TIME [t, thr, i]\t" << t << " , " << omp_get_thread_num() << " , " << i << " \t with alpha_i, Rho(i), DRho(i):  "
+						m6 << "Much of VEG TIME [t, thr, i]\t" << t << " , " << omp_get_thread_num() << " , " << i << " \t with alpha_i, Rho(i), DRho(i):  "
 						<< alpha_i << " , " << Rho_dt[s][i] << " , " << DRho[s][i] << "\t and Diff Const (D0/dx2): " << setprecision(16) << diff_coefficient[s] << endl; cout << m6.str();
 						errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close(); */
 						continue;  
@@ -3035,7 +3063,7 @@ void f_2Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, 
 		f[1][i] = (E[1]*A[0][1]*Rho_M[0][i]/(1 + A[0][1]*H[0][1]*Rho_M[0][i]))*Rho_M[1][i]  
 					-A[1][2]*Rho_M[1][i]/(1 + A[1][2]*H[1][2]*Rho_M[1][i])*Rho_M[2][i];
         //Equivalent to dPr/dt = em*(ajm*G*Pr)/(1+ajm*hjm*G)
-		f[2][i] = (E[2]*A[1][2]*Rho_M[1][i]/(1 + A[1][2]*H[1][2]*Rho_M[1][i]))*Rho_M[2][i] -Mm*Rho_M[2][i]*Rho_M[2][i];
+		f[2][i] = (E[2]*A[1][2]*Rho_M[1][i]/(1 + A[1][2]*H[1][2]*Rho_M[1][i]))*Rho_M[2][i]; //-Mm*Rho_M[2][i]*Rho_M[2][i];
 		//Equivalent to dW/dt = alpha*(P+K2*W0)/(P+K2)*O - g_max*P*W/(W+K1) - rW*W + D*(Laplacian of W)
         f[3][i] = alpha*(Rho_M[0][i]+ K[2]*W0)/(Rho_M[0][i] +K[2])*Rho_M[4][i] -gmax*Rho_M[3][i]*Rho_M[0][i]/(Rho_M[3][i] +K[1]) - rW*Rho_M[3][i] 
         + (D[3]*dx1_2)*(Rho_M[3][nR2[i][0][0]]  + Rho_M[3][nR2[i][0][1]]  + Rho_M[3][nR2[i][1][0]]  + Rho_M[3][nR2[i][1][1]]  - 4*Rho_M[3][i]);
@@ -3111,17 +3139,35 @@ void save_frame(D2Vec_Double &Rho_t, double a, double a_st, double a_end, double
 	a1 << a_st; a2  << a_end; sig0 << sigma[0]; sig1 << sigma[1]; geq << setprecision(5) << Gstar;
 	aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1];
 
-	ofstream frame_dp;
+	string filenamePattern = frame_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str()
+    + "_a_" + p1.str()  + "_D1_"+ Dm1.str() + "_D2_"+ Dm2.str() + "_dx_"+ dix.str() + "_R_";
+	//Next, designate the naive filename
+	string filename = filenamePattern + rini.str() + ".csv";
+	string parendir = "";
+
+	
 	// Creating a file instance called output to store output data as CSV.
 	if(Gstar != -1)
-		frame_dp.open(frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str() + 
-		frame_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str()  
-		+ "_D1_"+ Dm1.str() + "_D2_"+ Dm2.str() + "_dx_"+ dix.str() + "_R_"+ rini.str() + ".csv");
+		parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
 	else
-		frame_dp.open(frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + 
-		frame_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str()  
-		+ "_D1_"+ Dm1.str() + "_D2_"+ Dm2.str() + "_dx_"+ dix.str() + "_R_"+ rini.str() + ".csv");
+		parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
+	
 
+	filename = parendir + filename;
+	// If the file already exists, increment the replicate number by 1 of the maximum replicate number corresponding to the filename pattern.
+	// This is to avoid overwriting files.
+	if (fs::exists((filename))) 
+	{
+		int maxRepNo = findMaxRepNo(parendir, filenamePattern);
+		//maxRepNo++; //Increment the maximum replicate number by 1.
+		filename = parendir + filenamePattern + std::to_string(maxRepNo + 1) + ".csv";
+		stringstream m1;
+
+		m1 << "File exists. New filename: " << filename << " \n and maxRepNo: " << maxRepNo << endl;
+		cout << m1.str();
+	}
+		
+	ofstream frame_dp; 	frame_dp.open(filename);
 	// Output =  | 	x		|    Rho0(x, tmax) 		|    Rho1(x, tmax) 		|   W(x, tmax) 		|    O(x, tmax) 		|
 	frame_dp << frame_header;
 	for(int i=0; i< g*g; i++)
@@ -3406,7 +3452,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		
 
 		poisson_distribution<int> poisson; gamma_distribution <double> gamma; 
-		uniform_real_distribution<double> unif; normal_distribution<double> norm(0.0, 1.0);
+		uniform_real_distribution<double> unif(0.0, 1.0); normal_distribution<double> norm(0.0, 1.0);
 
 		double t=0; int index = 0;  //Initialise t
 		int iter_index=0; int po=1; int so =1; int lo=1; int counter =0;
@@ -3435,7 +3481,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				rhox_num = occupied_sites_of_vector(temp_alt, g*g); //Finds number of occupied at given t.
 				vector<double>().swap(temp_alt); //Flush temp out of memory.0
 
-				if( t >= 99 && t <= 10000 || t== 0 ||  index >= tot_iter -6 &&  index <= tot_iter-1)
+				if( t >= 99 && t <= 10000 || t== 0 ||  index >= tot_iter -8 &&  index <= tot_iter-1)
 				{
 					//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
 					
@@ -3513,7 +3559,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					{
 						/**
 						stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
-						m6 << "MUCHO GUSTO VEG TIME [t, thr, i]\t" << t << " , " << omp_get_thread_num() << " , " << i << " \t with alpha_i, Rho(i), DRho(i):  "
+						m6 << "MUCH VEG TIME [t, thr, i]\t" << t << " , " << omp_get_thread_num() << " , " << i << " \t with alpha_i, Rho(i), DRho(i):  "
 						<< alpha_i << " , " << Rho_dt[s][i] << " , " << DRho[s][i] << "\t and Diff Const (D0/dx2): " << setprecision(16) << diff_coefficient[s] << endl; cout << m6.str();
 						errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close(); */
 						continue;  
@@ -3578,7 +3624,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				}
 			} // End of Vegetation Integration
 			
-			// Book-keeping for determining gamma_i for higher order species.
+			// Book-keeping for determining gamma_i for higher order species. Calculating Rho averages per species at each time step.
 			for(int s=0; s < Sp -2; s++)
 			{
 				vector <double> temp= {DRho[s].begin(),DRho[s].end()}; //Rho_dt for species '0'
@@ -3645,7 +3691,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					}
 
 					//Next sampling the advection vector from v[s].
-					unif = uniform_real_distribution<double>(0.0, 1.0);
+					//unif = uniform_real_distribution<double>(0.0, 1.0);
 					double ran = unif(rng);
 					double vx = v[s]*cos(2*PI*ran); double vy = v[s]*sin(2*PI*ran); //Advection vector.
 					double vx_abs = vx*sgn(vx); double vy_abs = vy*sgn(vy); //Absolute value of advection vector.
@@ -3864,18 +3910,23 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			//Updates SD and Mean values for <Rho>_x across replicates as new replicate data (Rho_M) becomes available.
 		}
 
-		if((j+1)%2 == 1)
+		if((j+1)%2 == 1 || (j+1)%2 == 0)
 		{	//Start logging at every multiple of 2
-			stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, rini_prev, Dm, cgm,  sig0, geq;
+			stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, rini_prev, Dm, cgm,  sig0, geq, jID;
 			
 			a1 << a_st; a2 << a_end;
-  			L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; dimitri << dP;
-  			rini << j; Dm << D[0]; cgm << c*gmax; sig0 << sigma[0]; geq << setprecision(5) << Gstar;
+  			L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << setprecision(5) << a; dimitri << dP;
+  			rini << j; Dm << setprecision(4) << D[2]; cgm << c*gmax; sig0 << sigma[0]; geq << setprecision(5) << Gstar;
 			// Three replicates are over.
+
+			unif = uniform_real_distribution<double>(0.0, 1.0);
+			double ran_jid = (unif(rng)*1000.0)/1000.0; // Random number between 0 and 1.
+
+			jID << ran_jid;
 			
 			string path_to_dir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
-			string filename = "/PRELIM_AGGRAND_P_c_Delta_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
-			"_D0_"+ Dm.str() + "_cgmax_"+ cgm.str() + "_R_"+ rini.str() + ".csv";
+			string filename = "/PRELIM_AGGRAND_P_c_ID_"+ jID.str() +"_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+			"_D2_"+ Dm.str() + "_R_"+ rini.str() + ".csv";
 
 			ofstream output_dp;
   			// Creating a file instance called output to store output data as CSV.
@@ -3912,22 +3963,41 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				// Reset rini value.
 				rini_prev << j-2;
 
-				string filename = "/PRELIM_AGGRAND_P_c_Delta_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
-				"_D0_"+ Dm.str() + "_cgmax_"+ cgm.str() + "_R_"+ rini_prev.str() + ".csv";
+				// Using regex to delete the file.
+				string filenamePattern = "PRELIM_AGGRAND_P_c_ID_.*_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+				"_D2_"+ Dm.str() + "_R_"+ rini_prev.str() + ".csv";
 
-				filesystem::path filepath = filesystem::path(path_to_dir + filename);
-				if (filesystem::exists(filepath)) 
-				{	// Remove the file
-					filesystem::remove(filepath);
-					stringstream m8;
-					m8 << "File " << filename << " deleted successfully." << std::endl; cout << m8.str();
-					errout.open(thr, std::ios_base::app); errout << m8.str(); errout.close();
-				} 
-				else 
+				std::regex filePattern(filenamePattern);
+
+				// Iterate over the files in the parent directory (path_to_dir) and delete the file if it matches the pattern.
+				for (const auto & entry : fs::directory_iterator(path_to_dir))
 				{
-					stringstream m8; m8 << "File: " << filename << " does not exist." << std::endl; 
-					cout << m8.str(); errout.open(thr, std::ios_base::app); errout << m8.str(); errout.close();
-
+					if (std::regex_match(entry.path().filename().string(), filePattern))
+					{
+						if(fs::exists(entry.path()) && fs::is_regular_file(entry.path()))
+						{
+							try
+							{	
+								fs::remove(entry.path());
+								stringstream m8;
+								m8 << "File " << entry.path().string() << " deleted successfully." << std::endl; cout << m8.str();
+								errout.open(thr, std::ios_base::app); errout << m8.str(); errout.close();
+							}
+							catch (const fs::filesystem_error& e)
+							{
+								stringstream m8;
+								m8 << "Error deleting file: " << entry.path().string() << " with error: " << e.what() << std::endl; cout << m8.str();
+								cerr << m8.str(); errout.open(thr, std::ios_base::app); errout << m8.str(); errout.close();
+							}
+						}
+						else
+						{
+							stringstream m8;
+							m8 << "File: " << entry.path().string() << " does not exist." << std::endl; cout << m8.str();
+							cerr << m8.str(); errout.open(thr, std::ios_base::app); errout << m8.str(); errout.close();
+						}
+						
+					}
 				}
 					
 			}
@@ -4007,7 +4077,8 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 	int nProcessors=omp_get_max_threads();
 	if(nProcessors > 32)
 	{
-		omp_set_num_threads(32); //Limiting use on Chunk. Don't be greedy.
+		//omp_set_num_threads(32); //Limiting use on Chunk. Don't be greedy.
+		cout << "WARNING: Number of Processors is: " << nProcessors << ". Don't be greedy." << endl;
 	}
 
 	//double perc = 0.015; double c_high[Sp] ={dP, p0j, p0m}; double c_low[Sp] ={p0i, p0j, p0m};
@@ -4071,7 +4142,14 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 
 	cout << endl << "Dornic Integration Time: " << duration.count() << " seconds" << endl;
 
-	stringstream L, coco, tm ,d3, p1, p2, rini, Dm0, Dm1, aij, hij, cgm, alph, dix, dimitri, Sig0, geq;
+	int rd = std::random_device{}();
+	std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
+	rng.seed(rd);
+	std::uniform_real_distribution<double> unif(0.0, 1.0);
+	//Store a uniformly distributed random number between 0 and 1 (rounded to 3 decimal places).
+	double id = round(unif(rng)* 1000.0) / 1000.0; //Random number between 0 and 1.
+	//Round to 3 decimal places.
+	stringstream L, coco, tm ,d3, p1, p2, rini, Dm0, Dm1, aij, hij, cgm, alph, dix, dimitri, Sig0, geq, ID;
 
 	double Gstar = M[2]/((E[2] -M[2]*H[1][2])*A[1][2]); // MFT estimate of Grazer density at coexistence.
 
@@ -4079,19 +4157,20 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 	alph << alpha; cgm << c*gmax; coco << setprecision(4) << c;
   	Dm0 << setprecision(3) << D[0]; Dm1 << setprecision(3) << D[1]; Sig0 << sigma[0]; dix << setprecision(2) << dx; 
 	aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1]; geq << setprecision(5) << Gstar;
+	ID << id;
 
 	ofstream output_1stdp;
   // Creating a file instance called output to store output data as CSV.
 	output_1stdp.open(stat_prefix + L.str() 
 	+ "_T_" + tm.str() + "_dt_" + d3.str() + "_D1_"+ Dm1.str() +
 	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + 
-	"_Geq_"+ geq.str() + "_R_"+ rini.str() + ".csv");
+	"_Geq_"+ geq.str() /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv");
 
 	cout << "Save file name: " <<endl;
 	cout << stat_prefix + L.str() 
 	+ "_T_" + tm.str() + "_dt_" + d3.str() + "_D1_"+ Dm1.str() + "_S0_" + Sig0.str() +
-	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_aij_"+ aij.str() + "_hij_"+ hij.str() + "_dx_"+ dix.str() + 
-	"_cgmax_"+ cgm.str() + "_alpha_"+ alph.str() + "_Geq_"+ geq.str() + "_R_"+ rini.str() + ".csv" <<endl;
+	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + 
+	"_cgmax_"+ cgm.str() + "_Geq_"+ geq.str() /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv" <<endl;
 
 	// Output =  | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |
 

@@ -10,7 +10,7 @@ import sys
 '''
 This script reorganises the directory structure of the data files in the Rietkerk model.
 The original directory structure (filepaths) are as follows:
-root_dir/{PREFIX}*_dP_{dP}_Geq_{Geq}/FRAME_RAND*_G_{g}_T_{T}_*_a_{a_val}_*_R_{R}.csv
+root_dir/{PREFIX}*_dP_{dP}_Geq_{Geq}/FRAME_*_G_{g}_T_{T}_*_a_{a_val}_*_R_{R}.csv
 
 The new directory structure (filepaths) will be as follows:
 out_dir/{PREFIX}/L_{g}_a_{a_val}/dP_{dP}/Geq_{Geq}/T_{T}/FRAME_T_{T}_a_{a_val}_R_{R}.csv
@@ -39,16 +39,38 @@ The script accepts the following arguments:
 
 '''
 
-prefixes =["DDM_DiC_BURNIN_"]
-#prefixes =["", "DiC_", "BURNIN_", "DiC_BURNIN_", "DDM_DiC_", "DDM_DiC_BURNIN_"]
-root_dir = "../Data/Remote/Rietkerk/Frames/Stochastic/3Sp/"
-out_dir_noprefix = "../Data/Remote/Test_Rietkerk_Frames/Stochastic/3Sp/Reorganised/StandardParam_20_100/"
+prefixes =["DDM-DiC-BURNIN"]
+#prefixes =["", "DiC", "BURNIN", "DiC-BURNIN", "DDM-DiC", "DDM-DiC-BURNIN"]
+root_dir = "../Data/Rietkerk/Frames/Stochastic/3Sp/"
+out_dir_noprefix = "../Data/Rietkerk/Reorganised_Frames/Stoc/3Sp/StdParam_20_100_EQ/"
 dP = 30000
 Geq = 4.802 # Optional. If Geq is not used in the subdirectory name, set Geq = "NA".
 L= [128]
-indx_vals_t = -3 
+indx_vals_t = -5 
 #Extract n largest values of T if indx_vals_t = -n, 
 # n smallest values of T if indx_vals_t = n.
+
+# First list all immediate subdirectories in root_dir as information to the user.
+subdir = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(root_dir, '*'))]
+print("For given root_dir: " + root_dir)
+print("Found subdirectories: \n" )
+for sub in subdir:
+    print(sub)
+
+print("Do you wish to provide new values for the following parameters? (y/n)")
+print("out_dir_noprefix: " + out_dir_noprefix)
+print("dP: " + str(dP))
+print("Geq: " + str(Geq))
+print("L: " + str(L))
+print("indx_vals_t: " + str(indx_vals_t))
+
+choice = input("Enter choice: ")
+if choice == "y":
+    out_dir_noprefix = input("Enter new out_dir_noprefix: ")
+    dP = int(input("Enter new dP: "))
+    Geq = input("Enter new Geq ('NA' where it isn't applicable): ")
+    L = [int(x) for x in input("Enter new L: ").split()]
+    indx_vals_t = int(input("Enter new indx_vals_t: "))
 
 
 def find_timerange(files, a, indx= indx_vals_t ):
@@ -76,6 +98,42 @@ def find_timerange(files, a, indx= indx_vals_t ):
     return T_vals[indx:] if indx < 0 else T_vals[:indx]
 
 
+def test_txt_RW(dir):
+
+    # Test reading and writing text files.
+    # Dir has directories of the form "L_{G}_a_{a_val}/dP_{dP}/Geq_{Geq}/T_{T}/"
+    # Extract all a_val in dir, and save them to a text file in the same directory (tab delineated), with the name "a_vals.txt".
+
+    # First make a sorted list of a_val in each subdir.
+    files = glob.glob(os.path.join(dir, "L_*a_*"))
+    #print("Found files: " + str(files))
+    #Find all unique values of a_val in files (in ascending order) (using regex with finding "a_{a_val}" and then removing a_).
+    a_vals = [re.findall(r'a_[\d]*[.][\d]+' , f)[0]
+                if re.findall(r'a_[\d]*[.][\d]+' , f) 
+                else re.findall(r'a_[\d]+' , f)[0] for f in files]
+    
+    # Remove a_ from a_vals and sort them in ascending order.
+    a_vals = sorted([float(re.findall(r'[\d]*[.][\d]+', a)[0]) if re.findall(r'[\d]*[.][\d]+', a) 
+                     else int(re.findall(r'[\d]+', a)[0]) for a in a_vals])
+    a_vals = np.unique(a_vals)
+    print("Found a_vals: " + str(a_vals))
+    # Save a_vals to a text file in dir.
+    try:
+
+        np.savetxt(dir + "/a_vals.txt", a_vals, delimiter="\t", fmt="%g")
+        # Test reading the text file line by line.
+        with open(dir + "/a_vals.txt", "r") as f:
+            lines = f.readlines()
+            for line in lines:
+                print(line.strip())
+            
+
+        # Close the file.
+        f.close()
+    except Exception as e:
+        print("Error: Could not write a_vals to " + dir + "/a_vals.txt with error message: \n" + str(e))
+        return
+
 def main():
     
     #Find a list of immediate subdirectories in root_dir
@@ -86,15 +144,17 @@ def main():
         out_dir = out_dir_noprefix;
         if pre == "":
             out_dir = out_dir_noprefix + "NoPrefix/"
+        else:
+            out_dir = out_dir_noprefix + pre + "/"
         
         #Subdirectories are of the form "PREFIX*_dP_{dP}_Geq_{val}"
         #Using regex and glob, create a sorted list of subdir (in ascending order of val (can be float or integer)) with prefix pre.
         
         if(Geq == "NA"):
-            subdir = sorted(glob.glob(os.path.join(root_dir, pre + "0*_dP_" + str(dP))), 
+            subdir = sorted(glob.glob(os.path.join(root_dir, pre + "_*_dP_" + str(dP))), 
                             key=lambda x: float(re.findall(r'[\d]*[.][\d]+', x)[0]) if re.findall(r'[\d]*[.][\d]+', x) else int(re.findall(r'[\d]+', x)[-1]))
         else:
-            subdir = sorted(glob.glob(os.path.join(root_dir, pre + "0*_dP_" + str(dP) + "_Geq_" + str(Geq))), 
+            subdir = sorted(glob.glob(os.path.join(root_dir, pre + "_*_dP_" + str(dP) + "_Geq_" + str(Geq))), 
                         key=lambda x: float(re.findall(r'[\d]*[.][\d]+', x)[0]) if re.findall(r'[\d]*[.][\d]+', x) else int(re.findall(r'[\d]+', x)[-1]))
         
         subdir_test = [os.path.basename(s) for s in subdir]
@@ -134,9 +194,31 @@ def main():
 
                 print("For subdir: " + sub)
                 print("Found a_vals: " + str(a_vals))
+
+                # Check if out_dir exists in savedir.txt in sub.
+                # If it does, provide a warning followed by a prompt to skip ("skip"/1) or continue ("continue"/2).
+
+                
+                if os.path.exists(sub + "/savedir.txt"):
+                    with open(sub + "/savedir.txt", "r") as f:
+                        lines = f.readlines()
+                        for line in lines:
+                            line.strip("\n")
+                            if out_dir + "/L_" +str(g) + "_*" in line:
+                                print("WARNING!!!: " + out_dir + " already exists in " + sub + "/savedir.txt")
+                                print("Do you want to skip this directory ('skip'/1) or continue overwriting ('continue'/2)?")
+                                choice = input("Enter choice: ")
+                                if choice == "skip" or choice == "1":
+                                    continue
+                                elif choice == "continue" or choice == "2":
+                                    break
+                                else:
+                                    print("Invalid choice. Skipping directory.")
+                                    continue
+                    f.close()
                                 
                 for a in a_vals:
-                    savedir = pre +"/L_" + str(g) + "_a_" + str(a) + "/dP_" + str(dP) + "/Geq_" + str(Geq) + "/"
+                    savedir = "L_" + str(g) + "_a_" + str(a) + "/dP_" + str(dP) + "/Geq_" + str(Geq) + "/"
                     outdir = out_dir + savedir
                     # Recursively create outdir (and parent directories) if it doesn't exist.
                     Path(outdir).mkdir(parents=True, exist_ok=True)
@@ -191,6 +273,9 @@ def main():
                                     if os.fstat(fd_source).st_ino == os.fstat(fd_outfile).st_ino:
                                         print("WARNING!!!: File " + outfile + " is the same as " + source_file + ". Skipping file.")
                                         continue
+
+                                    os.close(fd_source)
+                                    os.close(fd_outfile)
                                     
                                 # If outfile already exists, rename it to avoid conflicts.
                                 max_R = max([int(re.findall(r'[\d]+' , f)[-1]) for f in glob.glob(t_subdir + "*.csv")])
@@ -209,6 +294,29 @@ def main():
                                 print("Skipping file.")
                                 continue
 
+                # This is the end of the loop over a in a_vals.
+                # Now appending list of savedir in a txt file in sub.
+                
+                #Open a file in sub (in append mode), and append savedir to it.
+                try:
+                    with open(sub + "/savedir.txt", "a") as f:
+                        f.write(out_dir + "L_" + str(g) + "_*" +"\n")
+                    f.close()
+                except Exception as e:
+                    print("Error: Could not write savedir to " + sub + "/savedir.txt with error message: \n" + str(e))
+                
+
+
+        
+        print("Finished processing prefix: " + pre)
+        
+
+        # Check if out_dir exists.
+        if os.path.exists(out_dir):
+            print("Adding a-val.txt to " + out_dir)
+            test_txt_RW(out_dir)
+        
+
 def rename(dir, keyword, new_keyword):
     # Rename all files in dir (including the entire filepath) that contain keyword to new_keyword.
     # This function is used to rename files that conflict with other files in the directory.
@@ -224,8 +332,17 @@ def rename(dir, keyword, new_keyword):
             new_file = new_file.replace(new_keyword, new_keyword + "_1")
         os.rename(file, new_file)
 
+
+
+    
+    
+
+
     
 
 main()
 #dir = "\\\\?\\D:\\cygwin64\\home\\koust\\Code\\Trophic_Maelstorm\\simulations\\Data\\Remote\\Rietkerk\\Frames\\Stochastic\\3Sp\\DDM_DiC_BURNIN_0.025-0.065_dP_30000_Geq_4.802";
 #rename(dir, "_RANDDDMDiCBURNIN_ThreeSp_P_c_DP", "")
+
+#dir = "../Data/Remote/Test_Rietkerk_Frames/Stochastic/3Sp/Reorganised/StandardParam_20_100/DiC_BURNIN_/"
+#test_txt_RW(dir)

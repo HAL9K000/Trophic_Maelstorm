@@ -10,7 +10,7 @@
 #include <sstream>
 
 
-
+#include <regex>
 #include <limits>
 #include <random>
 #include <vector>
@@ -47,11 +47,12 @@ inline const int Sp_NV = Sp-3; //Number of grazer and predator species in system
 inline const int Sp4_1 = 4*(Sp -2) +3; // Used for generating statistics on surviving runs
 inline const int Sp2 = 2*Sp; // Used for generating statistics on surviving runs
 
-inline const string frame_folder = "../Data/Rietkerk/Frames/Stochastic/3Sp/DDM_DiC_"; //Folder to store frames.
-inline const string prelim_folder = "../Data/Rietkerk/Prelims/Stochastic/3Sp/DDM_DiC_"; //Folder to store preliminary data.
-inline const string frame_prefix = "/FRAME_RANDDDMDiC_ThreeSp_P_c_DP_G_"; //Prefix for frame files.
+inline const string prefix= "DiC";
+inline const string frame_folder = "../Data/Rietkerk/Frames/Stochastic/3Sp/" + prefix + "_"; //Folder to store frames.
+inline const string prelim_folder = "../Data/Rietkerk/Prelims/Stochastic/3Sp/"+ prefix +"_"; //Folder to store preliminary data.
+inline const string frame_prefix = "/FRAME_P_c_DP_G_"; //Prefix for frame files.
 inline const string frame_header = "a_c,  x,  P(x; t), G(x; t), Pr(x; t), W(x; t), O(x; t) \n"; //Header for frame files.
-inline const string stat_prefix = "../Data/Rietkerk/Stochastic/3Sp/1stOrderCC_Rietkerk_DDM_DiC_STOC_P_c_G_";
+inline const string stat_prefix = "../Data/Rietkerk/Stochastic/3Sp/1stOrderCC_Rietkerk_" + prefix + "_STOC_P_c_G_";
 
 
 
@@ -168,6 +169,7 @@ std::vector<double> logarithm10_time_bins(double t_max, double dt);
 
 //----------------------------- Misc. Supporting Add-ons -------------------------------------------------
 
+int findMaxRepNo(string& parendir, const string& filenamePattern);
 int theborderwall(D2Vec_Double &Rho_t, int g);
 void determine_neighbours_R2( int g, int S, D3Vec_Int &neighbours_R2);
 void determine_neighbours_Sq4(int g, D3Vec_Int &neighbours_Sq4);
