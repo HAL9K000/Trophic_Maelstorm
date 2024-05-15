@@ -2775,7 +2775,7 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 				// Reset the clock
 				start_t = high_resolution_clock::now();
 				stringstream m7;
-				m7 << "STATUS UPDATE AT [t, thr, j]\t" << t << " , " << omp_get_thread_num() << " , " << j 
+				m7 << "STATUS UPDATE AT [t, a, thr, j]\t" << t << " , " << a << " , " << omp_get_thread_num() << " , " << j 
 				//<< " ,with current size in MB: " << currentSize/(1024.0*1024.0) << " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) 
 				<< " and time taken for " << counter << " iterations: " << elapsed_min.count() << " min." <<  endl; cout << m7.str();
 				errout.open(thr, std::ios_base::app); errout << m7.str(); errout.close();
@@ -3166,19 +3166,28 @@ void save_frame(D2Vec_Double &Rho_t, double a, double a_st, double a_end, double
 		m1 << "File exists. New filename: " << filename << " \n and maxRepNo: " << maxRepNo << endl;
 		cout << m1.str();
 	}
-		
-	ofstream frame_dp; 	frame_dp.open(filename);
-	// Output =  | 	x		|    Rho0(x, tmax) 		|    Rho1(x, tmax) 		|   W(x, tmax) 		|    O(x, tmax) 		|
-	frame_dp << frame_header;
+
+	std::ostringstream oss;
+	oss << frame_header;
 	for(int i=0; i< g*g; i++)
 	{	
-		frame_dp << a << "," << i;
+		oss << a << "," << i;
 		for(int s=0; s < Sp; s++)
-			frame_dp << "," << Rho_t[s][i];
-		frame_dp << endl;	
+			oss << "," << Rho_t[s][i];
+		oss << "\n";
 	}
 
-	frame_dp.close();
+	FILE *fp = fopen(filename.c_str(), "w");
+	if(fp)
+	{
+		fprintf(fp, "%s", oss.str().c_str());
+		fclose(fp);
+	}
+	else
+	{
+		std::cerr << "Error: Could not open file " << filename << std::endl;
+	}
+	
 }
 
 //Calculates gamma for 3 Sp Rietkerk model (details in PDF) [ 0 < ]
@@ -3494,7 +3503,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1];
 					// Three replicates are over.
 
-					ofstream frame_dp;
+					//ofstream frame_dp;
 
 					if(t < 760)
 					{
@@ -3793,7 +3802,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			if(counter%50000 == 0)
 			{
 				stringstream m5_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
-				m5_1 << "STATUS UPDATE AT TIME [t, thr, j]\t" << t << " , " << omp_get_thread_num() << " , " << j << "\t GRAZER + PRED DORNIC DONE." << endl; 
+				m5_1 << "STATUS UPDATE AT TIME [t, a, thr, j]\t" << t << " , " << a << " , " << omp_get_thread_num() << " , " << j << "\t GRAZER + PRED DORNIC DONE." << endl; 
 				cout << m5_1.str(); errout.open(thr, std::ios_base::app); errout << m5_1.str(); errout.close();
 			}
 			
@@ -3805,7 +3814,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			if(counter%50000 == 0)
 			{
 				stringstream m5_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
-				m5_1 << "STATUS UPDATE AT TIME [t, thr, j]\t" << t << " , " << omp_get_thread_num()  << " , " << j << "\t RK4 INTEGRATION OF REMAINDER TERMS DONE." 
+				m5_1 << "STATUS UPDATE AT TIME [t, a, thr, j]\t" << t << " , " << a << " , " << omp_get_thread_num()  << " , " << j << "\t RK4 INTEGRATION OF REMAINDER TERMS DONE." 
 				<< endl; cout << m5_1.str(); errout.open(thr, std::ios_base::app); errout << m5_1.str(); errout.close();
 			}
 			
@@ -3852,7 +3861,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				// Reset the clock
 				start_t = high_resolution_clock::now();
 				stringstream m7;
-				m7 << "STATUS UPDATE AT [t, thr, j]\t" << t << " , " << omp_get_thread_num() << " , " << j 
+				m7 << "STATUS UPDATE AT [t, a, thr, j]\t" << t << " , "  << a << " , " << omp_get_thread_num() << " , " << j 
 				//<< " ,with current size in MB: " << currentSize/(1024.0*1024.0) << " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) 
 				<< " and time taken for " << counter << " iterations: " << elapsed_min.count() << " min." <<  endl; cout << m7.str();
 				errout.open(thr, std::ios_base::app); errout << m7.str(); errout.close();
@@ -3928,33 +3937,38 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			string filename = "/PRELIM_AGGRAND_P_c_ID_"+ jID.str() +"_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
 			"_D2_"+ Dm.str() + "_R_"+ rini.str() + ".csv";
 
-			ofstream output_dp;
-  			// Creating a file instance called output to store output data as CSV.
-			output_dp.open(path_to_dir + filename);
-
-			// Output =  | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |
-			output_dp << " a , r, L, t , <<W(x; t)>_x>_r, <<O(x; t)>_x>_r,  <<Rho0(x; t)>_x>_r, Var[<Rho0(t)>_x]_r, # Surviving Runs Rho0,"
+			std::ostringstream oss;
+			oss << " a , r, L, t , <<W(x; t)>_x>_r, <<O(x; t)>_x>_r,  <<Rho0(x; t)>_x>_r, Var[<Rho0(t)>_x]_r, # Surviving Runs Rho0,"
 			" # Active Sites Rho0, <<Rho1(x; t)>_x>_r, Var[<Rho1(t)>_x]_r, # Surviving Runs Rho1, # Active Sites Rho1," 
 			"<<Rho2(x; t)>_x>_r, Var[<Rho2(t)>_x]_r, # Surviving Runs Rho2, # Active Sites Rho2, \n";
+
 			for(int i=0; i< tot_iter; i++)
 			{	// Recall Rho is: | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |    #Surviving Runs    |   #Active Sites |
-
-				output_dp << a << ","<< j << "," << g << "," << rho_rep_avg_var[i][0] << "," << rho_rep_avg_var[i][1] << "," << rho_rep_avg_var[i][2] << ",";
+				oss << a << ","<< j << "," << g << "," << rho_rep_avg_var[i][0] << "," << rho_rep_avg_var[i][1] << "," << rho_rep_avg_var[i][2] << ",";
 				for(int s=0; s <Sp-2; s++)
 				{
-					output_dp << rho_rep_avg_var[i][4*s + 3] << "," <<
-					rho_rep_avg_var[i][4*s +4] << "," << rho_rep_avg_var[i][4*s +5] << "," << rho_rep_avg_var[i][4*s +6] << ","; 
+					oss << rho_rep_avg_var[i][4*s + 3] << "," << rho_rep_avg_var[i][4*s +4] << "," << rho_rep_avg_var[i][4*s +5] << "," << rho_rep_avg_var[i][4*s +6] << ","; 
 				}
-				output_dp <<  endl;
-				
+				oss <<  "\n";
 			}
 
-			stringstream m7;
-			m7 << "PRELIM File " << filename << " written successfully." << std::endl; cout << m7.str();
-			errout.open(thr, std::ios_base::app); errout << m7.str(); errout.close();
+			FILE *fp = fopen((path_to_dir + filename).c_str(), "w");
+			if(fp)
+			{
+				fprintf(fp, "%s", oss.str().c_str());
+				fclose(fp);
+				stringstream m7;
+				m7 << "PRELIM File " << filename << " written successfully." << std::endl; cout << m7.str();
+				errout.open(thr, std::ios_base::app); errout << m7.str(); errout.close();
+			}
+			else
+			{
+				stringstream m7;
+				m7 << "Error writing to file: " << path_to_dir + filename << " with error: " << strerror(errno) << std::endl; 
+				cout << m7.str(); cerr << m7.str(); errout.open(thr, std::ios_base::app); errout << m7.str(); errout.close();
+			}
 
-			output_dp.close();
-
+			// Delete the previous file (if it exists) to save space.
 			#if defined(__GNUC__) && (__GNUC__ >= 9)
 
 			if(j > 2)
