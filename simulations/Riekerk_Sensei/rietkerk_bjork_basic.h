@@ -68,6 +68,9 @@ typedef std::vector<std::vector <std::vector <int>>> D3Vec_Int;
 typedef std::vector<std::vector <std::vector <std::vector <double>>>> D4Vec_Double;
 typedef std::vector<std::vector <std::vector <std::vector <int>>>> D4Vec_Int;
 
+typedef std::vector<double> Vec_Double;
+typedef std::vector<int> Vec_Int;
+
 
 
 
@@ -109,6 +112,8 @@ struct CalculatePi<-1>
     static const constexpr  double pi = 0;
 };
 
+// Generic template to 
+
 struct coordinates {
    int x;
    int y;
@@ -145,6 +150,8 @@ void init_randconstframe(D2Vec_Double &array, int Sp, int size, double perc,   d
 void init_constframe(D2Vec_Double &array,  int Sp, int size, double constant[]);
 void init_randframe(D2Vec_Double &array, int Sp, int size, double mean[], double sd[]);
 void init_quarterframe(D2Vec_Double &array, double c1, double c2, double c3, double c4, int L);
+void init_gaussframe(D2Vec_Double &array, int size, vector<double> &sd, vector<double> &amp, int s_gauss = SpB);
+void init_gaussiantear(D2Vec_Double &array, int Sp_lim, int g, double cx[], double cy[], double sd[], double amp[]);
 void init_solitarytear(D2Vec_Double &array, int length);
 
 double mean_of_array(double array[],int size);
@@ -154,7 +161,7 @@ double standard_deviation_of_vector(vector<double> array,int size);
 double occupied_sites_of_vector(vector<double> array,int size);
 auto meansq_spread_of_vector(vector<double> array, int g, int c_x, int c_y);
 
-void var_mean_incremental_surv_runs(double t_avg_var_rep_N[][Sp4_1], double X_curr[][Sp2], int size, int j);
+void var_mean_incremental_surv_runs(D2Vec_Double &t_avg_var_rep_N, const D2Vec_Double &X_curr, int size, int j);
 
 void var_mean_incremental_all_runs(double rep_avg_var[][3], double X_curr[][2], int size, int r);
 void spreading_incremental_surv_runs(double t_N_R2_rep[][4], double X_curr[][3], int size);
@@ -177,7 +184,8 @@ void determine_neighbours_Sq8(int g, int S, D3Vec_Int &neighbours_Sq8);
 void set_density_dependentmortality(double m);
 std::vector<std::pair<int, int>> computeNeighboringSitesCentral(int R);
 std::vector<int> getNeighborsInBall(const vector<int>& sortedNeighboringSites, double f);
-std::vector<int> generateNeighboringSitesFromCentral(const vector<pair<int, int>>& centralNeighboringSites, int i, int j, int L); 
+void generateNeighboringSitesFromCentral(const vector<pair<int, int>>& centralNeighboringSites, 
+                                         vector<int>& neighboringSites, int i, int j, int L); 
 
 //----------------------------- Regular Rietkerk Integration Machinery --------------------------------------------//
 

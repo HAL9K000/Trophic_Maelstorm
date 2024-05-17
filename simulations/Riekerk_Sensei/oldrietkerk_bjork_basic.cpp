@@ -3457,8 +3457,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 	double dx2 = dx*dx; double dx1 = 1/dx; double dx1_2 = 1/(dx2); double dxb2 = dx/2.0;
 	double diff_coefficient[Sp]={0.0}; double beta[Sp]={0.0}; double lambda_exp[Sp]={0.0}; double lambda[Sp]={0.0}; double sigma2_1[Sp]={0.0};
 	vector<std::pair<double, double>> diff_eff(SpB, {0.0, 0.0}); //Stores effective diffusion coefficient for each species after correcting for advection.
-	//vector <double> gamma_i(SpB, 0.0); //Stores gamma for each species.
-	
+	vector <double> gamma_i(SpB, 0.0); //Stores gamma for each species.
 
 	beta[0] = -M[0] - 4*D[0]/(dx2);
 	lambda_exp[0]= exp( (beta[0])*dt); lambda[0] = 2*(beta[0])/(sigma[0]*sigma[0]*(lambda_exp[0] -1.0));
@@ -3591,7 +3590,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		errout.open(thr, std::ios_base::app); errout << m1.str(); errout.close(); 
 		
 
-		poisson_distribution<int> poisson; gamma_distribution <double> gamma_distr; 
+		poisson_distribution<int> poisson; gamma_distribution <double> gamma; 
 		uniform_real_distribution<double> unif(0.0, 1.0); normal_distribution<double> norm(0.0, 1.0);
 
 		double t=0; int index = 0;  //Initialise t
@@ -3744,8 +3743,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					}
 					else
 					{
-						gamma_distr = gamma_distribution<double>(gru, 1.0);
-						Rho_dt[s][i]= gamma_distr(rng)/lambda[s];
+						gamma = gamma_distribution<double>(gru, 1.0);
+						Rho_dt[s][i]= gamma(rng)/lambda[s];
 					}
 					/**
 					stringstream m6_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
@@ -3778,8 +3777,6 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			if (nR_fac < 0.35)
 			{	nR_fac = 0.35; }
 
-			D2Vec_Double gamma(SpB, vector<double> (g*g, 0.0)); //Stores gamma for each species at each site.
-
 			/**
 			if(counter%50000 == 0)
 			{
@@ -3801,56 +3798,37 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					continue;
 				//If the average density of a species is 0, then skip the Dornic integration for that species.
 
-
-				//First up, calculating gamma_i for each species at each site.
-
-				for(int i=0; i < g*g; i++)
-				{
-					vector <double> gamma_i(SpB, 0.0); //Stores gamma for each species at each site.
-					
-					//Firstly gamma needs to be estimated for each site.
-					calc_gamma_3Sp(origin_Neighbourhood, DRho, gamma_i, Rhox_avg, r_frac, nR_fac, r_max_effective, i, g);
-					//If any are greater than 1, set them to 1.
-					for(int indx=1; indx< SpB; indx++){
-						if(gamma_i[indx] > 1)
-							gamma_i[indx] = 1;
-						//Next, assign the gamma_i values to the gamma_i array.
-						gamma[indx][i] = gamma_i[indx];
-					}
-					//Flush temp out of memory.
-					vector<double>().swap(gamma_i);
-				}
 				
 				for(int i=0;i<Rho_dt[0].size();i++)
 				{
 
 					//Firstly gamma needs to be estimated for each site.
-					//if(s ==1)
-					//	calc_gamma_3Sp(origin_Neighbourhood, DRho, gamma_i, Rhox_avg, r_frac, nR_fac, r_max_effective, i, g);
+					if(s ==1)
+						calc_gamma_3Sp(origin_Neighbourhood, DRho, gamma_i, Rhox_avg, r_frac, nR_fac, r_max_effective, i, g);
 					// This function calculates gamma for each species at each site i in an array indexed by species.
 					
 					//Finally check if gamma_i > 1, if so set it to 1.
-					if(gamma[s][i] > 1)
-					{	gamma[s][i] = 1; }
+					if(gamma_i[s] > 1)
+					{	gamma_i[s] = 1; }
 					if(counter%50000 == 0 && counter == i)
 					{
 						stringstream m5_2;     //To make cout thread-safe as well as non-garbled due to race conditions.
 						m5_2 << "STATUS UPDATE AT TIME [t, thr, i, j]\t" << t << " , " << omp_get_thread_num() << " , " << i << " , " << j 
-						<< "\t GAMMA FOUND WITH GAMMA_I:" << gamma[s][i] << endl; cout << m5_2.str();
+						<< "\t GAMMA FOUND WITH GAMMA_I:" << gamma_i[s] << endl; cout << m5_2.str();
 						errout.open(thr, std::ios_base::app); errout << m5_2.str(); errout.close();
 					}
-					if( gamma[s][i] < 0.0)
+					if( gamma_i[s] < 0.0)
 					{
 						stringstream m5_3;     //To make cout thread-safe as well as non-garbled due to race conditions.
 						m5_3 << "GAMMA_I FALLS BELOW 0,  AT TIME [t, thr, i, j]\t" << t << " , " << omp_get_thread_num() << " , " << i << " , " << j  
-						<< "\t WITH GAMMA_I:" << gamma[s][i] << " for species: " << s << endl; cout << m5_3.str();
+						<< "\t WITH GAMMA_I:" << gamma_i[s] << " for species: " << s << endl; cout << m5_3.str();
 						errout.open(thr, std::ios_base::app); errout << m5_3.str(); errout.close();
 					}
-					if(isnan(gamma[s][i]) == true || isinf(gamma[s][i]) == true)
+					if(isnan(gamma_i[s]) == true || isinf(gamma_i[s]) == true)
 					{
 						stringstream m5_3;     //To make cout thread-safe as well as non-garbled due to race conditions.
 						m5_3 << "GAMMA_I BLOWS THE LID,  AT TIME [t, thr, i, j]\t" << t << " , " << omp_get_thread_num() << " , " << i << " , " << j  
-						<< "\t WITH GAMMA_I:" << gamma[s][i] << " for species: " << s << " with Rho_avg[0]: " << Rhox_avg[0] << " and Rho_avg[1]: " << Rhox_avg[1] << " and Rho_avg[2]: " << Rhox_avg[2] 
+						<< "\t WITH GAMMA_I:" << gamma_i[s] << " for species: " << s << " with Rho_avg[0]: " << Rhox_avg[0] << " and Rho_avg[1]: " << Rhox_avg[1] << " and Rho_avg[2]: " << Rhox_avg[2] 
 					  	<< " \n and Rho_t[0][i]: " << Rho_dt[0][i] << " and Rho_t[1][i]: " << Rho_dt[1][i] << " and Rho_t[2][i]: " << Rho_dt[2][i]<< endl; cout << m5_3.str();
 						errout.open(thr, std::ios_base::app); errout << m5_3.str(); errout.close();
 						save_frame(Rho_dt, a, a_st, a_end, c, gmax, alpha, rW, W0, D, K, sigma, A, H, E, t, dt, dx, dP, j, g, Gstar);
@@ -3882,14 +3860,14 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					// ALSO NOTE: diff_coefficient[s] = D[s]/(dx*dx); diff_eff[s].first = D_X_eff[s]/(dx*dx); diff_eff[s].second = D_Y_eff[s]/(dx*dx);
 					
 					// Standard diffusion term.
-					//double alpha_i = gamma[s][i]*diff_coefficient[s]*(1*(DRho[s][nR2[i][0][0]] + DRho[s][nR2[i][0][1]] +
+					//double alpha_i = gamma_i[s]*diff_coefficient[s]*(1*(DRho[s][nR2[i][0][0]] + DRho[s][nR2[i][0][1]] +
 					//				DRho[s][nR2[i][1][0]] + DRho[s][nR2[i][1][1]])) 
-					//				+dx1*(1-gamma[s][i])*(vx_abs*DRho[s][nR2[i][1][sgn_index(vx)]]+ vy_abs*DRho[s][nR2[i][0][sgn_index(vy)]]);
+					//				+dx1*(1-gamma_i[s])*(vx_abs*DRho[s][nR2[i][1][sgn_index(vx)]]+ vy_abs*DRho[s][nR2[i][0][sgn_index(vy)]]);
 
 					// Advection corrected diffusion term.
-					double alpha_i = gamma[s][i]*(diff_eff[s].second*(DRho[s][nR2[i][0][0]] + DRho[s][nR2[i][0][1]]) 
+					double alpha_i = gamma_i[s]*(diff_eff[s].second*(DRho[s][nR2[i][0][0]] + DRho[s][nR2[i][0][1]]) 
 												+ diff_eff[s].first*(DRho[s][nR2[i][1][0]] + DRho[s][nR2[i][1][1]])) 
-									+dx1*(1-gamma[s][i])*(vx_abs*DRho[s][nR2[i][1][sgn_index(vx)]]+ vy_abs*DRho[s][nR2[i][0][sgn_index(vy)]]);
+									+dx1*(1-gamma_i[s])*(vx_abs*DRho[s][nR2[i][1][sgn_index(vx)]]+ vy_abs*DRho[s][nR2[i][0][sgn_index(vy)]]);
 					
 					if(alpha_i == 0 && DRho[s][i] == 0) 
 					{
@@ -3898,9 +3876,9 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 
 					//Beta depends on the gamma_i value at each lattice site for each species, hence needs to be updated at each iteration.
 					// Standard diffusion term.
-					//beta[s] = -M[s] - 4*gamma[s][i]*diff_coefficient[s] - (1-gamma[s][i])*(vx_abs + vy_abs)*dx1; // NOTE: diff_coefficient[s] = D[s]/(dx*dx)
+					//beta[s] = -M[s] - 4*gamma_i[s]*diff_coefficient[s] - (1-gamma_i[s])*(vx_abs + vy_abs)*dx1; // NOTE: diff_coefficient[s] = D[s]/(dx*dx)
 					// Advection corrected diffusion term.
-					beta[s] = -M[s] - 2*gamma[s][i]*(diff_eff[s].first + diff_eff[s].second) - (1-gamma[s][i])*(vx_abs + vy_abs)*dx1;
+					beta[s] = -M[s] - 2*gamma_i[s]*(diff_eff[s].first + diff_eff[s].second) - (1-gamma_i[s])*(vx_abs + vy_abs)*dx1;
 
 					lambda_exp[s]= exp( (beta[s])*dt); lambda[s] = 2*(beta[s])*(sigma2_1[s])/(lambda_exp[s] -1.0); // NOTE: sigma2_1 = 1/(sigma^2);
 
@@ -3930,8 +3908,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					}
 					else
 					{
-						gamma_distr = gamma_distribution<double>(gru, 1.0);
-						Rho_dt[s][i]= gamma_distr(rng)/lambda[s];
+						gamma = gamma_distribution<double>(gru, 1.0);
+						Rho_dt[s][i]= gamma(rng)/lambda[s];
 					}
 					if(isnan(Rho_dt[s][i]) == true || isinf(Rho_dt[s][i]) == true)
 					{
@@ -3955,9 +3933,6 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					
 				}
 			}
-
-			// Swap out the gamma vector to free up memory.
-			vector<vector<double>>().swap(gamma);
 			
 			if(counter%50000 == 0)
 			{
