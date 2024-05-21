@@ -330,7 +330,7 @@ void init_gaussframe(D2Vec_Double &array, int size, vector<double> &sd, vector<d
 	 * 6. The function returns the filled array.
 	 * 7. It does so by designating two temporary D2Vec_Double arrays, gauss_frame and const_frame, to store the Gaussian and constant values respectively.
 	 */
-
+	mutex errorMutex; // Mutex to make error messages thread-safe
 	int g = static_cast<int>(sqrt(size));
 	//Initialise the Gaussian frame
 	D2Vec_Double gauss_frame(s_gauss, vector<double>(g*g, 0.0));
@@ -380,6 +380,24 @@ void init_gaussframe(D2Vec_Double &array, int size, vector<double> &sd, vector<d
 			array[s + s_gauss][i] = const_frame[s][i];	
 	}
 
+	std::lock_guard<std::mutex> lock(errorMutex);
+	ostringstream oss;
+	oss << "Gaussian frame initialised with " << s_gauss << " species.\n";
+	oss << "Amp values:\n";
+	for(int i=0; i< Sp; i++)
+		oss << amp[i] << " ";
+	oss << "\n";
+	oss << "SD values:\n";
+	for(int i=0; i< s_gauss; i++)
+		oss << " ( " << i << " , " << sd[i] << " ) \t";
+	oss << "\n";
+	oss << "cx values & cy values:\n";
+	for(int i=0; i< s_gauss; i++)
+		oss << i << " " << cx[i] << " " << cy[i] << "\n";
+
+	cout << oss.str();
+	cerr << oss.str() << endl;
+
 	// Swap memory to free up space.
 	vector <vector<double>>().swap(gauss_frame);
 	vector <vector<double>>().swap(const_frame);
@@ -400,7 +418,7 @@ void init_gaussiantear(D2Vec_Double &array, int Sp_lim, int g, double cx[], doub
 		for(int i=0; i< g; i++)
 		{
 			for(int j=0; j< g; j++)
-				array[s][i*g + j] = A*exp(-((i-cx[s])*(i-cx[s]) + (j-cy[s])*(j-cy[s]))/(2*sd[s]*sd[s]));
+				array[s][i*g + j] = amp[s]*exp(-((i-cx[s])*(i-cx[s]) + (j-cy[s])*(j-cy[s]))/(2*sd[s]*sd[s]));
 		}
 	}
 }
@@ -727,7 +745,7 @@ std::vector<double> logarithm10_time_bins(double t_max, double dt)
 //----------------------------- Misc. Supporting Add-ons ------------------------------------------------- //
 
 // This function finds the maximum replicate number in the directory, given the filename pattern, so to avoid overwriting files.
-int findMaxRepNo(string& parendir, const string& filenamePattern)
+int findMaxRepNo(const string& parendir, const string& filenamePattern)
 {
 	 int maxRepNo = 0;
     //Filenamepattern is of the form: "/FRAME_RAND_ThreeSp_P_c_DP_G_128_T_57544_dt_0.12_a_0.049_D1_0.0298_D2_0.0522_dx_0.1_R_"
@@ -3237,35 +3255,16 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 
 }
 
-void save_frame(D2Vec_Double &Rho_t, double a, double a_st, double a_end, double c,double gmax,double alpha, double rW, double W0, double (&D)[Sp], double (&K)[3], 
-	double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double dx, double dP, int r, int g, double Gstar /*=-1*/)
+void save_frame(D2Vec_Double &Rho_t, const string &parendir, const string &filenamePattern, double a, double a_st, double a_end, double t, double dt, double dx, double dP, int r, int g, string header /* =""*/, bool overwrite /* = false*/)
 {
-	stringstream L, tm ,d3, p1, rini, gm, a1, a2, Dm0, Dm1, Dm2, alph, w0t, aij, hij, dix, dimitri, sig0, sig1, geq;
-	//Save the frame to a file.
-	L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; dix << setprecision(2) << dx;
-	rini << r; Dm0 << D[0]*pow(10.0, 7.0); Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2]; gm << setprecision(3) << gmax;
-	w0t << setprecision(3) << W0; alph << setprecision(3) << alpha; dimitri  << dP;
-	a1 << a_st; a2  << a_end; sig0 << sigma[0]; sig1 << sigma[1]; geq << setprecision(5) << Gstar;
-	aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1];
-
-	string filenamePattern = frame_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str()
-    + "_a_" + p1.str()  + "_D1_"+ Dm1.str() + "_D2_"+ Dm2.str() + "_dx_"+ dix.str() + "_R_";
+	stringstream rini; rini << r;
 	//Next, designate the naive filename
-	string filename = filenamePattern + rini.str() + ".csv";
-	string parendir = "";
+	string basefilename = filenamePattern + rini.str() + ".csv";
 
-	
-	// Creating a file instance called output to store output data as CSV.
-	if(Gstar != -1)
-		parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
-	else
-		parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
-	
-
-	filename = parendir + filename;
+	string filename = parendir + basefilename;
 	// If the file already exists, increment the replicate number by 1 of the maximum replicate number corresponding to the filename pattern.
 	// This is to avoid overwriting files.
-	if (fs::exists((filename))) 
+	if (fs::exists((filename)) && !overwrite) 
 	{
 		int maxRepNo = findMaxRepNo(parendir, filenamePattern);
 		//maxRepNo++; //Increment the maximum replicate number by 1.
@@ -3277,7 +3276,13 @@ void save_frame(D2Vec_Double &Rho_t, double a, double a_st, double a_end, double
 	}
 
 	std::ostringstream oss;
-	oss << frame_header;
+	if(header != "")
+		oss << header;
+	else
+		oss << frame_header;
+		// Using default header (defined in header file) if no header is provided.
+
+	double Sp = Rho_t.size();
 	for(int i=0; i< g*g; i++)
 	{	
 		oss << a << "," << i;
@@ -3300,104 +3305,111 @@ void save_frame(D2Vec_Double &Rho_t, double a, double a_st, double a_end, double
 }
 
 //Calculates gamma for 3 Sp Rietkerk model (details in PDF) [ 0 < ]
-void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec_Double &Rho_t, vector <double> &gamma_i,  
-			double (&Rho_avg)[Sp], vector <std::pair<double, int>>& rfrac, double nVeg_frac, int r_max, int i, int L)
-{
-	mutex errorMutex; // Mutex to make error messages thread-safe
-	double eps = 1.0e-50; //Small number to avoid division by zero.
-	std::vector<int> nR_Perp;
-	int c_i = int(i/L); int c_j = i%L; //Current x and y coordinates of site i.
-	generateNeighboringSitesFromCentral(centralNeighboringSites, nR_Perp, c_i, c_j, L);
-
+void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec_Double &Rho_t, D2Vec_Double &gamma,  
+			double (&Rho_avg)[Sp], vector <std::pair<double, int>>& rfrac, double nVeg_frac, int r_max, int L)
+{	
 	if(nVeg_frac < 0.35)
 		nVeg_frac = 0.35; //Minimum fraction of vegetation cover.
 
-	if(nVeg_frac < 1)
-		nR_Perp.resize(int(nVeg_frac*nVeg_frac*nR_Perp.size()));
-	// In this case, r_effective is reduced to nVeg_frac*r_max, hence the reduction in the number of nearest neighbours.
-	// rfrac is sorted in descending order.
-	double fr_prev = 1.0; //Fraction of perception radius to max radius.
-	for(const auto& frac: rfrac)
+	int L2 = L*L;
+	double eps = 1.0e-50; //Small number to avoid division by zero.
+	for( int i=0; i < L2; i++)
 	{
-		int s = frac.second;
-		double fr = frac.first; //Fraction of perception radius to max radius.
-
-		if( fr == 0.0)
-		{	gamma_i[s] = 0.0; continue;	}
-		else if(fr < fr_prev)
-		{
-			nR_Perp.resize(int(fr*fr*nR_Perp.size()/(fr_prev*fr_prev)));
-			fr_prev = fr;
-		}
+		mutex errorMutex; // Mutex to make error messages thread-safe
 		
-		// Gamma for grazers (indexed 1)
-		if (s == 1)
-		{	
+		std::vector<int> nR_Perp;
+		int c_i = int(i/L); int c_j = i%L; //Current x and y coordinates of site i.
+		generateNeighboringSitesFromCentral(centralNeighboringSites, nR_Perp, c_i, c_j, L);
+
+
+		if(nVeg_frac < 1)
+			nR_Perp.resize(int(nVeg_frac*nVeg_frac*nR_Perp.size()));
+		// In this case, r_effective is reduced to nVeg_frac*r_max, hence the reduction in the number of nearest neighbours.
+		// rfrac is sorted in descending order.
+		double fr_prev = 1.0; //Fraction of perception radius to max radius.
+		for(const auto& frac: rfrac)
+		{
+			int s = frac.second;
+			double fr = frac.first; //Fraction of perception radius to max radius.
 			
+			if( fr == 0.0)
+			{	continue;	} // No perception radius for this species (indicates vegetation species)
 			if(Rho_avg[s] < eps)
-			{	gamma_i[s] = 1.0; continue;	} // No grazers left
-			else if( Rho_avg[2] < eps)
-			{	
-				for(int k=0; k< nR_Perp.size(); k++)
-				{		gamma_i[s] += Rho_t[s-1][nR_Perp[k]];	}
-			} // No predators left
-			else
+				{	gamma[s][i] = 1.0; continue;	} // No species left, value assigned doesn't matter.
+			else if(Rho_avg[s-1] < eps)
+				{	gamma[s][i] = 0.0;	continue; } // No resource left, consumers will advect to extinction.
+			
+			if(fr < fr_prev)
 			{
-				if(Rho_avg[0] == 0)
-				{	gamma_i[s] = 0.0;	} // No vegetation
-				else
+				nR_Perp.resize(int(fr*fr*nR_Perp.size()/(fr_prev*fr_prev)));
+				fr_prev = fr;
+			}
+			
+			// Gamma for grazers (indexed 1)
+			if (s == 1)
+			{	
+				
+				if( Rho_avg[2] < eps)
 				{	
+					for(int k=0; k< nR_Perp.size(); k++)
+					{		gamma[s][i] += Rho_t[s-1][nR_Perp[k]];	}
+				} // No predators left
+				else
+				{
+					//if(Rho_avg[0] == 0)
+					//{	gamma[s][i] = 0.0;	continue; } // No vegetation 
+					
 					double rho_pred1 = 1/Rho_avg[2];
 					for(int k=0; k< nR_Perp.size(); k++)
 					{		
-						gamma_i[s] += Rho_t[s-1][nR_Perp[k]]*(1 -Rho_t[2][nR_Perp[k]]*rho_pred1);	
+						gamma[s][i] += Rho_t[s-1][nR_Perp[k]]*(1 -Rho_t[2][nR_Perp[k]]*rho_pred1);	
 					}
-					
-					gamma_i[s] = gamma_i[s]/(nR_Perp.size()*Rho_avg[s-1]);	
+						
 				}
-			}
+				gamma[s][i] = gamma[s][i]/(nR_Perp.size()*Rho_avg[s-1]);	
 
-		}
-		if(s == 2)
-		{
-			if(Rho_avg[s] < eps)
-			{	gamma_i[s] = 1.0; continue;	} // No predators left
-			else if( Rho_avg[0] < eps)
-			{	
-				for(int k=0; k< nR_Perp.size(); k++)
-				{		gamma_i[s] += Rho_t[s-1][nR_Perp[k]];	}
-			} // No vegetation left
-			else
+			}
+			if(s == 2)
 			{
-				if(Rho_avg[1] < eps)
-				{	gamma_i[s] = 0.0;	} // No grazers left
-				else
+				for(int k=0; k< nR_Perp.size(); k++)
+					{		gamma[s][i] += Rho_t[s-1][nR_Perp[k]];	}
+				/**
+				if( Rho_avg[0] < eps)
 				{	
+					for(int k=0; k< nR_Perp.size(); k++)
+					{		gamma[s][i] += Rho_t[s-1][nR_Perp[k]];	}
+				} // No vegetation left
+				else
+				{
+					//if(Rho_avg[1] < eps)
+					//{	gamma[s][i] = 0.0;	continue; } // No grazers left.
 					double rho_veg1 = 1/Rho_avg[0];
 					for(int k=0; k< nR_Perp.size(); k++)
 					{		
-						gamma_i[s] += Rho_t[s-1][nR_Perp[k]]*(1 -Rho_t[0][nR_Perp[k]]*rho_veg1);	
+							gamma[s][i] += Rho_t[s-1][nR_Perp[k]]*(1 -Rho_t[0][nR_Perp[k]]*rho_veg1);	
 					}
-					gamma_i[s] = gamma_i[s]/(nR_Perp.size()*Rho_avg[s-1]);	
 				}
+				*/
+				gamma[s][i] = gamma[s][i]/(nR_Perp.size()*Rho_avg[s-1]);	
+			}
+
+			if(gamma[s][i] > 1)
+			{	gamma[s][i] = 1.0;	} //Ensuring gamma is not greater than 1.
+			else if(gamma[s][i] < 0)
+			{	gamma[s][i] = 0.0;	} //Ensuring gamma is not less than 0.
+			else if(isnan(gamma[s][i]) == true || isinf(gamma[s][i]) == true)
+			{
+				errorMutex.lock();
+				std::cerr << "Gamma is NaN with value: " << gamma[s][i] << " For [s, thr, i]\t" << s << " , " << omp_get_thread_num() 
+						<< " , " << i << " ] with Rho_avg[0]: " << Rho_avg[0] << " and Rho_avg[1]: " << Rho_avg[1] << " and Rho_avg[2]: " << Rho_avg[2] 
+						<< " \n and Rho_t[0][i]: " << Rho_t[0][i] << " and Rho_t[1][i]: " << Rho_t[1][i] << " and Rho_t[2][i]: " << Rho_t[2][i] 
+						<< " \n and Nveg_frac: " << nVeg_frac << " and r_max: " << r_max << " and rfrac.size(): " << rfrac.size() << " and nR_Perp.size(): " << nR_Perp.size()
+						<< std::endl;
+				errorMutex.unlock();
 			}
 		}
-		if(gamma_i[s] > 1)
-		{	gamma_i[s] = 1.0;	} //Ensuring gamma is not greater than 1.
-		else if(gamma_i[s] < 0)
-		{	gamma_i[s] = 0.0;	} //Ensuring gamma is not less than 0.
-		else if(isnan(gamma_i[s]) == true || isinf(gamma_i[s]) == true)
-		{
-			errorMutex.lock();
-			std::cerr << "Gamma is NaN with value: " << gamma_i[s] << " For [s, thr, i]\t" << s << " , " << omp_get_thread_num() 
-					  << " , " << i << " ] with Rho_avg[0]: " << Rho_avg[0] << " and Rho_avg[1]: " << Rho_avg[1] << " and Rho_avg[2]: " << Rho_avg[2] 
-					  << " \n and Rho_t[0][i]: " << Rho_t[0][i] << " and Rho_t[1][i]: " << Rho_t[1][i] << " and Rho_t[2][i]: " << Rho_t[2][i] 
-					  << " \n and Nveg_frac: " << nVeg_frac << " and r_max: " << r_max << " and rfrac.size(): " << rfrac.size() << " and nR_Perp.size(): " << nR_Perp.size()
-					  << std::endl;
-			errorMutex.unlock();
-		}
+		vector <int>().swap(nR_Perp);
 	}
-	vector <int>().swap(nR_Perp);
 }
 
 void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double c, double gmax, double alpha, double rW, double W0, 
@@ -3527,16 +3539,13 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 
 		// Initialise vector <double> amp to elements of clow[].
 		vector <double> amp(Sp, 500.0);  //Setting amplitude of gaussian distributions of vegetation to 500.
-		for (int s=1; s< Sp; s++)
+		for (int s=0; s< Sp; s++)
 			amp[s] = clow[s+ Sp];
 		
 		vector <double> sd{g/8.0, g/16.0}; //Setting standard deviation of gaussian distributions of vegetation to g/8 and g/16.
 
-		init_gaussframe(Rho_dt, g*g, amp, sd);
-		
-
-
-
+		init_gaussframe(Rho_dt, g*g, sd, amp);
+	
 		// The first SpB species stored in Rho_dt are to be initialised on frame as Gaussian distributions.
 		// Species 0 is the vegetation, Species 1 is the grazer and Species 2 is the predator.
 		// Species 0 should be centered near the top right corner of the grid, Species 1 near the bottom right corner and Species 2 near the bottom left corner.
@@ -3621,21 +3630,39 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				rhox_num = occupied_sites_of_vector(temp_alt, g*g); //Finds number of occupied at given t.
 				vector<double>().swap(temp_alt); //Flush temp out of memory.0
 
-				if( t >= 99 && t <= 10000 || t== 0 ||  index >= tot_iter -8 &&  index <= tot_iter-1)
+				if( t >= 15 && t <= 10000 || t== 0 ||  index >= tot_iter -8 &&  index <= tot_iter-1)
 				{
 					//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
 					
 					stringstream L, tm ,d3, p1, rini, gm, a1, a2, Dm0, Dm1, Dm2, alph, w0t, aij, hij, dix, dimitri, sig0, sig1, geq;
 
   					L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; dix << setprecision(2) << dx;
-  					rini << j; Dm0 << D[0]*pow(10.0, 7.0); Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2]; gm << setprecision(3) << gmax;
-					w0t << setprecision(3) << W0; alph << setprecision(3) << alpha; dimitri  << dP;
-					a1 << a_st; a2  << a_end; sig0 << sigma[0]; sig1 << sigma[1]; geq << setprecision(5) << Gstar;
-					aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1];
+  					rini << j; Dm0 << D[0]*pow(10.0, 7.0); Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2]; 
+					a1 << a_st; a2  << a_end; sig0 << sigma[0]; sig1 << sigma[1]; dimitri  << dP; geq << setprecision(5) << Gstar;
+					//gm << setprecision(3) << gmax; w0t << setprecision(3) << W0; alph << setprecision(3) << alpha; aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1]; 
 					// Three replicates are over.
+
+					string filenamePattern = frame_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str()
+					+ "_a_" + p1.str()  + "_D1_"+ Dm1.str() + "_D2_"+ Dm2.str() + "_dx_"+ dix.str() + "_R_";
+					//Next, designate the naive filename
+					string filename = filenamePattern + rini.str() + ".csv";
+					string parendir = "";
+
+					// Creating a file instance called output to store output data as CSV.
+					if(Gstar != -1)
+						parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
+					else
+						parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
 
 					//ofstream frame_dp;
 
+					save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+
+					stringstream m3;
+					m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
+					cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
+
+					/**
 					if(t < 760)
 					{
 						//Only save one in three frames here.
@@ -3665,6 +3692,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						stringstream m3;
 						m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
 					}
+					*/
 				}
 
 				vector <double> temp_1= {DRho[0].begin(),DRho[0].end()}; //Rho_dt for species '0'
@@ -3780,6 +3808,51 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 
 			D2Vec_Double gamma(SpB, vector<double> (g*g, 0.0)); //Stores gamma for each species at each site.
 
+			calc_gamma_3Sp(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, nR_fac, r_max_effective, g); 
+			//Calculates gamma for each species at each site.
+
+			if(t == 0 || t >= t_meas[index-1] -dt/2.0 && t < t_meas[index-1] +dt/2.0)
+			{
+				// Saving gamma values to file at given time points.
+				stringstream L, tm ,d3, p1, rini, a1, a2, Dm1, Dm2, dix, dimitri, geq;
+
+  				L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; dix << setprecision(2) << dx;
+  				rini << j; Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2];
+				a1 << a_st; a2  << a_end; dimitri  << dP; geq << setprecision(5) << Gstar;
+
+				string filenamePattern = gamma_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_" + p1.str()  + "_D1_"+ Dm1.str() + "_D2_"+ Dm2.str() + "_dx_"+ dix.str() + "_R_";
+				
+				string parendir = "";
+				// Creating a file instance called output to store output data as CSV.
+				if(Gstar != -1)
+					parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
+				else
+					parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
+
+				string gammaheader = "a_c,  x,  Gam0(x; t), Gam1(x; t), Gam2(x; t) \n"; //Header for output frame.
+				save_frame(gamma, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
+				
+			}
+
+			/**
+			for(int i=0; i < g*g; i++)
+			{
+				vector <double> gamma_i(SpB, 0.0); //Stores gamma for each species at each site.
+				
+				//Firstly gamma needs to be estimated for each site.
+				calc_gamma_3Sp(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, nR_fac, r_max_effective, i, g);
+				//If any are greater than 1, set them to 1.
+				for(int indx=1; indx< SpB; indx++){
+					if(gamma_i[indx] > 1)
+						gamma_i[indx] = 1;
+					//Next, assign the gamma_i values to the gamma_i array.
+					gamma[indx][i] = gamma_i[indx];
+				}
+				//Flush temp out of memory.
+				vector<double>().swap(gamma_i);
+			}
+			*/
+
 			/**
 			if(counter%50000 == 0)
 			{
@@ -3800,26 +3873,6 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				if(Rhox_avg[s] == 0.0)
 					continue;
 				//If the average density of a species is 0, then skip the Dornic integration for that species.
-
-
-				//First up, calculating gamma_i for each species at each site.
-
-				for(int i=0; i < g*g; i++)
-				{
-					vector <double> gamma_i(SpB, 0.0); //Stores gamma for each species at each site.
-					
-					//Firstly gamma needs to be estimated for each site.
-					calc_gamma_3Sp(origin_Neighbourhood, DRho, gamma_i, Rhox_avg, r_frac, nR_fac, r_max_effective, i, g);
-					//If any are greater than 1, set them to 1.
-					for(int indx=1; indx< SpB; indx++){
-						if(gamma_i[indx] > 1)
-							gamma_i[indx] = 1;
-						//Next, assign the gamma_i values to the gamma_i array.
-						gamma[indx][i] = gamma_i[indx];
-					}
-					//Flush temp out of memory.
-					vector<double>().swap(gamma_i);
-				}
 				
 				for(int i=0;i<Rho_dt[0].size();i++)
 				{
@@ -3853,7 +3906,26 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						<< "\t WITH GAMMA_I:" << gamma[s][i] << " for species: " << s << " with Rho_avg[0]: " << Rhox_avg[0] << " and Rho_avg[1]: " << Rhox_avg[1] << " and Rho_avg[2]: " << Rhox_avg[2] 
 					  	<< " \n and Rho_t[0][i]: " << Rho_dt[0][i] << " and Rho_t[1][i]: " << Rho_dt[1][i] << " and Rho_t[2][i]: " << Rho_dt[2][i]<< endl; cout << m5_3.str();
 						errout.open(thr, std::ios_base::app); errout << m5_3.str(); errout.close();
-						save_frame(Rho_dt, a, a_st, a_end, c, gmax, alpha, rW, W0, D, K, sigma, A, H, E, t, dt, dx, dP, j, g, Gstar);
+
+						stringstream L, tm ,d3, p1, rini, a1, a2, Dm1, Dm2, dix, dimitri, geq;
+
+  						L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; dix << setprecision(2) << dx;
+  						rini << j; Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2];
+						a1 << a_st; a2  << a_end; dimitri  << dP; geq << setprecision(5) << Gstar;
+
+						string ErrGamfilenamePattern = "/ERROR_GAMMA_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str()
+						+ "_a_" + p1.str()  + "_D1_"+ Dm1.str() + "_D2_"+ Dm2.str() + "_dx_"+ dix.str() + "_R_";
+						string parendir = "";
+
+						// Creating a file instance called output to store output data as CSV.
+						if(Gstar != -1)
+							parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
+						else
+							parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
+
+						string gammaheader = "a_c,  x,  Gam0(x; t), Gam1(x; t), Gam2(x; t) \n"; //Header for output frame.
+						save_frame(Rho_dt, parendir, ErrGamfilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
+						
 					}
 
 					//Next sampling the advection vector from v[s].
@@ -4224,10 +4296,11 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 	vector<double> a_space = linspace(a_start, a_end, div);
 	cout << "NOSTRA" <<endl;
   	// The pspace to iterate over.
-    vector <double> t_measure = logarithm10_time_bins(t_max, dt);
+    //vector <double> t_measure = logarithm10_time_bins(t_max, dt);
 	// Computes and returns ln-distributed points from t= 10^{0} to log10(t_max) (the latter rounded down to 1 decimal place) 
   	// Returns time-points measured on a natural logarithmic scale from e^{2} to e^ln(t_max) rounded down to one decimal place.
 
+	vector <double> t_measure = linspace(40.0, 880.0, 22); // Computes and returns linearly distributed points from t= 20 to 240 (the latter rounded down to 1 decimal place
 	t_measure.insert(t_measure.begin(), 0.0);
 
   	cout << "Values in t_measure (which is of total size " << t_measure.size() << ") are :" <<endl;

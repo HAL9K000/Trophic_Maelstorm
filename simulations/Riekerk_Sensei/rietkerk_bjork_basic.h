@@ -51,6 +51,7 @@ inline const string prefix= "DiC";
 inline const string frame_folder = "../Data/Rietkerk/Frames/Stochastic/3Sp/" + prefix + "_"; //Folder to store frames.
 inline const string prelim_folder = "../Data/Rietkerk/Prelims/Stochastic/3Sp/"+ prefix +"_"; //Folder to store preliminary data.
 inline const string frame_prefix = "/FRAME_P_c_DP_G_"; //Prefix for frame files.
+inline const string gamma_prefix = "/GAMMA_G_"; //Prefix for gamma files.
 inline const string frame_header = "a_c,  x,  P(x; t), G(x; t), Pr(x; t), W(x; t), O(x; t) \n"; //Header for frame files.
 inline const string stat_prefix = "../Data/Rietkerk/Stochastic/3Sp/1stOrderCC_Rietkerk_" + prefix + "_STOC_P_c_G_";
 
@@ -151,7 +152,7 @@ void init_constframe(D2Vec_Double &array,  int Sp, int size, double constant[]);
 void init_randframe(D2Vec_Double &array, int Sp, int size, double mean[], double sd[]);
 void init_quarterframe(D2Vec_Double &array, double c1, double c2, double c3, double c4, int L);
 void init_gaussframe(D2Vec_Double &array, int size, vector<double> &sd, vector<double> &amp, int s_gauss = SpB);
-void init_gaussiantear(D2Vec_Double &array, int Sp_lim, int g, double cx[], double cy[], double sd[], double amp[]);
+void init_gaussiantear(D2Vec_Double &array, int Sp_lim, int g, double cx[], double cy[], const vector<double> &sd,const vector<double> &amp);
 void init_solitarytear(D2Vec_Double &array, int length);
 
 double mean_of_array(double array[],int size);
@@ -228,10 +229,10 @@ void first_order_critical_exp_delta_stochastic_2Sp(int div, double t_max, double
 
 //------------------- Vegetation + Grazer + Predator (+ Soil Water + Surface Water) -------------------//
 
-//Calculates gamma for 3 Sp Rietkerk model (details in PDF)
-void save_frame(D2Vec_Double &Rho_t, double a, double a_st, double a_end, double c,double gmax,double alpha, double rW, double W0, double (&D)[Sp], double (&K)[3],
-	double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double dx, double dP, int r, int g, double Gstar= -1);
+void save_frame(D2Vec_Double &Rho_t, const string &parendir, const string &filenamePattern, double a, double a_st, double a_end, 
+		double t, double dt, double dx, double dP, int r, int g, string header ="", bool overwrite = false);
 
+//Calculates gamma for 3 Sp Rietkerk model (details in PDF)
 void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec_Double &Rho_t, vector <double> &gamma_i,  
 			double (&Rho_avg)[Sp], vector <std::pair<double, int>>& rfrac, double nVeg_frac, int r_max, int i, int L);
 void f_2Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, double alpha, double rW, double W0, 

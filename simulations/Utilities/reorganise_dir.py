@@ -6,6 +6,7 @@ from pathlib import Path
 import glob
 import shutil
 import sys
+import copy
 
 '''
 This script reorganises the directory structure of the data files in the Rietkerk model.
@@ -39,14 +40,17 @@ The script accepts the following arguments:
 
 '''
 
-prefixes =["DDM-DiC-BURNIN"]
+prefixes =["DiC-OLD", "DiC-NEW"]
 #prefixes =["", "DiC", "BURNIN", "DiC-BURNIN", "DDM-DiC", "DDM-DiC-BURNIN"]
-root_dir = "../Data/Rietkerk/Frames/Stochastic/3Sp/"
-out_dir_noprefix = "../Data/Rietkerk/Reorganised_Frames/Stoc/3Sp/StdParam_20_100_EQ/"
-dP = 30000
+root_dir = "../Data/Remote/Rietkerk/Frames/Stochastic/3Sp/Test/"
+#out_dir_noprefix = "../Data/Rietkerk/Reorganised_Frames/Stoc/3Sp/StdParam_20_100_Test/"
+
+out_dir_noprefix = "../Data_Processing/StdParam_20_100_Test/"
+
+dP = 11000
 Geq = 4.802 # Optional. If Geq is not used in the subdirectory name, set Geq = "NA".
-L= [128]
-indx_vals_t = -5 
+L= [256]
+indx_vals_t = 25
 #Extract n largest values of T if indx_vals_t = -n, 
 # n smallest values of T if indx_vals_t = n.
 
@@ -97,20 +101,69 @@ def find_timerange(files, a, indx= indx_vals_t ):
         return T_vals
     return T_vals[indx:] if indx < 0 else T_vals[:indx]
 
+def find_vals(files, dir, reg_search_patterns, vals):
+    # Recursively iterate over reg_search_patterns and find all values in files that match the pattern.
+    # Append the values to vals.
+    files_copy = copy.deepcopy(files)
+    if len(reg_search_patterns) == 0:
+        return
+    else:
+        for f in files:
+            vals += [re.findall(reg_search_patterns[0], f)[0] for f in files_copy if re.findall(reg_search_patterns[0], f)]
+        # Remove matching values from files.
+        files_copy = [f for f in files_copy if not re.findall(reg_search_patterns[0], f)]
+        find_vals(files_copy, dir, reg_search_patterns[1:], vals)
 
-def test_txt_RW(dir):
+
+
+def test_txt_RW(parendir, type_id ="", reg_search_patterns = ["[\d]*[.][\d]+", "[\d]+"], savefile = "default", verbose= False):
 
     # Test reading and writing text files.
     # Dir has directories of the form "L_{G}_a_{a_val}/dP_{dP}/Geq_{Geq}/T_{T}/"
-    # Extract all a_val in dir, and save them to a text file in the same directory (tab delineated), with the name "a_vals.txt".
+    # Extract all vals in dir that match regex_search_patterns, with type_id as identifying prefix (if not empty) (such as "a" or "L" or "T" etc.)
+    # and save them to a text file in the same directory (tab delineated), with the name "savefile"
 
-    # First make a sorted list of a_val in each subdir.
-    files = glob.glob(os.path.join(dir, "L_*a_*"))
+    # First make a list of all immediate subdirectories in dir.
+
+    files = glob.glob(os.path.join(parendir, "*/"))
     #print("Found files: " + str(files))
-    #Find all unique values of a_val in files (in ascending order) (using regex with finding "a_{a_val}" and then removing a_).
-    a_vals = [re.findall(r'a_[\d]*[.][\d]+' , f)[0]
-                if re.findall(r'a_[\d]*[.][\d]+' , f) 
-                else re.findall(r'a_[\d]+' , f)[0] for f in files]
+    #Find all unique values of vals in files (in ascending order) (using regex with finding "a_{a_val}" and then removing a_).
+    if type_id != "":
+        reg_search_type_patterns = [type_id + "_" + reg for reg in reg_search_patterns]
+    else:
+        reg_search_type_patterns = reg_search_patterns
+    # Recursively iterate over regex_search_patterns and find all values in files that match the pattern.
+    vals=[]
+    find_vals(files, parendir, reg_search_type_patterns, vals)
+    #print(f"Found {type_id} vals: " + str(vals))
+    # Remove type_id from vals and sort them in ascending order if type_id is not empty.
+    vals = sorted([float(re.sub(type_id + "_", "", v)) for v in vals])
+    vals = np.unique(vals)
+    print(f"Found {type_id} vals: " + str(vals))
+    # Save vals to a text file in parendir (tab delineated), with the name savefile.
+    # Int values are saved as integers, float values are saved as floats.
+
+    if savefile == "default":
+        savefile = type_id + "_vals.txt"
+    try:
+        np.savetxt(parendir + "/" + savefile, vals, delimiter="\t", fmt="%g")
+        # Test reading the text file line by line.
+        if(verbose):
+            with open(parendir + "/" + savefile, "r") as f:
+                lines = f.readlines()
+                for line in lines:
+                    print(line.strip())
+        # Close the file.
+        f.close()
+    except Exception as e:
+        print("Error: Could not write vals to " + parendir + "/" + savefile + " with error message: \n" + str(e))
+        return
+    
+    
+    '''
+    #vals = [re.findall(r'a_[\d]*[.][\d]+' , f)[0]
+    #            if re.findall(r'a_[\d]*[.][\d]+' , f) 
+    #            else re.findall(r'a_[\d]+' , f)[0] for f in files]
     
     # Remove a_ from a_vals and sort them in ascending order.
     a_vals = sorted([float(re.findall(r'[\d]*[.][\d]+', a)[0]) if re.findall(r'[\d]*[.][\d]+', a) 
@@ -133,7 +186,9 @@ def test_txt_RW(dir):
     except Exception as e:
         print("Error: Could not write a_vals to " + dir + "/a_vals.txt with error message: \n" + str(e))
         return
-
+    '''
+        
+    
 def main():
     
     #Find a list of immediate subdirectories in root_dir
@@ -252,7 +307,10 @@ def main():
                             # First extract T, a_val, R from source_filename.
                             T = t; a_val = a; R = int(re.findall(r'[\d]+' , source_filename)[-1])
                             # Now create new filename.
-                            out_filename = "FRAME_T_%g_a_%g" %(T, a_val) + "_R_" + str(R) + ".csv"
+                            if re.search("GAMMA", source_filename):
+                                out_filename = "GAMMA_T_%g_a_%g" %(T, a_val) + "_R_" + str(R) + ".csv"
+                            else:
+                                out_filename = "FRAME_T_%g_a_%g" %(T, a_val) + "_R_" + str(R) + ".csv"
                             outfile = t_subdir + out_filename
                             #Check if outfile already exists.
                             #fd_source = os.open(source_file, os.O_RDONLY);
@@ -293,6 +351,10 @@ def main():
                                 print("Error: Could not find file " + source_file + "  with error message: \n" + str(e))
                                 print("Skipping file.")
                                 continue
+                    # This is the end of the loop over t in t_range.
+
+                    #Create a t-vals.txt file in outdir.
+                    test_txt_RW(outdir, "T", ["[\d]*[.][\d]+", "[\d]+"])
 
                 # This is the end of the loop over a in a_vals.
                 # Now appending list of savedir in a txt file in sub.
@@ -314,7 +376,16 @@ def main():
         # Check if out_dir exists.
         if os.path.exists(out_dir):
             print("Adding a-val.txt to " + out_dir)
-            test_txt_RW(out_dir)
+            test_txt_RW(out_dir, "a", ["[\d]*[.][\d]+", "[\d]+"])
+
+        # Read a_vals.txt in out_dir and print the values.
+        if os.path.exists(out_dir + "/a_vals.txt"):
+            print("Reading a_vals.txt in " + out_dir)
+            with open(out_dir + "/a_vals.txt", "r") as f:
+                lines = f.readlines()
+                for line in lines:
+                    print(line.strip())
+            f.close()
         
 
 def rename(dir, keyword, new_keyword):

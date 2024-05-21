@@ -330,7 +330,7 @@ void init_gaussframe(D2Vec_Double &array, int size, vector<double> &sd, vector<d
 	 * 6. The function returns the filled array.
 	 * 7. It does so by designating two temporary D2Vec_Double arrays, gauss_frame and const_frame, to store the Gaussian and constant values respectively.
 	 */
-
+	mutex errorMutex; // Mutex to make error messages thread-safe
 	int g = static_cast<int>(sqrt(size));
 	//Initialise the Gaussian frame
 	D2Vec_Double gauss_frame(s_gauss, vector<double>(g*g, 0.0));
@@ -380,6 +380,25 @@ void init_gaussframe(D2Vec_Double &array, int size, vector<double> &sd, vector<d
 			array[s + s_gauss][i] = const_frame[s][i];	
 	}
 
+	//Debugging.
+	std::lock_guard<std::mutex> lock(errorMutex);
+	ostringstream oss;
+	oss << "Gaussian frame initialised with " << s_gauss << " species.\n";
+	oss << "Amp values:\n";
+	for(int i=0; i< Sp; i++)
+		oss << amp[i] << " ";
+	oss << "\n";
+	oss << "SD values:\n";
+	for(int i=0; i< s_gauss; i++)
+		oss << " ( " << i << " , " << sd[i] << " ) \t";
+	oss << "\n";
+	oss << "cx values & cy values:\n";
+	for(int i=0; i< s_gauss; i++)
+		oss << i << " " << cx[i] << " " << cy[i] << "\n";
+
+	cout << oss.str();
+	cerr << oss.str() << endl;
+
 	// Swap memory to free up space.
 	vector <vector<double>>().swap(gauss_frame);
 	vector <vector<double>>().swap(const_frame);
@@ -400,7 +419,7 @@ void init_gaussiantear(D2Vec_Double &array, int Sp_lim, int g, double cx[], doub
 		for(int i=0; i< g; i++)
 		{
 			for(int j=0; j< g; j++)
-				array[s][i*g + j] = A*exp(-((i-cx[s])*(i-cx[s]) + (j-cy[s])*(j-cy[s]))/(2*sd[s]*sd[s]));
+				array[s][i*g + j] = amp[s]*exp(-((i-cx[s])*(i-cx[s]) + (j-cy[s])*(j-cy[s]))/(2*sd[s]*sd[s]));
 		}
 	}
 }
@@ -3531,7 +3550,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		
 		vector <double> sd{g/8.0, g/16.0}; //Setting standard deviation of gaussian distributions of vegetation to g/8 and g/16.
 
-		init_gaussframe(Rho_dt, g*g, amp, sd);
+		init_gaussframe(Rho_dt, g*g, sd, amp);
 		
 
 
@@ -3590,7 +3609,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		errout.open(thr, std::ios_base::app); errout << m1.str(); errout.close(); 
 		
 
-		poisson_distribution<int> poisson; gamma_distribution <double> gamma; 
+		poisson_distribution<int> poisson; gamma_distribution <double> gamma_distr; 
 		uniform_real_distribution<double> unif(0.0, 1.0); normal_distribution<double> norm(0.0, 1.0);
 
 		double t=0; int index = 0;  //Initialise t
@@ -3620,7 +3639,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				rhox_num = occupied_sites_of_vector(temp_alt, g*g); //Finds number of occupied at given t.
 				vector<double>().swap(temp_alt); //Flush temp out of memory.0
 
-				if( t >= 99 && t <= 10000 || t== 0 ||  index >= tot_iter -8 &&  index <= tot_iter-1)
+				if( t >= 15 && t <= 10000 || t== 0 ||  index >= tot_iter -8 &&  index <= tot_iter-1)
 				{
 					//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
 					
@@ -3634,6 +3653,14 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					// Three replicates are over.
 
 					//ofstream frame_dp;
+
+
+					save_frame(Rho_dt, a, a_st, a_end, c, gmax, alpha, rW, W0, D, K, sigma, A, H, E, t, dt, dx, dP, j, g, Gstar);
+
+					stringstream m3;
+					m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
+					cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
+					/**
 
 					if(t < 760)
 					{
@@ -3664,6 +3691,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						stringstream m3;
 						m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
 					}
+
+					*/
 				}
 
 				vector <double> temp_1= {DRho[0].begin(),DRho[0].end()}; //Rho_dt for species '0'
@@ -3743,8 +3772,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					}
 					else
 					{
-						gamma = gamma_distribution<double>(gru, 1.0);
-						Rho_dt[s][i]= gamma(rng)/lambda[s];
+						gamma_distr = gamma_distribution<double>(gru, 1.0);
+						Rho_dt[s][i]= gamma_distr(rng)/lambda[s];
 					}
 					/**
 					stringstream m6_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
@@ -3791,6 +3820,9 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				errout.open(thr, std::ios_base::app); errout << m5_1.str(); errout.close();
 			}
 			*/
+
+			D2Vec_Double gamma(SpB, vector<double> (g*g, 0.0)); //Stores gamma for each species at each site.
+
 			// Now for higher order species.
 			for(int s=1; s< Sp-2; s++)
             {
@@ -3908,8 +3940,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					}
 					else
 					{
-						gamma = gamma_distribution<double>(gru, 1.0);
-						Rho_dt[s][i]= gamma(rng)/lambda[s];
+						gamma_distr = gamma_distribution<double>(gru, 1.0);
+						Rho_dt[s][i]= gamma_distr(rng)/lambda[s];
 					}
 					if(isnan(Rho_dt[s][i]) == true || isinf(Rho_dt[s][i]) == true)
 					{
@@ -3930,9 +3962,56 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						<< " and (DX, DY):  [" << diff_eff[s].first << " , " << diff_eff[s].second <<  " ]" << endl; cout << m5_2.str();
 						errout.open(thr, std::ios_base::app); errout << m5_2.str(); errout.close();
 					}
+
+					gamma[s][i] = gamma_i[s]; //Store gamma for each species at each site.
 					
 				}
 			}
+
+			if(t==0 || t >= t_meas[index-1] -dt/2.0 && t < t_meas[index-1] +dt/2.0)
+			{
+				//Save the gamma values for each species at each site at each time point.
+				stringstream L, tm ,d3, p1, rini, a1, a2, Dm1, Dm2, dix, dimitri, geq;
+
+  				L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; dix << setprecision(2) << dx;
+  				rini << j; Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2];
+				a1 << a_st; a2  << a_end; dimitri  << dP; geq << setprecision(5) << Gstar;
+
+				string filenamePattern = gamma_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_" + p1.str()  + "_D1_"+ Dm1.str() + "_D2_"+ Dm2.str() + "_dx_"+ dix.str() + "_R_";
+				
+				string parendir = "";
+				// Creating a file instance called output to store output data as CSV.
+				if(Gstar != -1)
+					parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
+				else
+					parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
+
+				string gammaheader = "a_c,  x,  Gam0(x; t), Gam1(x; t), Gam2(x; t) \n"; //Header for output frame.
+
+				string filename = filenamePattern + rini.str() + ".csv";
+				string filepath = parendir + "/" + filename;
+				ostringstream oss;
+				oss << gammaheader;
+				for(int i=0; i<g*g; i++)
+				{
+					oss << a << ", " << i << ", " << gamma[0][i] << ", " << gamma[1][i] << ", " << gamma[2][i] << "\n";
+				}
+
+				FILE *gammafile = fopen(filepath.c_str(), "w");
+				if(gammafile)
+				{
+					fprintf(gammafile, "%s", oss.str().c_str());
+					fclose(gammafile);
+				}
+				else
+				{
+					std::cerr << "Error: Could not open file " << filepath << " for writing." << std::endl;
+				}
+
+			}
+
+			//Swap the gamma vector to free up memory.
+			vector<vector<double>>().swap(gamma);
 			
 			if(counter%50000 == 0)
 			{
@@ -4199,10 +4278,12 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 	vector<double> a_space = linspace(a_start, a_end, div);
 	cout << "NOSTRA" <<endl;
   	// The pspace to iterate over.
-    vector <double> t_measure = logarithm10_time_bins(t_max, dt);
+    //vector <double> t_measure = logarithm10_time_bins(t_max, dt);
 	// Computes and returns ln-distributed points from t= 10^{0} to log10(t_max) (the latter rounded down to 1 decimal place) 
   	// Returns time-points measured on a natural logarithmic scale from e^{2} to e^ln(t_max) rounded down to one decimal place.
 
+	vector <double> t_measure = linspace(40.0, 800.0, 20); // Computes and returns linearly distributed points from t= 20 to 240 (in steps of 20) 
+  	// Returns time-points measured on a linear scale from 20 to 240 in steps of 20.
 	t_measure.insert(t_measure.begin(), 0.0);
 
   	cout << "Values in t_measure (which is of total size " << t_measure.size() << ") are :" <<endl;

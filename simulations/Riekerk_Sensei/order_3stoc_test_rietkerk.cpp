@@ -70,7 +70,7 @@ int main(int argc, char *argv[])
   double M[SpB] = {d, mj, mm};     // Mortality Rate of Species. (in hr^{-1})
   double E[SpB] ={1.0, ej, em}; //Efficiency of consumption.
   //double D[Sp] ={d0, d1}; //Diffusion coefficients for species. (in km^2/hr)
-  double pR[Sp] ={0.0, 1.04285/2.0, 1.25536/2.0}; //Perception rate of species (in km)
+  double pR[Sp] ={0.0, 1.04285/2.0, 1.25536/2.0}; //Perception radius of species (in km)
 
 
   
@@ -150,12 +150,17 @@ int main(int argc, char *argv[])
   //INITIAL CONDITIONS:
 
   //double clow[2*Sp] = {0, dP/50000.0, dP/500000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};
-  double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, Gstar*1.5, 15, 4, 10};
+  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, Gstar*1.5, 15, 4, 10};
   //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, 2, 0.6, 4, 10};
   //double clow[2*Sp] = {0, dP/10000.0, dP/100000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};
   //double chigh[2*Sp] = {dP, dP/10000.0, dP/100000.0, 4, 20, 10000.0 + dP, Gstar, 10, 4, 10};
   double chigh[2*Sp] = {dP, dP/dP, dP/(10.0*dP), 4, 20, 10000.0 + dP, Gstar*1.5, 15, 4, 10};
   //double chigh[2*Sp] = {dP, dP/dP, dP/(10.0*dP), 4, 20, 10000.0 + dP, 2, 0.6, 4, 10};
+
+
+  //NOTE: The following clow is used for Gaussian initial conditions for testing and is NOT MEANT FOR PRODUCTION RUNS.
+
+  double clow[2*Sp] = {500, Gstar*10, 40, 4, 20, 500, Gstar*10, 40, 4, 10};
   
   //c_high and c_low are arrays of size 2*Sp, with the values of the constants for each species.
 	// If R < R_c, then the first Sp elements of c_high and c_low are passed to init_randconstframe() to initialise the frame.
