@@ -4,7 +4,7 @@ int main(int argc, char *argv[])
 {
   increase_stack_limit(1024L); //Increase stack limit to 1024 MB.
 
-
+  string preFIX; // Prefix for the output files
   double a_c =1/24.0;
   double c, gmax, alpha, d, rW, W0, t_max, dt, dx; //int g, div;
   double a_start, a_end; double r; double dP; // Kick for high initial state
@@ -91,6 +91,8 @@ int main(int argc, char *argv[])
 
   cout << "This is a 3Sp (Three) Stochastic Rietkerk Model Script\n";
 
+  cout << "\n============================================================\n";
+
   // There are eight user-defined parameters, as follow below: dt, t_max, g, r, a_start, a_end, div, dP.
 
   //Check if the user has entered the correct number of arguments. If not prompt the user to enter all the arguments within the script.
@@ -124,9 +126,14 @@ int main(int argc, char *argv[])
 
     cout << "Enter kick for high state: ";
     cin >> dP;
+
+    cout << "Enter Prefix (common choices include 'DiC-REF', 'DDM-DiC-BURNIN', 'nDiC' etc.) If not provided, default value: " 
+        + prefix + " will be used: ";
+    cin >> preFIX;
+
   }
   // If the user has entered the correct number of arguments, then the arguments are read from the command line.
-  else if(argc == 9)
+  else if(argc == 10)
   {
     dt = atof(argv[1]);
     t_max = atof(argv[2]);
@@ -136,36 +143,16 @@ int main(int argc, char *argv[])
     a_end = atof(argv[6]);
     div = atoi(argv[7]);
     dP = atof(argv[8]);
+    preFIX = argv[9];
   }
   // If there are otherwise an arbitrary number of arguements, terminate the program.
   else
   {
     cout << "Please enter the correct number of arguments.\n";
     cout << "The correct number of arguments is 8.\n";
-    cout << "The arguments are as follows: dt, t_max, g, r, a_start, a_end, div, dP.\n";
+    cout << "The arguments are as follows: dt, t_max, g, r, a_start, a_end, div, dP, PREFIX.\n";
     exit(1);
   }
-
-
-  //INITIAL CONDITIONS:
-
-  //double clow[2*Sp] = {0, dP/50000.0, dP/500000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};
-  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, Gstar*1.5, 15, 4, 10};
-  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, 2, 0.6, 4, 10};
-  //double clow[2*Sp] = {0, dP/10000.0, dP/100000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};
-  //double chigh[2*Sp] = {dP, dP/10000.0, dP/100000.0, 4, 20, 10000.0 + dP, Gstar, 10, 4, 10};
-  double chigh[2*Sp] = {dP, dP/dP, dP/(10.0*dP), 4, 20, 10000.0 + dP, Gstar*1.5, 15, 4, 10};
-  //double chigh[2*Sp] = {dP, dP/dP, dP/(10.0*dP), 4, 20, 10000.0 + dP, 2, 0.6, 4, 10};
-
-
-  //NOTE: The following clow is used for Gaussian initial conditions for testing and is NOT MEANT FOR PRODUCTION RUNS.
-
-  double clow[2*Sp] = {500, Gstar*10, 40, 4, 20, 500, Gstar*10, 40, 4, 10};
-  
-  //c_high and c_low are arrays of size 2*Sp, with the values of the constants for each species.
-	// If R < R_c, then the first Sp elements of c_high and c_low are passed to init_randconstframe() to initialise the frame.
-	// If R >= R_c, then the last Sp elements of c_high and c_low are passed to init_randconstframe() to initialise the frame.
-
 
   cout << "\n System-level details:\n";
   cout << "dx = " << dx << "\t dt = " << dt << "\t t_max = " << t_max << "\t g = " << g << "\t r = " << r << endl;
@@ -185,16 +172,51 @@ int main(int argc, char *argv[])
     cout << "CFL condition satisfied." << endl;
   }
 
-  //cout << "Enter 1 to read from csv or 0 to input standardised initial condions"
+  cout << "\n=============================================================\n";
 
-  /* cout << "Enter initial density of Primary Producer (kg/m^2): ";
-  cin >> p0i;
 
-  cout << "Enter initial density of Primary Consumer (kg/m^2): ";
-  cin >> p0j;
+  if(preFIX == "N/A" || preFIX == "n/a" || preFIX == "NA" || preFIX == "na" || preFIX == "N" || preFIX == "n" || preFIX == "")
+  {
+    cout << "No prefix provided. Using default prefix: " << prefix << endl;
+    preFIX = prefix;
+  }
+  //Defining the save folders.
+  
+  set_Prefix(preFIX); //Set the prefix (and thus save folders) to the user-defined prefix.
+  cout << "Save directory for frames: " << frame_folder << "\n";
+  cout << "Save directory for preliminary data: " << prelim_folder << "\n";
+  cout << "Save directory for final data: " << stat_prefix << "\n";
 
-	cout << "Enter initial density of Secondary Producer (kg/m^2): ";
-  cin >> p0m; */
+
+  //INITIAL CONDITIONS:
+
+  // LE ORIGINAL (NORMAL CLOSE TO MFT)
+  //double clow[2*Sp] = {0, dP/50000.0, dP/500000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};
+  // HIGH INIT, > MFT
+  double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, Gstar*1.5, 15, 4, 10};
+  // LOW INIT, < MFT
+  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, 2, 0.6, 4, 10};
+  // CLOSE TO MFT
+  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, Gstar, 10, 4, 10};
+
+  // NORMAL INIT CLOSE TO MFT
+  //double chigh[2*Sp] = {dP, dP/10000.0, dP/100000.0, 4, 20, 10000.0 + dP, Gstar, 10, 4, 10};
+  // HIGH INIT > MFT
+  double chigh[2*Sp] = {dP, dP/dP, dP/(10.0*dP), 4, 20, 10000.0 + dP, Gstar*1.5, 15, 4, 10};
+  // LOW INIT < MFT
+  //double chigh[2*Sp] = {dP, dP/dP, dP/(10.0*dP), 4, 20, 10000.0 + dP, 2, 0.6, 4, 10};
+
+
+  //NOTE: The following clow is used for Gaussian initial conditions for testing and is NOT MEANT FOR PRODUCTION RUNS.
+
+  //double clow[2*Sp] = {500, Gstar*10, 40, 4, 20, 500, Gstar*10, 40, 4, 10};
+  
+  //c_high and c_low are arrays of size 2*Sp, with the values of the constants for each species.
+	// If R < R_c, then the first Sp elements of c_high and c_low are passed to init_randconstframe() to initialise the frame.
+	// If R >= R_c, then the last Sp elements of c_high and c_low are passed to init_randconstframe() to initialise the frame.
+
+
+
 
   //add_two(3.14, 1.78);
   cout << maxis(3.14, 1.78) <<endl;
@@ -220,12 +242,16 @@ int main(int argc, char *argv[])
 
   stringstream ast, est, dPo, geq; ast << a_start; est  << a_end; dPo << dP, geq << setprecision(5) << Gstar;
 
+  
+	// This is done to avoid overwriting of files.
+  string path_to_folder = frame_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Geq_" + geq.str();
+  recursive_dir_create(path_to_folder);
+
+  /**
   stringstream foldername;
 	foldername << frame_folder 
   << ast.str() << "-" << est.str() << "_dP_" << dPo.str() << "_Geq_" << geq.str() << "/";
 	// Creating a string stream instance to store the values of the parameters in the file name.
-	// This is done to avoid overwriting of files.
-
 	struct stat info2;
 	if( stat( foldername.str().c_str(), &info2 ) != 0 )
 	{
@@ -237,7 +263,12 @@ int main(int argc, char *argv[])
 			exit(3);
 		}
 	}
+  */
 
+  path_to_folder = prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Geq_" + geq.str();
+  recursive_dir_create(path_to_folder);
+  
+  /**
   stringstream foldername2;
 	foldername2 << prelim_folder 
   << ast.str() << "-" << est.str() << "_dP_" << dPo.str() << "_Geq_" << geq.str() << "/";
@@ -255,13 +286,15 @@ int main(int argc, char *argv[])
 			exit(3);
 		}
 	}
-
-    
-  stringstream foldername3;
-	foldername3 << "../Data/Rietkerk/Stochastic/3Sp/";
+  */
+  
+  recursive_dir_create("../Data/Rietkerk/Stochastic/3Sp");
+  
+  /**
 	// Creating a string stream instance to store the values of the parameters in the file name.
 	// This is done to avoid overwriting of files.
-
+  stringstream foldername3;
+	foldername3 << "../Data/Rietkerk/Stochastic/3Sp/";
 	struct stat info0;
 	if( stat( foldername3.str().c_str(), &info0 ) != 0 )
 	{
@@ -273,6 +306,7 @@ int main(int argc, char *argv[])
 			exit(3);
 		}
 	}
+  */
   //first_order_critical_exp_delta_stochastic(div, t_max, a_start, a_end, c, gmax, alpha, d, rW, W0, D, K, sigma, dt, dx, dP, r, g);
   first_order_critical_exp_delta_stochastic_3Sp(div, t_max, a_start, a_end, a_c, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR, chigh, clow, dt, dx, dP, r, g);
   //tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, auto &Rh0,

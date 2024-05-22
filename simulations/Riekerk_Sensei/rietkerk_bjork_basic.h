@@ -15,6 +15,8 @@
 #include <random>
 #include <vector>
 #include <algorithm>
+#include <ranges>
+#include <span>
 #include <chrono>
 #include <cmath>
 #include <list>
@@ -47,13 +49,13 @@ inline const int Sp_NV = Sp-3; //Number of grazer and predator species in system
 inline const int Sp4_1 = 4*(Sp -2) +3; // Used for generating statistics on surviving runs
 inline const int Sp2 = 2*Sp; // Used for generating statistics on surviving runs
 
-inline const string prefix= "DiC";
-inline const string frame_folder = "../Data/Rietkerk/Frames/Stochastic/3Sp/" + prefix + "_"; //Folder to store frames.
-inline const string prelim_folder = "../Data/Rietkerk/Prelims/Stochastic/3Sp/"+ prefix +"_"; //Folder to store preliminary data.
+inline string prefix = "DiC-NREF-LI";
+inline string frame_folder = "../Data/Rietkerk/Frames/Stochastic/3Sp/" + prefix + "_"; //Folder to store frames.
+inline string prelim_folder = "../Data/Rietkerk/Prelims/Stochastic/3Sp/"+ prefix +"_"; //Folder to store preliminary data.
 inline const string frame_prefix = "/FRAME_P_c_DP_G_"; //Prefix for frame files.
 inline const string gamma_prefix = "/GAMMA_G_"; //Prefix for gamma files.
 inline const string frame_header = "a_c,  x,  P(x; t), G(x; t), Pr(x; t), W(x; t), O(x; t) \n"; //Header for frame files.
-inline const string stat_prefix = "../Data/Rietkerk/Stochastic/3Sp/1stOrderCC_Rietkerk_" + prefix + "_STOC_P_c_G_";
+inline string stat_prefix = "../Data/Rietkerk/Stochastic/3Sp/1stCC_Rietkerk_" + prefix + "_P_c_G_";
 
 
 
@@ -142,6 +144,7 @@ template <typename T> int sgn(T val);
 void increase_stack_limit(long long stack_size);
 bool maxis(int a, int b);
 void add_three(int a, int b, int c); //Test function.
+void set_Prefix(string& user_prefix);
 // Custom comparator for sorting pairs based on the squared distance
 bool comparePairs(const pair<int, int>& a, const pair<int, int>& b); 
 
@@ -177,6 +180,7 @@ std::vector<double> logarithm10_time_bins(double t_max, double dt);
 
 //----------------------------- Misc. Supporting Add-ons -------------------------------------------------
 
+void recursive_dir_create(const string& path_to_dir);
 int findMaxRepNo(string& parendir, const string& filenamePattern);
 int theborderwall(D2Vec_Double &Rho_t, int g);
 void determine_neighbours_R2( int g, int S, D3Vec_Int &neighbours_R2);
@@ -185,8 +189,10 @@ void determine_neighbours_Sq8(int g, int S, D3Vec_Int &neighbours_Sq8);
 void set_density_dependentmortality(double m);
 std::vector<std::pair<int, int>> computeNeighboringSitesCentral(int R);
 std::vector<int> getNeighborsInBall(const vector<int>& sortedNeighboringSites, double f);
-void generateNeighboringSitesFromCentral(const vector<pair<int, int>>& centralNeighboringSites, 
-                                         vector<int>& neighboringSites, int i, int j, int L); 
+void generateNeighboringSitesFromCentral(const auto range_CentralNeighboringSites, 
+										 vector<int>& neighboringSites, int i, int j, int L);
+//void generateNeighboringSitesFromCentral(const vector<pair<int, int>>& centralNeighboringSites, 
+//                                         vector<int>& neighboringSites, int i, int j, int L); 
 
 //----------------------------- Regular Rietkerk Integration Machinery --------------------------------------------//
 
@@ -232,6 +238,10 @@ void first_order_critical_exp_delta_stochastic_2Sp(int div, double t_max, double
 void save_frame(D2Vec_Double &Rho_t, const string &parendir, const string &filenamePattern, double a, double a_st, double a_end, 
 		double t, double dt, double dx, double dP, int r, int g, string header ="", bool overwrite = false);
 
+//Calculates gamma for 3 Sp Rietkerk model (details in PDF, 
+// ASSUMING PREDATORS AREN'T DETERRED BY HIGH LOCAL VEGETATION DENSITY)
+void calc_gamma_3Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringSites, D2Vec_Double &Rho_t, D2Vec_Double &gamma,  
+			double (&Rho_avg)[Sp], vector <std::pair<double, int>>& rfrac, double nVeg_frac, int r_max, int L);
 //Calculates gamma for 3 Sp Rietkerk model (details in PDF)
 void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec_Double &Rho_t, vector <double> &gamma_i,  
 			double (&Rho_avg)[Sp], vector <std::pair<double, int>>& rfrac, double nVeg_frac, int r_max, int i, int L);
@@ -245,6 +255,5 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double a_start, double a_end, double a_c,  double c, double gmax, double alpha,
 	double rW, double W0,  double (&D)[Sp], double v[], double (&K)[3], double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[],
 	double ch[], double clo[], double dt, double dx, double dP, int r,  int g);
-
 
 #endif

@@ -48,11 +48,11 @@ from matplotlib.collections import LineCollection
 
 in_dir = "StdParam_20_100_Test/"
 out_dir = "../../Images/AdvDiffTest/"
-PREFIX = "DiC-NEW"
+PREFIX = "DiC-NEW-REF-IMP"
 out_dir = "../../Images/AdvDiffTest/" + PREFIX + "/"
 g = 256;  dP = 11000; Geq = 4.802; R_max= 1;
 T_vals =[]
-a_vals = [0.043]    
+a_vals = [0.042]    
 
 #Making the output directories if they don't exist
 Path(out_dir + 'Videos/').mkdir(parents=True, exist_ok=True)

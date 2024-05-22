@@ -40,7 +40,7 @@ The script accepts the following arguments:
 
 '''
 
-prefixes =["DiC-OLD", "DiC-NEW"]
+prefixes =["DiC-NEW-REF-IMP"]#, "DiC-NEW"]
 #prefixes =["", "DiC", "BURNIN", "DiC-BURNIN", "DDM-DiC", "DDM-DiC-BURNIN"]
 root_dir = "../Data/Remote/Rietkerk/Frames/Stochastic/3Sp/Test/"
 #out_dir_noprefix = "../Data/Rietkerk/Reorganised_Frames/Stoc/3Sp/StdParam_20_100_Test/"
@@ -50,7 +50,7 @@ out_dir_noprefix = "../Data_Processing/StdParam_20_100_Test/"
 dP = 11000
 Geq = 4.802 # Optional. If Geq is not used in the subdirectory name, set Geq = "NA".
 L= [256]
-indx_vals_t = 25
+indx_vals_t = 26
 #Extract n largest values of T if indx_vals_t = -n, 
 # n smallest values of T if indx_vals_t = n.
 

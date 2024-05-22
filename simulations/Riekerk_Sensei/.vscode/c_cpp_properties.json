@@ -14,8 +14,8 @@
                 "_UNICODE"
             ],
             "compilerPath": "D:/cygwin64/bin/gcc.exe",
-            "cStandard": "c17",
-            "cppStandard": "gnu++17",
+            "cStandard": "c23",
+            "cppStandard": "gnu++20",
             "intelliSenseMode": "linux-gcc-x64"
         }
     ],
