@@ -54,6 +54,7 @@ inline string frame_folder = "../Data/Rietkerk/Frames/Stochastic/3Sp/" + prefix 
 inline string prelim_folder = "../Data/Rietkerk/Prelims/Stochastic/3Sp/"+ prefix +"_"; //Folder to store preliminary data.
 inline const string frame_prefix = "/FRAME_P_c_DP_G_"; //Prefix for frame files.
 inline const string gamma_prefix = "/GAMMA_G_"; //Prefix for gamma files.
+inline const string prelim_prefix = "/PRELIM_AGGRAND_P_c_ID_"; //Prefix for preliminary data files.
 inline const string frame_header = "a_c,  x,  P(x; t), G(x; t), Pr(x; t), W(x; t), O(x; t) \n"; //Header for frame files.
 inline string stat_prefix = "../Data/Rietkerk/Stochastic/3Sp/1stCC_Rietkerk_" + prefix + "_P_c_G_";
 
@@ -234,7 +235,8 @@ void first_order_critical_exp_delta_stochastic_2Sp(int div, double t_max, double
 	double dt, double dx, double dP, int r,  int g);
 
 //------------------- Vegetation + Grazer + Predator (+ Soil Water + Surface Water) -------------------//
-
+void save_prelimframe(D2Vec_Double &Rho_t, const string &parendir, const string &filenamePattern, double a, double a_st, double a_end, 
+		double t, double dt, double dx, double dP, int r, int g, string header ="", bool overwrite = false, bool delete_previous = false);
 void save_frame(D2Vec_Double &Rho_t, const string &parendir, const string &filenamePattern, double a, double a_st, double a_end, 
 		double t, double dt, double dx, double dP, int r, int g, string header ="", bool overwrite = false);
 

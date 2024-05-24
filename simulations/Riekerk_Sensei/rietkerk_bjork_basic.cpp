@@ -3314,6 +3314,112 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 
 }
 
+void save_prelimframe(D2Vec_Double &Rho_t, const string &parendir, const string &filenamePattern, double a, double a_st, double a_end, double t, 
+	double dt, double dx, double dP, int r, int g, string header /* =""*/, bool overwrite /* = false*/, bool delete_previous /* = false*/)
+{
+	stringstream rini; rini << r;
+	//Next, designate the naive filename
+	string basefilename = filenamePattern + rini.str() + ".csv";
+
+	string filename = parendir + basefilename;
+	// If the file already exists, increment the replicate number by 1 of the maximum replicate number corresponding to the filename pattern.
+	// This is to avoid overwriting files.
+	if (fs::exists((filename)) && !overwrite) 
+	{
+		int maxRepNo = findMaxRepNo(parendir, filenamePattern);
+		//maxRepNo++; //Increment the maximum replicate number by 1.
+		filename = parendir + filenamePattern + std::to_string(maxRepNo + 1) + ".csv";
+		stringstream m1;
+
+		m1 << "File exists. New filename: " << filename << " \n and maxRepNo: " << maxRepNo << endl;
+		cout << m1.str();
+		basefilename = filenamePattern + std::to_string(maxRepNo + 1) + ".csv";
+	}
+
+	
+
+	std::ostringstream oss;
+	if(header != "")
+		oss << header;
+	else
+		oss << frame_header;
+		// Using default header (defined in header file) if no header is provided.
+
+	//tot_iter is the number of rows in the Rho_t matrix.
+	double tot_rows = Rho_t.size();
+	for(int i=0; i< tot_rows; i++)
+	{	// Recall Rho is: | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |    #Surviving Runs    |   #Active Sites |
+		oss << a << ","<< r+1 << "," << g << "," << Rho_t[i][0] << "," << Rho_t[i][1] << "," << Rho_t[i][2] << ",";
+		for(int s=0; s <SpB; s++)
+		{
+			oss << Rho_t[i][4*s + 3] << "," << Rho_t[i][4*s +4] << "," << Rho_t[i][4*s +5] << "," << Rho_t[i][4*s +6] << ","; 
+		}
+		oss <<  "\n";
+	}
+
+	FILE *fp = fopen(filename.c_str(), "w");
+	if(fp)
+	{
+		fprintf(fp, "%s", oss.str().c_str());
+		fclose(fp);
+		cout << "File: " << basefilename << " written to disk successfully. \n";
+	}
+	else
+	{
+		std::cerr << "Error: Could not open PRELIM file " << filename << std::endl;
+	}
+
+	// Delete the previous file (if it exists) to save space.
+	#if defined(__GNUC__) && (__GNUC__ >= 9)
+
+	if(r > 2 && delete_previous)
+	{
+		// Delete the previous file (if it exists) to save space.
+		// Reset rini value.
+		stringstream rini_prev; rini_prev << r-2;
+		// Get substring from the string filenamePattern starting after the sequence "_DP_G_" to the end of the string.
+		std::smatch m;
+		std::regex_search(filenamePattern, m, std::regex("_DP_G_"));
+		string filenamePattern_prev = prelim_prefix + ".*_DP_G_" +  m.suffix().str() + rini_prev.str() + ".csv";
+		//stringstream m7; m7 << "For (r,a,t)" << r << " , " << a << " , " << t 
+		//<< " Previous filename pattern: " << filenamePattern_prev << "with m: " << m.str() << "\n"; cout << m7.str();
+
+		// Using regex to delete the file with the previous replicate number.
+		std::regex filePattern(filenamePattern_prev);
+
+		// Iterate over the files in the parent directory (path_to_dir) and delete the file if it matches the pattern.
+		for (const auto & entry : fs::directory_iterator(parendir))
+		{
+			string matchStr = "/" + entry.path().filename().string();
+			if (std::regex_search(matchStr, filePattern))
+			{
+				if(fs::exists(entry.path()) && fs::is_regular_file(entry.path()))
+				{
+					try
+					{	
+						fs::remove(entry.path());
+						stringstream m8;
+						m8 << "File " << entry.path().filename().string() << " deleted successfully. \n"; cout << m8.str();
+					}
+					catch (const fs::filesystem_error& e)
+					{
+						stringstream m8;
+						m8 << "Error deleting file: " << entry.path().string() << " with error: " << e.what() << "\n"; cout << m8.str();
+						cerr << m8.str();
+					}
+				}
+				else
+				{
+					stringstream m8;
+					m8 << "File: " << entry.path().string() << " does not exist. \n"; cout << m8.str();
+					cerr << m8.str();
+				}	
+			}
+		}	
+	}
+	#endif
+}
+
 void save_frame(D2Vec_Double &Rho_t, const string &parendir, const string &filenamePattern, double a, double a_st, double a_end, double t, double dt, double dx, double dP, int r, int g, string header /* =""*/, bool overwrite /* = false*/)
 {
 	stringstream rini; rini << r;
@@ -3798,7 +3904,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				rhox_num = occupied_sites_of_vector(temp_alt, g*g); //Finds number of occupied at given t.
 				vector<double>().swap(temp_alt); //Flush temp out of memory.0
 
-				// FRAME SAVING
+				/** // FRAME SAVING
 				if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 60000 && t <= 120000 || t >= 200 && t <= 10000 
 					|| t== 0)
 				{
@@ -3832,7 +3938,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
 					*/
 
-					// SAVE SELECTED FRAMES
+					/** // SAVE SELECTED FRAMES
 					if(t < 760)
 					{
 						//Only save one in three frames here.
@@ -3861,10 +3967,50 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
 						stringstream m3;
 						m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
+						cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
 					}
+					// */
+					/**
 					
 					
-				} 
+					
+				}
+				// */
+
+				// BLOCK FOR CALCULATING AND TEMP PRELIMINARY FRAMES
+				if( index == int(tot_iter*0.85) || index == int(tot_iter*0.9) || index == int(tot_iter*0.95))
+				{
+					// In this case, copy the first "index" rows of rho_rep_avg_var to a new 2D vector, update the values using var_mean_incremental_surv_runs()
+					// and save to file.
+					D2Vec_Double rho_rep_avg_var_temp(index, vector<double> (Sp4_1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+					std::copy(rho_rep_avg_var.begin(), rho_rep_avg_var.begin() + index, rho_rep_avg_var_temp.begin());
+					var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index, j);
+
+					//Finally save to file.
+					stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, geq, jID; // cgm, sig0;
+					a1 << a_st; a2 << a_end;
+					L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(5) << a; dimitri << dP;
+					rini << j; Dm << setprecision(4) << D[2]; geq << setprecision(5) << Gstar;// cgm << c*gmax; sig0 << sigma[0]; 
+
+					string parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str() + "/Temp";
+
+					double ran_jid = (unif(rng)*1000.0)/1000.0; jID << ran_jid; // Random number between 0 and 1.
+					
+					string filenamePattern = prelim_prefix + jID.str() +"_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+					"_D2_"+ Dm.str() + "_R_";
+
+					string prelimheader = " a , r, L, t , <<W(x; t)>_x>_r, <<O(x; t)>_x>_r,  <<Rho0(x; t)>_x>_r, Var[<Rho0(t)>_x]_r, # Surviving Runs Rho0,"
+					" # Active Sites Rho0, <<Rho1(x; t)>_x>_r, Var[<Rho1(t)>_x]_r, # Surviving Runs Rho1, # Active Sites Rho1," 
+					"<<Rho2(x; t)>_x>_r, Var[<Rho2(t)>_x]_r, # Surviving Runs Rho2, # Active Sites Rho2, \n";
+
+					save_prelimframe(rho_rep_avg_var_temp, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, true, true);
+
+					//stringstream m3;
+					//m3 << "TEMP PRELIM FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
+					//cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
+
+					vector<vector<double>>().swap(rho_rep_avg_var_temp); //Flush temp out of memory.
+				}
 
 				vector <double> temp_1= {DRho[0].begin(),DRho[0].end()}; //Rho_dt for species '0'
 				double rhox_DR = occupied_sites_of_vector(temp_1, g*g); //Finds number of occupied at given t.
@@ -3966,7 +4112,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			calc_gamma_3Sp_NonRefugia(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, nR_fac, r_max_effective, g); 
 			//Calculates gamma for each species at each site.
 
-			// BLOCK FOR SAVING GAMMA FRAMES
+			/** // BLOCK FOR SAVING GAMMA FRAMES
 			if(t == 0 || t >= t_meas[index-1] -dt/2.0 && t < t_meas[index-1] +dt/2.0 && index >= tot_iter -9 &&  index <= tot_iter)
 			{
 				// Saving gamma values to file at given time points.
@@ -4296,98 +4442,19 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			a1 << a_st; a2 << a_end;
   			L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << setprecision(5) << a; dimitri << dP;
   			rini << j; Dm << setprecision(4) << D[2]; cgm << c*gmax; sig0 << sigma[0]; geq << setprecision(5) << Gstar;
-			// Three replicates are over.
 
-			unif = uniform_real_distribution<double>(0.0, 1.0);
-			double ran_jid = (unif(rng)*1000.0)/1000.0; // Random number between 0 and 1.
+			string parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
 
-			jID << ran_jid;
+			double ran_jid = (unif(rng)*1000.0)/1000.0; jID << ran_jid; // Random number between 0 and 1.
 			
-			string path_to_dir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
-			string filename = "/PRELIM_AGGRAND_P_c_ID_"+ jID.str() +"_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
-			"_D2_"+ Dm.str() + "_R_"+ rini.str() + ".csv";
+			string filenamePattern = prelim_prefix + jID.str() +"_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+			"_D2_"+ Dm.str() + "_R_";
 
-			std::ostringstream oss;
-			oss << " a , r, L, t , <<W(x; t)>_x>_r, <<O(x; t)>_x>_r,  <<Rho0(x; t)>_x>_r, Var[<Rho0(t)>_x]_r, # Surviving Runs Rho0,"
+			string prelimheader = " a , r, L, t , <<W(x; t)>_x>_r, <<O(x; t)>_x>_r,  <<Rho0(x; t)>_x>_r, Var[<Rho0(t)>_x]_r, # Surviving Runs Rho0,"
 			" # Active Sites Rho0, <<Rho1(x; t)>_x>_r, Var[<Rho1(t)>_x]_r, # Surviving Runs Rho1, # Active Sites Rho1," 
 			"<<Rho2(x; t)>_x>_r, Var[<Rho2(t)>_x]_r, # Surviving Runs Rho2, # Active Sites Rho2, \n";
 
-			for(int i=0; i< tot_iter; i++)
-			{	// Recall Rho is: | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |    #Surviving Runs    |   #Active Sites |
-				oss << a << ","<< j << "," << g << "," << rho_rep_avg_var[i][0] << "," << rho_rep_avg_var[i][1] << "," << rho_rep_avg_var[i][2] << ",";
-				for(int s=0; s <Sp-2; s++)
-				{
-					oss << rho_rep_avg_var[i][4*s + 3] << "," << rho_rep_avg_var[i][4*s +4] << "," << rho_rep_avg_var[i][4*s +5] << "," << rho_rep_avg_var[i][4*s +6] << ","; 
-				}
-				oss <<  "\n";
-			}
-
-			FILE *fp = fopen((path_to_dir + filename).c_str(), "w");
-			if(fp)
-			{
-				fprintf(fp, "%s", oss.str().c_str());
-				fclose(fp);
-				stringstream m7;
-				m7 << "PRELIM File " << filename << " written successfully." << std::endl; cout << m7.str();
-				errout.open(thr, std::ios_base::app); errout << m7.str(); errout.close();
-			}
-			else
-			{
-				stringstream m7;
-				m7 << "Error writing to file: " << path_to_dir + filename << " with error: " << strerror(errno) << std::endl; 
-				cout << m7.str(); cerr << m7.str(); errout.open(thr, std::ios_base::app); errout << m7.str(); errout.close();
-			}
-
-			// Delete the previous file (if it exists) to save space.
-			#if defined(__GNUC__) && (__GNUC__ >= 9)
-
-			if(j > 2)
-			{
-				// Delete the previous file (if it exists) to save space.
-				// Reset rini value.
-				rini_prev << j-2;
-
-				// Using regex to delete the file.
-				string filenamePattern = "PRELIM_AGGRAND_P_c_ID_.*_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
-				"_D2_"+ Dm.str() + "_R_"+ rini_prev.str() + ".csv";
-
-				std::regex filePattern(filenamePattern);
-
-				// Iterate over the files in the parent directory (path_to_dir) and delete the file if it matches the pattern.
-				for (const auto & entry : fs::directory_iterator(path_to_dir))
-				{
-					if (std::regex_match(entry.path().filename().string(), filePattern))
-					{
-						if(fs::exists(entry.path()) && fs::is_regular_file(entry.path()))
-						{
-							try
-							{	
-								fs::remove(entry.path());
-								stringstream m8;
-								m8 << "File " << entry.path().string() << " deleted successfully. \n"; cout << m8.str();
-								errout.open(thr, std::ios_base::app); errout << m8.str(); errout.close();
-							}
-							catch (const fs::filesystem_error& e)
-							{
-								stringstream m8;
-								m8 << "Error deleting file: " << entry.path().string() << " with error: " << e.what() << "\n"; cout << m8.str();
-								cerr << m8.str(); errout.open(thr, std::ios_base::app); errout << m8.str(); errout.close();
-							}
-						}
-						else
-						{
-							stringstream m8;
-							m8 << "File: " << entry.path().string() << " does not exist. \n"; cout << m8.str();
-							cerr << m8.str(); errout.open(thr, std::ios_base::app); errout << m8.str(); errout.close();
-						}
-						
-					}
-				}
-					
-			}
-			#endif
-
-    
+			save_prelimframe(rho_rep_avg_var, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, true);
 		}
 
 	} // End of r loop.
@@ -4447,6 +4514,7 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 
 	// Sort the t_measure vector in ascending order and remove duplicates (if any).
 	sort( t_measure.begin(), t_measure.end() );
+
 	t_measure.erase( unique( t_measure.begin(), t_measure.end() ), t_measure.end() );
 
 

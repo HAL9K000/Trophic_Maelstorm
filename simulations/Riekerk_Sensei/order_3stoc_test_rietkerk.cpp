@@ -265,7 +265,7 @@ int main(int argc, char *argv[])
 	}
   */
 
-  path_to_folder = prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Geq_" + geq.str();
+  path_to_folder = prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Geq_" + geq.str() +"/Temp";
   recursive_dir_create(path_to_folder);
   
   /**
