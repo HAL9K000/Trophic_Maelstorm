@@ -5,6 +5,7 @@ import seaborn as sea
 import cmath
 import math
 import numpy.linalg as la
+import scipy.optimize as opt
 
 
 # Define global variables.
@@ -14,18 +15,20 @@ dx= 0.1 ; dt = 0.1; #From Bonachela et al 2015 (in km)
 d0 = 0.00025/24.0; d1=0.0298; d2 = 0.00025/24.0; d3= 0.025/24.0; #From Bonachela et al 2015 (in km^2/hr)
 k0= 0; k1 = 5; k2 =5000;
 
-'''
-# Parmeters for grazer (Pawar & Co)
-aij = 3.6*pow(10.0, -6.08)*pow(20.0, -0.37); # in km^2/(hr kg)
-hij = 1; #Handling time in hrs
-ej =0.45; mj = 0.061609*pow(20.0, -0.25)/8760.0; # Mortality rate in hr^{-1}
-# Parmeters for predator (Pawar & Co)
-ajm = 3.6*pow(10.0, -6.08)*pow(40.0, -0.37); # in km^2/(hr kg)
-hjm = 1; #Handling time in hrs
-em =0.85; mm = 0.061609*pow(40.0, -0.25)/8760.0; # Mortality rate in hr^{-1}
-'''
 
-# Parameters for grazer (Kefi and Brose)
+# Parmeters for grazer (Pawar & Co)
+mG = 20.0; # Mass of producer in kg
+mP = 100.0; # Mass of predator in kg
+aij = 3.6*pow(10.0, -6.08)*pow(mG, -0.37); # in km^2/(hr kg)
+hij = 1; #Handling time in hrs
+ej =0.45; mj = 0.061609*pow(mG, -0.25)/8760.0; # Mortality rate in hr^{-1}
+# Parmeters for predator (Pawar & Co)
+ajm = 3.6*pow(10.0, -6.08)*pow(mP, -0.37); # in km^2/(hr kg)
+hjm = 1; #Handling time in hrs
+em =0.85; mm = 0.061609*pow(mP, -0.25)/8760.0; # Mortality rate in hr^{-1}
+
+
+''' # Parameters for grazer (Kefi and Brose)
 #Assuming mass of producer (mi) = 1 kg, mass of grazer (mj) = 10 kg, Mass of predator (mm) =100 kg
 ej = 0.45; mj = 0.314*pow(10, -0.25); y =8; B0 =0.5
 aij = (mj*y)/B0; hij = 1/(mj*y);
@@ -33,6 +36,7 @@ aij = (mj*y)/B0; hij = 1/(mj*y);
 em = 0.85; mm = 0.314*pow(100, -0.25); y =8; B0 =0.5
 ajm = (mj*y)/B0; 
 hjm = 1/(mj*y); #Handling time
+# '''
 
 print("Parameters:\t")
 print("c = %g, gmax = %g, d = %g, alpha = %g, W0 = %g, rW = %g" %(c, gmax, d, alpha, W0, rW))
@@ -61,6 +65,23 @@ R_plus_min = 2*rW*k1 + omega + 2*rW*k1*math.sqrt(1 +omega/(rW*k1));
 R_minus_min = 2*rW*k1 + omega - 2*rW*k1*math.sqrt(1 +omega/(rW*k1));
 
 
+def sci_notation(num, decimal_digits=1, precision=None, exponent=None):
+    """
+    Returns a string representation of the scientific
+    notation of the given number formatted for use with
+    LaTeX or Mathtext, with specified number of significant
+    decimal digits and precision (number of decimal digits
+    to show). The exponent to be used can also be specified
+    explicitly.
+    """
+    if exponent is None:
+        exponent = int(math.floor(math.log10(abs(num))))
+    coeff = round(num / float(10**exponent), decimal_digits)
+    if precision is None:
+        precision = decimal_digits
+
+    return r"${0:.{2}f}\cdot10^{{{1:d}}}$".format(coeff, exponent, precision)
+
 ''' 
 This script will plot certain functions of a variable "R" with defined functional form, across a range of values of R (specified by user).
 Each of these functions will be plotted on the same graph, with the x-axis being the range of R values, 
@@ -69,9 +90,20 @@ Pretty colour palette will be used to distinguish between the functions (using S
 Some of the functions can return imaginary values for certain values of R, in which only the real part will be plotted (as a dashed line).
 '''
 
+# Define functional forms of the equilibrium values of the variables as functions of R for scipy.optimize.root to find the roots.
+def saturating_exponential(x, A, b,c):
+    return A*(1 - np.exp(-b*(x-c)))
+
+def linear(x, m, c):
+    return m*x + c
+
+def quadratic(x, A, B, C):
+    return A*x**2 + B*x + C
+
+def cubic(x, A, B, C, D):
+    return A*x**3 + B*x**2 + C*x + D
+
 # Define the functions to be plotted.
-
-
 # First functions for equilbirum values with no vegetation and grazer.
 
 def Vstar_noveg(R):
@@ -246,8 +278,8 @@ def eigenval_check(R, Vstar, Wstar, Ostar, Gstar, Pstar):
     return np.all(eigvals.real < 0, axis=1), eigvals
 
 try:
-    R_Vcoex = pan.read_csv('Kefi_0_0.3_1000_Trial_Analytical_solutions.csv', converters={'Soln2': lambda s: np.complex(s.replace('*I', 'j')),
-                                                                                         'Soln3': lambda s: np.complex(s.replace('*I', 'j'))})
+    R_Vcoex = pan.read_csv(f'Allo_{mG:g}_{mP:g}_0_0.3_1000_Trial_Analytical_solutions.csv')#, converters={'Soln2': lambda s: complex(s.replace('*I', 'j')),
+                                                                            #             'Soln3': lambda s: complex(s.replace('*I', 'j'))})
     R = np.array(R_Vcoex['R']).astype(float)
     print(R)
     # Convert columns to numpy arrays, converting to float if string.
@@ -557,7 +589,7 @@ def stable_ss_plot():
     ax[1,1].set_title('Locally Stable $P^*$ vs R')
 
     # Set title for overall plot
-    fig.suptitle('Stable Equilibria for Rietkerk + Grazer + Predator Model, Kefi Parameters', fontsize=16)
+    fig.suptitle('Stable Equilibria for Rietkerk + Grazer + Predator Model, Allometric Parameters, $m_G = %g kg, m_P = %g kg$' %(mG, mP), fontsize=16)
     
     # Finally add three dashed horizontal lines to show values of R_plus_min, R_minus_min and R_c ON ALL SUBPLOTS with appropriate axes.text labels (rotated 90)
 
@@ -590,12 +622,152 @@ def stable_ss_plot():
     plt.tight_layout()
     figure = plt.gcf() # get current figure
     figure.set_size_inches(15, 10)
-    plt.savefig('STANDARD Stable_KEFI_3Sp_ss_plot Rst --- %g Rend --- %g.png' %(R[0], R[-1]), dpi=1000)
+    plt.savefig('STANDARD Stable_ALLO_3Sp_ss_plot mG --- %g mP --- %g Rst --- %g Rend --- %g.png' %(mG, mP, R[0], R[-1]), dpi=1000)
     plt.show()
     plt.close()
 
+
+def find_functional_forms_ss():
+    '''Find the functional forms of the stable steady state equilibria for the Rietkerk model with 3 species as functions of R.
+    This is done by first determining the equilibrium values of the model for the given R values, and then checking the stability of these equilibria.
+    Thereafter, these values are fitted to a functional form using curve_fit from scipy.optimize.'''
+
+    print("R_min_+, R_min_-, R_c = (%g, %g, %g)" %(R_plus_min, R_minus_min, R_trans))
+
+    #R= np.array([0.04, 0.25])
+    '''
+    # Extinction equilibria
+    Veq_noveg = Vstar_noveg(R); Weq_noveg = Wstar_noveg(R); Oeq_noveg = Ostar_noveg(R); Geq_noveg = Gstar_noveg(R); Peq_noveg = Pstar_noveg(R);
+    # Vegetation only equilibria
+    Veq_veg = Vstar_veg(R); Weq_veg = Wastar_veg(R); Oeq_veg = Ostar_veg(R); Geq_veg = Gstar_veg(R); Peq_veg = Pstar_veg(R);
+    # Grazer equilibria
+    Veq_graz = Vegstar_graz(R); Oeq_graz = Ostar_graz(R); Peq_graz = Pstar_graz(R);
+    Wstar_plus, Wstar_minus = Wstar_graz(R)
+    Gstar_plus, Gstar_minus = Gstar_graz(R, Wstar_plus, Wstar_minus)
+    '''
+    # True Coexistence equilibria.
+
+    
+    Geq_coex = Grazstar_coex(R)
+    Weq_coex_1, Weq_coex_2, Weq_coex_3 = Wstar_coex(R, Vstarcoex_1, Vstarcoex_2, Vstarcoex_3)
+    Oeq_coex_1, Oeq_coex_2, Oeq_coex_3 = Ostar_coex(R, Vstarcoex_1, Vstarcoex_2, Vstarcoex_3)
+    Peq_coex_1, Peq_coex_2, Peq_coex_3 = Predstar_coex(R, Vstarcoex_1, Vstarcoex_2, Vstarcoex_3)
+
+    # Check the stability of the equilibria using the eigenvalue check function.
+    # If the real part of the eigenvalues are negative, the equilibria are stable.
+    '''
+    checkstable_noveg, eigenval_noveg = eigenval_check(R, Veq_noveg, Weq_noveg, Oeq_noveg, Geq_noveg, Peq_noveg)
+    checkstable_veg, eigenval_veg = eigenval_check(R, Veq_veg, Weq_veg, Oeq_veg, Geq_veg, Peq_veg)
+    checkstable_graz_plus, eigenval_graz_plus = eigenval_check(R, Veq_graz, Wstar_plus, Oeq_graz, Gstar_plus, Peq_graz)
+    checkstable_graz_minus, eigenval_graz_minus = eigenval_check(R, Veq_graz, Wstar_minus, Oeq_graz, Gstar_minus, Peq_graz)
+    checkstable_graz = np.logical_or(checkstable_graz_plus, checkstable_graz_minus) 
+    '''
+    # Coexistence equilibria for V and O are stable if either Wstar_plus or Wstar_minus are stable.
+    checkstable_coex1, eigenval_coex1 = eigenval_check(R, Vstarcoex_1, Weq_coex_1, Oeq_coex_1, Geq_coex, Peq_coex_1)
+    checkstable_coex2, eigenval_coex2 = eigenval_check(R, Vstarcoex_2, Weq_coex_2, Oeq_coex_2, Geq_coex, Peq_coex_2)
+    checkstable_coex3, eigenval_coex3 = eigenval_check(R, Vstarcoex_3, Weq_coex_3, Oeq_coex_3, Geq_coex, Peq_coex_3)
+
+    print("Stability profile of Coexistence equilibria 3: ")
+    for i in range(0, len(R), len(R)//25):
+        print("Eigenvalues at R = %g: " %(R[i]), eigenval_coex3[i], "with stability: ", checkstable_coex3[i], "\n\n")
+    
+    checkstable_coex = np.logical_or(checkstable_coex1, checkstable_coex2, checkstable_coex3)
+    print("Number of true values in checkstable_coex1: ", np.sum(checkstable_coex1))
+    print("Number of true values in checkstable_coex2: ", np.sum(checkstable_coex2))
+    print("Number of true values in checkstable_coex3: ", np.sum(checkstable_coex3))
+    print("Number of true values in checkstable_coex: ", np.sum(checkstable_coex))
+
+
+    checkstable_coex = np.logical_or(checkstable_coex1, checkstable_coex2, checkstable_coex3)
+    # Coexistence 3 Eq for Vstar has a linear form. 
+    popt_coex3_Vst, pcov_coex3_Vst = opt.curve_fit(linear, R[checkstable_coex3], Vstarcoex_3[checkstable_coex3])
+    # Coexistence 3 Eq for Wstar has a linear form.
+    popt_coex3_Wst, pcov_coex3_Wst = opt.curve_fit(linear, R[checkstable_coex3], Weq_coex_3[checkstable_coex3], p0= [-3.36, 5.18], bounds=([-np.inf, 5.18], [-3.3, 5.2]))
+    # Coexistence 1 for Ostar has a linear form.
+    popt_coex3_Ost, pcov_coex3_Ost = opt.curve_fit(linear, R[checkstable_coex1], Oeq_coex_3[checkstable_coex1])
+    # Coexistence 3 for Predator has a saturating exponential form, with guess values for A ~ 10^5.5, 
+    popt_coex3_Pst, pcov_coex3_Pst = opt.curve_fit(saturating_exponential, R[checkstable_coex3], Peq_coex_3[checkstable_coex3], p0=[pow(10, 5.5), 0.1, R_trans])
+
+    print("Coexistence 3 Eq for Vstar: ", popt_coex3_Vst)
+    print("Coexistence 3 Eq for Wstar: ", popt_coex3_Wst)
+    print("Coexistence 1 Eq for Ostar: ", popt_coex3_Ost)
+    print("Coexistence 3 Eq for Predator: ", popt_coex3_Pst)
+
+
+    # Plot the fitted functions for the stable equilibria.
+    fig, ax = plt.subplots(2, 2, figsize=(16, 12), sharex=True)
+    sea.set(style='whitegrid')
+    sea.set_palette('husl')
+    ax[0,0].plot(R[checkstable_coex3], Vstarcoex_3[checkstable_coex3], label='$V^*_\mathrm{Coexist3}$', alpha=0.75)
+    ax[0,0].plot(R[checkstable_coex3], linear(R[checkstable_coex3], *popt_coex3_Vst), label=r"$V^* = %g\times R + %g$" %(popt_coex3_Vst[0], popt_coex3_Vst[1]), alpha=0.75)
+    ax[0,0].set_title(' $V^*$ vs R')
+    ax[0,0].set_ylabel('$V^*$')
+
+    ax[0,1].plot(R[checkstable_coex3], Weq_coex_3[checkstable_coex3], label='$W^*_\mathrm{Coexist3}$', alpha=0.75)
+    ax[0,1].plot(R[checkstable_coex3], linear(R[checkstable_coex3], *popt_coex3_Wst), label=r"$W^* = %g\times R + %g$" %(popt_coex3_Wst[0], popt_coex3_Wst[1]), alpha=0.75)
+    ax[0,1].set_title('$W^*$ vs R')
+    ax[0,1].set_ylabel('$W^*$')
+
+    ax[1,0].plot(R[checkstable_coex1], Oeq_coex_3[checkstable_coex1], label='$O^*_\mathrm{Coexist3}$', alpha=0.75)
+    ax[1,0].plot(R[checkstable_coex1], linear(R[checkstable_coex1], *popt_coex3_Ost), label=r"$O^* = %g\times R + %g$" %(popt_coex3_Ost[0], popt_coex3_Ost[1]), alpha=0.75)
+    ax[1,0].set_title(' $O^*$ vs R')
+
+    ax[1,1].plot(R[checkstable_coex3], Peq_coex_3[checkstable_coex3], label='$P^*_\mathrm{Coexist3}$', alpha=0.75)
+    ax[1,1].plot(R[checkstable_coex3], saturating_exponential(R[checkstable_coex3], *popt_coex3_Pst), label=r"$P^* = $" +sci_notation(popt_coex3_Pst[0], 5, 5, 5)+ r"$(1 - e^{-%g(R - %g)})$" %(popt_coex3_Pst[1], popt_coex3_Pst[2]), alpha=0.75)
+    ax[1,1].set_title('$P^*$ vs R')
+
+    # Convert the y-axis of ax[0,1] and ax[1,1] to log scale.
+    ax[1,1].set_yscale('log'); ax[0,1].set_yscale('log')
+    # Plotting the vertical lines for R_min_+, R_min_-, R_c.
+    for i in range(2):
+      for j in range(2):
+        axes = ax[i,j]
+        axes.axvline(x=R_plus_min, color='tomato', linestyle='-.' )#, label='$R^+_{min}$')
+        axes.axvline(x=R_minus_min, color='tomato', linestyle='-.')# , label='$R^-_{min}$')
+        axes.axvline(x = R_trans, color='gray', linestyle=':', label= '$R_c$')
+        axes.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        axes.set_xlabel('R $(mm/hr)$')
+        axes.set_ylabel('Equilibrium values $kg m^{-2}$')
+        axes.tick_params(axis='both')
+
+        # Find max and min values of y for each subplot.
+        ymax = max(axes.get_ylim()); xmax = max(axes.get_xlim())
+        axes.text(R_plus_min - xmax/50.0, ymax/5.0, '$R^{+}_{min}$', rotation=90, color='tomato')
+        axes.text( R_minus_min - xmax/50.0, ymax/5.0, '$R^{-}_{min}$', rotation=90, color='tomato')
+        axes.text(R_trans - xmax/50.0, ymax/10.0, '$R_{c}$', rotation=90, color='grey')
+
+        # Set legends on lower right corner of the plot.
+        axes.legend(loc='center left', bbox_to_anchor=(0.25, 0.2))
+
+    
+    figure = plt.gcf() # get current figure
+
+    # Set title for overall plot
+    fig.suptitle('Functional Forms of Stable Equilibria for Rietkerk + Grazer + Predator Model, Allometric Parameters, $m_G = %g kg, m_P = %g kg$' %(mG, mP), fontsize=16)
+    #plt.tight_layout()
+
+    plt.savefig(f'STANDARD Functional_Forms_ALLO_3Sp_ss_plot mG --- {mG:g} mP --- {mP:g} Rst --- {R[0]:g} Rend --- {R[-1]:g}.png', dpi=1000)
+    plt.show()
+    plt.close()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #stable_ss_plot()
-ss_plot()
+#ss_plot()
+find_functional_forms_ss()
 
 
 

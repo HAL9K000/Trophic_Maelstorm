@@ -5,15 +5,17 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}",
-                "D:/cygwin64/lib/gcc/x86_64-pc-cygwin/11/include/c++",
-                "D:/cygwin64/usr/include"
+                "D:/cygwin64/lib/gcc/x86_64-pc-cygwin/11/include/c++/**",
+                "D:/cygwin64/usr/local/lib/gcc/x86_64-pc-cygwin/12.1.0/include/**",
+                "D:/cygwin64/usr/include/**",
+                "D:/cygwin64/home/koust/gcc-12.1.0/**"
             ],
             "defines": [
                 "_DEBUG",
                 "UNICODE",
                 "_UNICODE"
             ],
-            "compilerPath": "D:/cygwin64/bin/gcc.exe",
+            "compilerPath": "D:/cygwin64/bin/g++.exe",
             "cStandard": "c17",
             "cppStandard": "c++23"
         }

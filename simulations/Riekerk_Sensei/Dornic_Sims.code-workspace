@@ -105,6 +105,7 @@
 			"spanstream": "cpp",
 			"stacktrace": "cpp",
 			"filesystem": "cpp"
-		}
+		},
+		"C_Cpp.intelliSenseEngineFallback": "enabled"
 	}
 }

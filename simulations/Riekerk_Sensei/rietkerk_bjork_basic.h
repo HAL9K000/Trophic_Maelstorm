@@ -1,5 +1,6 @@
 
 #include <string>
+//#include <format>
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -22,6 +23,9 @@
 #include <list>
 #include <thread>
 #include <mutex>
+/** NOTE: The following include is for the exprtk library. Download and add to your project/include path.
+// if not already present. The library is used for parsing mathematical expressions. */
+#include <exprtk.hpp>
 
 using namespace std::chrono;
 //static std::mt19937_64 rng(time(NULL));
@@ -49,16 +53,23 @@ inline const int Sp_NV = Sp-3; //Number of grazer and predator species in system
 inline const int Sp4_1 = 4*(Sp -2) +3; // Used for generating statistics on surviving runs
 inline const int Sp2 = 2*Sp; // Used for generating statistics on surviving runs
 
+// Strings that are used for I/O operations and file naming in the simulations.
 inline string prefix = "DiC-NREF-LI";
 inline string frame_folder = "../Data/Rietkerk/Frames/Stochastic/3Sp/" + prefix + "_"; //Folder to store frames.
 inline string prelim_folder = "../Data/Rietkerk/Prelims/Stochastic/3Sp/"+ prefix +"_"; //Folder to store preliminary data.
 inline const string frame_prefix = "/FRAME_P_c_DP_G_"; //Prefix for frame files.
 inline const string gamma_prefix = "/GAMMA_G_"; //Prefix for gamma files.
 inline const string prelim_prefix = "/PRELIM_AGGRAND_P_c_ID_"; //Prefix for preliminary data files.
+inline const string replicate_prefix = "/PRELIM_TSERIES_P_c_DP_G_"; //Prefix for replicate time-series data files.
 inline const string frame_header = "a_c,  x,  P(x; t), G(x; t), Pr(x; t), W(x; t), O(x; t) \n"; //Header for frame files.
 inline string stat_prefix = "../Data/Rietkerk/Stochastic/3Sp/1stCC_Rietkerk_" + prefix + "_P_c_G_";
 
+// Strings that are used for the Expertk library to parse mathematical expressions.
+// These represent MFT-versions of the species Coexistance equilibria wrt to the order parameter (Rainfall, given by a).
 
+inline vector<string> MFT_Vec_CoexExpr(Sp, ""); //Vector of MFT Coexistance expressions for all species.
+
+//inline exprtk::symbol_table<double> global_symbol_table; //Symbol table for the Expertk library.
 
 
 //------------------------- TYPEDEFS --------------------------------------------------------------//
@@ -146,10 +157,17 @@ void increase_stack_limit(long long stack_size);
 bool maxis(int a, int b);
 void add_three(int a, int b, int c); //Test function.
 void set_Prefix(string& user_prefix);
+void display_symbol_table(const exprtk::symbol_table<double>& symbol_table);
 // Custom comparator for sorting pairs based on the squared distance
 bool comparePairs(const pair<int, int>& a, const pair<int, int>& b); 
 
 void init_fullframe(D2Vec_Double &array, int Sp, int size);
+
+void init_randbistableframe(D2Vec_Double &array, int size, double R, double R_c, double perc,  double c_high[], double c_low[]);
+// NOTE: The following function REQUIRES the exprtk library to be included in the project.
+void init_exprtk_randbiMFTframe(D2Vec_Double &array, int size, double R, double R_c, double dP, double perc,  double c_spread[]);
+
+
 void init_csvconstframe(D2Vec_Double &array, D2Vec_Double &const_ind_val, const std::string& filename, const vector<int> &columns, int size);
 void init_randconstframe(D2Vec_Double &array, int Sp, int size, double perc,   double c_high[], double c_low[]);
 void init_constframe(D2Vec_Double &array,  int Sp, int size, double constant[]);

@@ -94,6 +94,20 @@ void set_Prefix(string& user_prefix)
 	stat_prefix =  "../Data/Rietkerk/Stochastic/3Sp/1stOrderCC_Rietkerk_" + prefix + "_STOC_P_c_G_"; //Header for frame files.
 }
 
+void display_symbol_table(const exprtk::symbol_table<double>& symbol_table) {
+    // Get variable names
+    std::vector<std::string> variable_names;
+    symbol_table.get_variable_list(variable_names);
+    std::cout << "Variables:\n";
+    for (const auto& var_name : variable_names) {
+        if (symbol_table.symbol_exists(var_name)) {
+			//double* var = symbol_table.get_variable(var_name);
+			//auto& var = symbol_table.variable_ref(var_name);
+            std::cout << "  " << var_name << " with value " << symbol_table.get_variable(var_name) << "\n";
+        }
+    }
+}
+
 void init_fullframe(D2Vec_Double &array, int Sp, int size)
 {
 	//Returns array with all elements initialised to 1
@@ -144,7 +158,6 @@ void init_randconstframe(D2Vec_Double &array, int Sp, int size, double perc,  do
 // The first Sp elements of c_high and c_low are used if R < R_c, otherwise the last Sp elements are used.
 void init_randbistableframe(D2Vec_Double &array, int size, double R, double R_c, double perc,  double c_high[], double c_low[])
 {
-
 	mutex errorMutex; // Mutex to make error messages thread-safe
 	if(Sp != 5)
 	{
@@ -155,14 +168,112 @@ void init_randbistableframe(D2Vec_Double &array, int size, double R, double R_c,
 	// If R < R_c, then the first Sp elements of c_high and c_low are passed to init_randconstframe() to initialise the frame.
 	// If R >= R_c, then the last Sp elements of c_high and c_low are passed to init_randconstframe() to initialise the frame.
 	if(R < R_c)
-	{
 		init_randconstframe(array, Sp, size, perc, c_high, c_low);
-	}
-	else
-	{
-		init_randconstframe(array, Sp, size, perc, c_high + Sp, c_low + Sp);
-	}
 	
+	else
+		init_randconstframe(array, Sp, size, perc, c_high + Sp, c_low + Sp);
+	
+}
+
+void init_exprtk_randbiMFTframe(D2Vec_Double &array, int size, double R, double R_c, double dP, double perc,  double c_spread[])
+{
+
+	/** Summary of init_exprtk_randbiMFTframe() function.
+	 * @brief Initialises a frame (D2Vec_Double vector) as follows:
+	 * If R < R_c, then the first Sp elements of c_spread are used to initialise the frame.
+	 * In this case, the first row of the frame (corresponding to the first species) has a random distribution of values.
+	 * (1 -perc)% of the values are set to 0 (c_spread[0]), and the remaining perc% are set to dP.
+	 * The remaining rows of the frame (corresponding to the other species) are set to the constant values given by c_spread + 1 to c_spread + Sp-1.
+	 * If R >= R_c, then the last Sp elements of c_spread are used to initialise the frame.
+	 * In this case, the first row of the frame (corresponding to the first species) has a random distribution of values.
+	 * (1 -perc)% of the values are set to MFT_Vec_CoexExpr[0], and the remaining perc% are set to c_spread[Sp]*MFT_Vec_CoexExpr[0] or dP, whichever is greater.
+	 * The other "i" rows of the frame are set to the constant values given by MFT_Vec_CoexExpr[i]*c_spread[i+Sp]  where i ranges from 1 to Sp-1.
+	 */
+
+	mutex errorMutex; // Mutex to make error messages thread-safe
+	// Create expression objects for each species
+    std::vector<exprtk::expression<double>> expressions(Sp);
+    exprtk::parser<double> parser;
+
+	// Create a local symbol table, copying the global symbol table
+	exprtk::symbol_table<double> local_symbol_table;// = global_symbol_table;
+
+	int rd = std::random_device{}();
+	std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
+	rng.seed(rd);
+
+	uniform_real_distribution<double> unif;
+	unif = uniform_real_distribution<double>(0.0, 1.0);
+	int thr = omp_get_thread_num();
+	//errorMutex.lock();
+	local_symbol_table.add_variable("a", R);
+	//errorMutex.unlock();
+
+	// Compile the expressions
+	for(int s=0; s< Sp; s++) 
+	{	
+		std::lock_guard<std::mutex> lock(errorMutex);
+
+		std::string expression_string = MFT_Vec_CoexExpr[s];
+		expressions[s].register_symbol_table(local_symbol_table);
+		if (!parser.compile(expression_string, expressions[s]))
+		{
+			
+			std::cerr << "Error: Unable to compile expression for species " << s << " for [a, thr, expr]: " 
+			<< R << " , " << thr << " , " << expression_string << "\n";
+		}
+
+		std::cerr << "Value of expression for species " << s << " for [a, thr, expr]: " 
+			<< R << " , " << thr << " , " << expressions[s].value() << "\n";
+	}
+
+	//display_symbol_table(local_symbol_table);
+
+	if (R < R_c)
+	{
+		
+		for(size_t i=0; i< size; i++)
+		{
+			double r = unif(rng);
+			if(r <= perc)
+				array[0][i] = dP; // perc fraction of the vegetation species are set to dP
+			else
+				array[0][i] = c_spread[0]; // Set the other species to the constant values
+			
+			for(size_t s=1; s< SpB; s++) 
+				array[s][i] = c_spread[s]; // Set the other species to the constant values
+			for(size_t s=SpB; s< Sp; s++) 
+			{
+				// Set the non-biota species to their MFT values multiplied by the constant values in c_spread
+				array[s][i] = c_spread[s]*expressions[s].value();
+			}
+		}
+	}
+	else if ( R >= R_c)
+	{
+		double highval_veg = std::max(dP, c_spread[Sp]*(expressions[0].value()));
+		/** Use the max function to calculate the maximum of the two values, dP and c_spread[Sp]*expressions[0].value()
+		// and assign it to the first species. */
+		for(size_t i=0; i< size; i++)
+		{
+			double r = unif(rng);
+			if(r <= perc)
+				array[0][i] = highval_veg;
+			
+			else
+				array[0][i] = expressions[0].value(); // Set the other sites of the first species to the MFT value.
+			
+			// Set the other species to the constant values
+			for(size_t s=1; s< Sp; s++) 
+				array[s][i] = c_spread[s + Sp]*expressions[s].value();
+			// Set the other species to their MFT values multiplied by the constant values in c_spread
+		}
+	}
+
+	//errorMutex.lock();
+	local_symbol_table.remove_variable("a");
+	// Unlock the mutex
+	//errorMutex.unlock();
 }
 
 void init_csvconstframe(D2Vec_Double &array, D2Vec_Double &const_ind_val, const std::string& filename, const vector<int> &columns, int size) 
@@ -567,6 +678,8 @@ void var_mean_incremental_surv_runs(D2Vec_Double &t_avg_var_rep_N, const D2Vec_D
 	
 
 }
+
+
 /** Old version of var_mean_incremental_surv_runs() function. Retained for reference.
 void var_mean_incremental_surv_runs_MultiSp(double t_avg_var_rep_N[][Sp4_1], double X_curr[][Sp2], int size, int j)
 {
@@ -3809,7 +3922,12 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 
 		double Rhox_avg[Sp] = {0.0}; double Rhox_num[Sp] = {0.0}; //Stores spatial average and number of occupied sites at given t.
 
-		init_randbistableframe(Rho_dt, g*g, a, a_c,  perc, chigh, clow); // Returns a frame with random speckles of high and low density.
+		//init_randbistableframe(Rho_dt, g*g, a, a_c,  perc, chigh, clow); // Returns a frame with random speckles of high and low density.
+
+		// MFT PERTURBATION BASED FRAME INITIALISATION
+		// NOTE: clow[] is used to store the fractional change from MFT steady state for some species, corresponds to c_spread[] in init_exprtk_randbiMFTframe(...).
+		init_exprtk_randbiMFTframe(Rho_dt, g*g, a, a_c, dP, perc, clow); // Returns a frame with random speckles of high and low density.
+
 
 		/** // GAUSSIAN FRAME INITIALISATION  
 		// Initialise vector <double> amp to elements of clow[].
@@ -3904,7 +4022,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				rhox_num = occupied_sites_of_vector(temp_alt, g*g); //Finds number of occupied at given t.
 				vector<double>().swap(temp_alt); //Flush temp out of memory.0
 
-				/** // FRAME SAVING
+				// FRAME SAVING
 				if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 60000 && t <= 120000 || t >= 200 && t <= 10000 
 					|| t== 0)
 				{
@@ -3935,10 +4053,10 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 
 					stringstream m3;
 					m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
-					cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
+					cout << m3.str();
 					*/
 
-					/** // SAVE SELECTED FRAMES
+					// SAVE SELECTED FRAMES
 					if(t < 760)
 					{
 						//Only save one in three frames here.
@@ -3970,7 +4088,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
 					}
 					// */
-					/**
+					///**
 					
 					
 					
@@ -3978,13 +4096,13 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				// */
 
 				// BLOCK FOR CALCULATING AND TEMP PRELIMINARY FRAMES
-				if( index == int(tot_iter*0.85) || index == int(tot_iter*0.9) || index == int(tot_iter*0.95))
+				if( index == int(tot_iter*0.85) || index == int(tot_iter*0.9) || index == int(tot_iter*0.95) || index == int(tot_iter-1))
 				{
 					// In this case, copy the first "index" rows of rho_rep_avg_var to a new 2D vector, update the values using var_mean_incremental_surv_runs()
 					// and save to file.
-					D2Vec_Double rho_rep_avg_var_temp(index, vector<double> (Sp4_1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
-					std::copy(rho_rep_avg_var.begin(), rho_rep_avg_var.begin() + index, rho_rep_avg_var_temp.begin());
-					var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index, j);
+					D2Vec_Double rho_rep_avg_var_temp(index+1, vector<double> (Sp4_1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+					//std::copy(rho_rep_avg_var.begin(), rho_rep_avg_var.begin() + index, rho_rep_avg_var_temp.begin());
+					var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index+1, j);
 
 					//Finally save to file.
 					stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, geq, jID; // cgm, sig0;
@@ -3992,19 +4110,19 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(5) << a; dimitri << dP;
 					rini << j; Dm << setprecision(4) << D[2]; geq << setprecision(5) << Gstar;// cgm << c*gmax; sig0 << sigma[0]; 
 
-					string parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str() + "/Temp";
+					string parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str() + "/TimeSeries";
 
-					double ran_jid = (unif(rng)*1000.0)/1000.0; jID << ran_jid; // Random number between 0 and 1.
+					//double ran_jid = (unif(rng)*1000.0)/1000.0; jID << ran_jid; // Random number between 0 and 1.
 					
-					string filenamePattern = prelim_prefix + jID.str() +"_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+					string filenamePattern = replicate_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
 					"_D2_"+ Dm.str() + "_R_";
 
-					string prelimheader = " a , r, L, t , <<W(x; t)>_x>_r, <<O(x; t)>_x>_r,  <<Rho0(x; t)>_x>_r, Var[<Rho0(t)>_x]_r, # Surviving Runs Rho0,"
-					" # Active Sites Rho0, <<Rho1(x; t)>_x>_r, Var[<Rho1(t)>_x]_r, # Surviving Runs Rho1, # Active Sites Rho1," 
-					"<<Rho2(x; t)>_x>_r, Var[<Rho2(t)>_x]_r, # Surviving Runs Rho2, # Active Sites Rho2, \n";
+					string prelimheader = " a , r, L, t , <<W(x; t)>_x>_r, <<O(x; t)>_x>_r,  <<P(x; t)>_x>_r, Var[<P(x; t)>_x]_r, # Surviving Runs P(x; t),"
+					" # Active Sites P(x; t), <<G(x; t)>_x>_r, Var[<G(x; t)>_x]_r, # Surviving Runs G(x; t), # Active Sites G(x; t)," 
+					"<<Pr(x; t)>_x>_r, Var[<Pr(x; t)>_x]_r, # Surviving Runs Pr(x; t), # Active Sites Pr(x; t), \n";
 
-					save_prelimframe(rho_rep_avg_var_temp, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, true, true);
-
+					save_prelimframe(rho_rep_avg_var_temp, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
+					
 					//stringstream m3;
 					//m3 << "TEMP PRELIM FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
 					//cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
@@ -4086,8 +4204,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
 						m6 << "VEG HIT ROCK BOTTOM WITH: Rho*"<< s <<"[t,i]\t" << Rho_dt[s][i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
 						<< " at time:\t:" << t << " with Rho"<< s <<"(t-dt,i):   " << DRho[s][i] << "\t and alpha_i:\t" << alpha_i << 
-						"\t and GAMMA ENTRY:\t" << gru << "\n"; cout << m6.str();
-						errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+						"\t and GAMMA ENTRY:\t" << gru << "\n"; cout << m6.str(); cerr << m6.str();
 					}
 					Rho_tsar[s][i] = Rho_dt[s][i];		// This is the rho* value (refer to Dornic et 2005)
 				}
@@ -4170,14 +4287,12 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						stringstream m5_2;     //To make cout thread-safe as well as non-garbled due to race conditions.
 						m5_2 << "STATUS UPDATE AT TIME [t, thr, i, j]\t" << t << " , " << omp_get_thread_num() << " , " << i << " , " << j 
 						<< "\t GAMMA FOUND WITH GAMMA_I:" << gamma[s][i] << "\n"; cout << m5_2.str();
-						errout.open(thr, std::ios_base::app); errout << m5_2.str(); errout.close();
 					} */
 					if( gamma[s][i] < 0.0)
 					{
 						stringstream m5_3;     //To make cout thread-safe as well as non-garbled due to race conditions.
 						m5_3 << "GAMMA_I FALLS BELOW 0,  AT TIME [t, thr, i, j]\t" << t << " , " << omp_get_thread_num() << " , " << i << " , " << j  
-						<< "\t WITH GAMMA_I:" << gamma[s][i] << " for species: " << s << "\n"; cout << m5_3.str();
-						errout.open(thr, std::ios_base::app); errout << m5_3.str(); errout.close();
+						<< "\t WITH GAMMA_I:" << gamma[s][i] << " for species: " << s << "\n"; cout << m5_3.str(); cerr << m5_3.str(); 
 					}
 					if(isnan(gamma[s][i]) == true || isinf(gamma[s][i]) == true)
 					{
@@ -4185,7 +4300,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						m5_3 << "GAMMA_I BLOWS THE LID,  AT TIME [t, thr, i, j]\t" << t << " , " << omp_get_thread_num() << " , " << i << " , " << j  
 						<< "\t WITH GAMMA_I:" << gamma[s][i] << " for species: " << s << " with Rho_avg[0]: " << Rhox_avg[0] << " and Rho_avg[1]: " << Rhox_avg[1] << " and Rho_avg[2]: " << Rhox_avg[2] 
 					  	<< " \n and Rho_t[0][i]: " << Rho_dt[0][i] << " and Rho_t[1][i]: " << Rho_dt[1][i] << " and Rho_t[2][i]: " << Rho_dt[2][i]<< "\n"; cout << m5_3.str();
-						errout.open(thr, std::ios_base::app); errout << m5_3.str(); errout.close();
+						cerr << m5_3.str();
 
 						stringstream L, tm ,d3, p1, rini, a1, a2, Dm1, Dm2, dix, dimitri, geq;
 
@@ -4291,8 +4406,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
 						m6 << "YOU HIT ROCK BOTTOM WITH: Rho*"<< s <<"[t,i]\t" << Rho_dt[s][i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
 						<< " at time:\t:" << t << " with Rho"<< s <<"(t-dt,i):   " << DRho[s][i] << "\t and alpha_i:\t" << alpha_i << 
-						"\t ,GAMMA ENTRY:\t" << gru << "\t and (DX, DY):  [" << diff_eff[s].first << " , " << diff_eff[s].second <<  " ]" <<"\n"; cout << m6.str();
-						errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+						"\t ,GAMMA ENTRY:\t" << gru << "\t and (DX, DY):  [" << diff_eff[s].first << " , " << diff_eff[s].second <<  " ]" <<"\n"; 
+						cout << m6.str(); cerr << m6.str();
 						exit(3);
 					}
 					Rho_tsar[s][i] = Rho_dt[s][i];		// This is the rho* value (refer to Dornic et 2005)
@@ -4316,7 +4431,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			{
 				stringstream m5_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
 				m5_1 << "STATUS UPDATE AT TIME [t, a, thr, j]\t" << t << " , " << a << " , " << omp_get_thread_num() << " , " << j << "\t GRAZER + PRED DORNIC DONE, FOR " << prefix + "\n"; 
-				cout << m5_1.str(); errout.open(thr, std::ios_base::app); errout << m5_1.str(); errout.close();
+				cout << m5_1.str(); cerr << m5_1.str();
 			}
 			
 
@@ -4328,11 +4443,9 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			{
 				stringstream m5_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
 				m5_1 << "STATUS UPDATE AT TIME [t, a, thr, j]\t" << t << " , " << a << " , " << omp_get_thread_num()  << " , " << j << "\t RK4 INTEGRATION OF REMAINDER TERMS DONE." 
-				<< "\n"; cout << m5_1.str(); errout.open(thr, std::ios_base::app); errout << m5_1.str(); errout.close();
+				<< "\n"; cout << m5_1.str(); cerr << m5_1.str();
 			}
 			
-
-
 			for(int s=0; s< Sp; s++)
 			{
 					
@@ -4343,8 +4456,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
 						m6 << "RHO "<<s<<"  FALLS BELOW O:\t" << Rho_dt[s][i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
 						<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[s][i] << "\t and Analytic Integration Term:\t" 
-						<< Rho_tsar[s][i] << "\t and (DX, DY):  [" << diff_eff[s].first << " , " << diff_eff[s].second <<  " ]" <<  "\n"; cout << m6.str(); //so=0;
-						errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+						<< Rho_tsar[s][i] << "\t and (DX, DY):  [" << diff_eff[s].first << " , " << diff_eff[s].second <<  " ]" <<  "\n"; 
+						cout << m6.str(); cerr << m6.str();
 					}
 
 					if( isnan(Rho_dt[s][i] == true))
@@ -4352,8 +4465,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
 						m6 << "RHO "<<s<<"  NAAN PARATHA:\t" << Rho_dt[s][i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
 						<< " at time:\t:" << t << " with Rho(t-dt,i):   " << DRho[s][i] << "\t and Analytic Integration Term:\t" 
-						<< Rho_tsar[s][i]<< "\t and (DX, DY):  [" << diff_eff[s].first << " , " << diff_eff[s].second <<  " ]" <<  "\n"; cout << m6.str(); //so=0;
-						errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+						<< Rho_tsar[s][i]<< "\t and (DX, DY):  [" << diff_eff[s].first << " , " << diff_eff[s].second <<  " ]" <<  "\n"; 
+						cout << m6.str(); cerr << m6.str();
 						lo == -1;
 					}
 					DRho[s][i] =Rho_dt[s][i]; //Updating dummy variable (necessary to prevent mixing of time in diffusion)
@@ -4450,9 +4563,10 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			string filenamePattern = prelim_prefix + jID.str() +"_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
 			"_D2_"+ Dm.str() + "_R_";
 
-			string prelimheader = " a , r, L, t , <<W(x; t)>_x>_r, <<O(x; t)>_x>_r,  <<Rho0(x; t)>_x>_r, Var[<Rho0(t)>_x]_r, # Surviving Runs Rho0,"
-			" # Active Sites Rho0, <<Rho1(x; t)>_x>_r, Var[<Rho1(t)>_x]_r, # Surviving Runs Rho1, # Active Sites Rho1," 
-			"<<Rho2(x; t)>_x>_r, Var[<Rho2(t)>_x]_r, # Surviving Runs Rho2, # Active Sites Rho2, \n";
+			string prelimheader = " a , r, L, t , <<W(x; t)>_x>_r, <<O(x; t)>_x>_r,  <<P(x; t)>_x>_r, Var[<P(x; t)>_x]_r, # Surviving Runs P(x; t),"
+			" # Active Sites P(x; t), <<G(x; t)>_x>_r, Var[<G(x; t)>_x]_r, # Surviving Runs G(x; t), # Active Sites G(x; t)," 
+			"<<Pr(x; t)>_x>_r, Var[<Pr(x; t)>_x]_r, # Surviving Runs Pr(x; t), # Active Sites Pr(x; t), \n";
+
 
 			save_prelimframe(rho_rep_avg_var, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, true);
 		}

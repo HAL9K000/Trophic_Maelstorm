@@ -33,9 +33,10 @@ int main(int argc, char *argv[])
   s1 = 1; // ~ D/(dx)^2 (in kg^{0.5}/(km hr))
   s2 = 3; // ~ D/(dx)^2 (in kg^{0.5}/(km hr))
   
-
-  v1 = 0.416582; //In km/hr
-  v2 = 0.38375; //In km/hr (about e^(5.95) m/hr))
+  // Allometric scaling for velocity: 
+  // v (m/hr) = 43.706*M^1.772*(1 - e^{-14.27*(M)^(-1.865)}), where M is mass in kg.
+  v1 = 0.45427; //In km/hr
+  v2 = 0.40587; //In km/hr
 
   double D[Sp] ={d0, d1, d2, d3, d4}; //Diffusion coefficients for species.
   double K[3] ={k0, k1, k2}; //Diffusion coefficients for species.
@@ -190,10 +191,29 @@ int main(int argc, char *argv[])
 
   //INITIAL CONDITIONS:
 
+  // Equations for MFT E Eqilibrium values  as functions of a (Rainfall).
+
+  
+
+  double mV = 959665.516757; double cV = -40023.67526037;
+  double mW = -3.90344309; double cW = 5.18;
+  double mO = 120.4744181; double cO = 0.58243061;
+  double  A_Pr = 4.49723728e+05; double b_Pr = -1.73381257;
+
+  string MFT_V = std::to_string(mV) + " * a + " + std::to_string(cV);
+  string MFT_G = std::to_string(Gstar);
+  string MFT_Pr = std::to_string(A_Pr) + " * ( 1 - exp( " + std::to_string(b_Pr) + " * ( a - " + std::to_string(a_c) + " )) )";
+  string MFT_W = std::to_string(mW) + " * a + " + std::to_string(cW);
+  string MFT_O = std::to_string(mO) + " * a + " + std::to_string(cO);
+
+  MFT_Vec_CoexExpr.assign({MFT_V, MFT_G, MFT_Pr, MFT_W, MFT_O});
+
+  double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 1, 1, 5, 1.5, 1.5, 1, 1};
+
   // LE ORIGINAL (NORMAL CLOSE TO MFT)
   //double clow[2*Sp] = {0, dP/50000.0, dP/500000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};
   // HIGH INIT, > MFT
-  double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, Gstar*1.5, 15, 4, 10};
+  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, dP, Gstar*1.5, 15, 4, 10};
   // LOW INIT, < MFT
   //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, 2, 0.6, 4, 10};
   // CLOSE TO MFT
@@ -220,7 +240,6 @@ int main(int argc, char *argv[])
 
   //add_two(3.14, 1.78);
   cout << maxis(3.14, 1.78) <<endl;
-
   int go =8;
   add_three(1,2,go);
 
@@ -265,7 +284,7 @@ int main(int argc, char *argv[])
 	}
   */
 
-  path_to_folder = prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Geq_" + geq.str() +"/Temp";
+  path_to_folder = prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Geq_" + geq.str() +"/TimeSeries";
   recursive_dir_create(path_to_folder);
   
   /**
@@ -307,10 +326,16 @@ int main(int argc, char *argv[])
 		}
 	}
   */
-  //first_order_critical_exp_delta_stochastic(div, t_max, a_start, a_end, c, gmax, alpha, d, rW, W0, D, K, sigma, dt, dx, dP, r, g);
+ 
   first_order_critical_exp_delta_stochastic_3Sp(div, t_max, a_start, a_end, a_c, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR, chigh, clow, dt, dx, dP, r, g);
-  //tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, auto &Rh0,
-	 //double t_max, double a[], double b[], double c[], double D[], double sigma[], double dt, double dx, int r,  int g)
+  
+  //Finally recursively delete all the contents of the Temp folder.
+  #ifdef _WIN32
+  string command = "rmdir /s /q " + prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Geq_" + geq.str() +"/Temp";
+  #else
+  string command = "rm -r " + prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Geq_" + geq.str() +"/Temp";
+  #endif
+  system(command.c_str());
 
   return 0;
 }
