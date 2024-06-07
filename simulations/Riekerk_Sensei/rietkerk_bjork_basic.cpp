@@ -223,8 +223,8 @@ void init_exprtk_randbiMFTframe(D2Vec_Double &array, int size, double R, double 
 			<< R << " , " << thr << " , " << expression_string << "\n";
 		}
 
-		std::cerr << "Value of expression for species " << s << " for [a, thr, expr]: " 
-			<< R << " , " << thr << " , " << expressions[s].value() << "\n";
+		//std::cerr << "Value of expression for species " << s << " for [a, thr, expr]: " 
+		//	<< R << " , " << thr << " , " << expressions[s].value() << "\n";
 	}
 
 	//display_symbol_table(local_symbol_table);
@@ -4226,7 +4226,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 
 			D2Vec_Double gamma(SpB, vector<double> (g*g, 0.0)); //Stores gamma for each species at each site.
 
-			calc_gamma_3Sp_NonRefugia(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, nR_fac, r_max_effective, g); 
+			calc_gamma_3Sp(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, nR_fac, r_max_effective, g); 
 			//Calculates gamma for each species at each site.
 
 			/** // BLOCK FOR SAVING GAMMA FRAMES

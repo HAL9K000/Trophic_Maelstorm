@@ -52,7 +52,8 @@ int main(int argc, char *argv[])
   p0istar = (c/d)*(R - rW*p0jstar);
   p0mstar = (R/alpha)*(p0istar + K[2] )/(p0istar + K[2]*W0);
   */
- double aij, hij, ej, mj; double ajm, hjm, em, mm;
+  double aij, hij, ej, mj; double ajm, hjm, em, mm; // Parameters for the grazer and predator.
+  
   aij = 3.6*pow(10.0, -6.08)*pow(20.0, -0.37); // in km^2/(hr kg)
   hij = 1; // Handling time in hrs
   ej =0.45; mj = 0.061609*pow(20.0, -0.25)/8760.0; // Mortality rate in hr^{-1}
@@ -73,7 +74,7 @@ int main(int argc, char *argv[])
   //double D[Sp] ={d0, d1}; //Diffusion coefficients for species. (in km^2/hr)
   double pR[Sp] ={0.0, 1.04285/2.0, 1.25536/2.0}; //Perception radius of species (in km)
 
-
+  double init_frac_grazpred = 1.0; //Initial fraction of grazers and predators in the high state.
   
   cout << "Presets are as follows:\n";
   cout << "For the vegetation:\n";
@@ -128,13 +129,16 @@ int main(int argc, char *argv[])
     cout << "Enter kick for high state: ";
     cin >> dP;
 
+    cout << "Enter fractional deviation from MFT for initial conditions of Grazer and Predator above R_c (0.5-1.2 is a good choice): ";
+    cin >> init_frac_grazpred;
+
     cout << "Enter Prefix (common choices include 'DiC-REF', 'DDM-DiC-BURNIN', 'nDiC' etc.) If not provided, default value: " 
         + prefix + " will be used: ";
     cin >> preFIX;
 
   }
   // If the user has entered the correct number of arguments, then the arguments are read from the command line.
-  else if(argc == 10)
+  else if(argc == 11)
   {
     dt = atof(argv[1]);
     t_max = atof(argv[2]);
@@ -144,7 +148,8 @@ int main(int argc, char *argv[])
     a_end = atof(argv[6]);
     div = atoi(argv[7]);
     dP = atof(argv[8]);
-    preFIX = argv[9];
+    init_frac_grazpred = atof(argv[9]);
+    preFIX = argv[10];
   }
   // If there are otherwise an arbitrary number of arguements, terminate the program.
   else
@@ -208,7 +213,7 @@ int main(int argc, char *argv[])
 
   MFT_Vec_CoexExpr.assign({MFT_V, MFT_G, MFT_Pr, MFT_W, MFT_O});
 
-  double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 1, 1, 5, 1.5, 1.5, 1, 1};
+  double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 1, 1, 5, init_frac_grazpred, init_frac_grazpred, 1, 1};
 
   // LE ORIGINAL (NORMAL CLOSE TO MFT)
   //double clow[2*Sp] = {0, dP/50000.0, dP/500000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};

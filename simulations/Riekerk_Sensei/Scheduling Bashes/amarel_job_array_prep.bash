@@ -68,12 +68,12 @@ cat << EOF > ${2}_array.sh
 # Path to the input file containing the arguments
 init_file=$1
 # Read the corresponding line of arguments based on SLURM_ARRAY_TASK_ID
-read -r p1 p2 p3 p4 p5 p6 p7 p8 p9 <<< \$(sed -n "\$((SLURM_ARRAY_TASK_ID+2))p" \$init_file)
+read -r p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 <<< \$(sed -n "\$((SLURM_ARRAY_TASK_ID+2))p" \$init_file)
 CPUS_PER_TASK=\$p7
-#Strip whitespaces and newlines from p9
-p9=\$(echo \$p9 | tr -d '[:space:]')
+#Strip whitespaces and newlines from p10
+p10=\$(echo \$p10 | tr -d '[:space:]')
 
-echo \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9
+echo \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9 \$p10
 # Dynamically set the number of CPUs per task
 
 # Move to the directory where the source files are located
@@ -83,7 +83,7 @@ cd ..
 g++ rietkerk_bjork_basic.cpp order_3stoc_test_rietkerk.cpp -fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
 
 # Run the compiled program with the input parameters
-./ama_${2}_\${SLURM_ARRAY_TASK_ID}.out \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9 &> std_${2}_\${SLURM_ARRAY_TASK_ID}.txt
+./ama_${2}_\${SLURM_ARRAY_TASK_ID}.out \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9 \$p10 &> std_${2}_\${SLURM_ARRAY_TASK_ID}.txt
 
 // Finally, move back to the submission directory
 cd \$SLURM_SUBMIT_DIR
