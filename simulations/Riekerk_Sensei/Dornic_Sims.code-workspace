@@ -104,7 +104,9 @@
 			"expected": "cpp",
 			"spanstream": "cpp",
 			"stacktrace": "cpp",
-			"filesystem": "cpp"
+			"filesystem": "cpp",
+			"*.inc": "cpp",
+			"*.x": "cpp"
 		},
 		"C_Cpp.intelliSenseEngineFallback": "enabled"
 	}

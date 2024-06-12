@@ -94,6 +94,38 @@ void set_Prefix(string& user_prefix)
 	stat_prefix =  "../Data/Rietkerk/Stochastic/3Sp/1stOrderCC_Rietkerk_" + prefix + "_STOC_P_c_G_"; //Header for frame files.
 }
 
+void set_global_user_params(double dt, double dx)
+{
+	//Sets the global parameters for the simulation.
+	//These are the parameters that are user-defined and are used in the simulation.
+	//These are set by the user in the main function
+
+	dt2 = dt/2.0; dt6= dt/6.0;
+	dx2 = dx*dx; dx1 = 1.0/dx; dx1_2 = 1.0/(dx*dx); double dxb2 = dx/2.0;
+}
+
+/** // set_global_user_Rietkerk_params(...) Commented out for now, as it is not used in the current implementation.
+void set_global_user_Rietkerk_params(double c,double gmax,double alpha, double rW, double W0, double (&D)[Sp], 
+	double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB])
+{
+	// Sets the global parameters for the Rietkerk model, as defined by the user.
+	// This helps save computational time by avoiding repeated calculations.
+
+	cgmax = c*gmax; K2W0 = K[2]*W0; 
+	// For 2 Sp Rietkerk model, set only A01H01
+	if (SpB >= 2)
+	{
+		A01H01 = A[0][1]*H[0][1];
+	}
+	// For 3 Sp Rietkerk model, set A12H12 as well.
+	if (SpB >= 3)
+	{
+		A12H12 = A[1][2]*H[1][2];
+	}
+}
+// */
+
+
 void display_symbol_table(const exprtk::symbol_table<double>& symbol_table) {
     // Get variable names
     std::vector<std::string> variable_names;
@@ -3343,11 +3375,19 @@ void first_order_critical_exp_delta_stochastic_2Sp(int div, double t_max, double
 //------------------- Vegetation + Grazer + Predator (+ Soil Water + Surface Water) -------------------//
 
 void f_2Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, 
-	double alpha, double rW, double W0, double (&D)[Sp], double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double dx1_2, double g)
+	double alpha, double rW, double W0, double (&Dxd2)[Sp], double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double dx1_2, double g)
 {
 	//Vector function that updates an array containing ( dP/dt, dW/dt, DO/dt,  dG/dt, dPr/dt) for each site in the lattice.
     //Based on the Rietkerk model for plant vegetation dynamics with the Dornic twist where linear and stoch term for vegetation (and grazer) are already taken care of.
-
+	
+	// The following values are precomputed to reduce time complexity.
+	double cgmax = c*gmax; double K2W0 = K[2]*W0; double A01H01 = A[0][1]*H[0][1]; double A12H12 = A[1][2]*H[1][2];
+	// The following are the values of E*A and A*H for each species, which reduces time complexity by avoiding repeated calculations.
+	double EA1 = E[1]*A[0][1]; double EA2 = E[2]*A[1][2];
+	//vector<double> EA(SpB);
+	//for(int s=1; s< SpB; s++)
+	//	EA[s] = E[s]*A[s-1][s];
+	
 	for(int i=0; i < g*g; i++)
 	{
         //Equations for the density of plants, soil water, surface water and grazers at each site.
@@ -3357,74 +3397,78 @@ void f_2Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, 
 		 * NOTE!!!!!:  Equivalent to dP/dt = c*g_max*P*W/(W+K1) - aij*hij*P*G/(1+aij*hij*V)
 		 *  Linear and stochastic terms taken care of by Dornic integration routine previously.
 		**/
-        f[0][i] = c*gmax*Rho_M[3][i]*Rho_M[0][i]/(Rho_M[3][i] +K[1]) -(A[0][1]*Rho_M[0][i]/(1 + A[0][1]*H[0][1]*Rho_M[0][i]))*Rho_M[1][i];
+
+		// RECALL: Dxd2[s] = D[s]/dx2
+        f[0][i] = cgmax*Rho_M[3][i]*Rho_M[0][i]/(Rho_M[3][i] +K[1]) -(A[0][1]*Rho_M[0][i]/(1 + A01H01*Rho_M[0][i]))*Rho_M[1][i];
 		//Equivalent to dG/dt = ej*(aij*V*P)/(1+aij*hij*V)  -ajm*G*P/(1+ajm*hjm*G).
-		f[1][i] = (E[1]*A[0][1]*Rho_M[0][i]/(1 + A[0][1]*H[0][1]*Rho_M[0][i]))*Rho_M[1][i]  
-					-A[1][2]*Rho_M[1][i]/(1 + A[1][2]*H[1][2]*Rho_M[1][i])*Rho_M[2][i];
+		f[1][i] = (EA1*Rho_M[0][i]/(1 + A01H01*Rho_M[0][i]))*Rho_M[1][i]  
+					-A[1][2]*Rho_M[1][i]/(1 + A12H12*Rho_M[1][i])*Rho_M[2][i];
         //Equivalent to dPr/dt = em*(ajm*G*Pr)/(1+ajm*hjm*G)
-		f[2][i] = (E[2]*A[1][2]*Rho_M[1][i]/(1 + A[1][2]*H[1][2]*Rho_M[1][i]))*Rho_M[2][i]; //-Mm*Rho_M[2][i]*Rho_M[2][i];
+		f[2][i] = (EA2*Rho_M[1][i]/(1 + A12H12*Rho_M[1][i]))*Rho_M[2][i]; //-Mm*Rho_M[2][i]*Rho_M[2][i];
 		//Equivalent to dW/dt = alpha*(P+K2*W0)/(P+K2)*O - g_max*P*W/(W+K1) - rW*W + D*(Laplacian of W)
-        f[3][i] = alpha*(Rho_M[0][i]+ K[2]*W0)/(Rho_M[0][i] +K[2])*Rho_M[4][i] -gmax*Rho_M[3][i]*Rho_M[0][i]/(Rho_M[3][i] +K[1]) - rW*Rho_M[3][i] 
-        + (D[3]*dx1_2)*(Rho_M[3][nR2[i][0][0]]  + Rho_M[3][nR2[i][0][1]]  + Rho_M[3][nR2[i][1][0]]  + Rho_M[3][nR2[i][1][1]]  - 4*Rho_M[3][i]);
+        f[3][i] = alpha*(Rho_M[0][i]+ K2W0)/(Rho_M[0][i] +K[2])*Rho_M[4][i] -gmax*Rho_M[3][i]*Rho_M[0][i]/(Rho_M[3][i] +K[1]) - rW*Rho_M[3][i] 
+        + (Dxd2[3])*(Rho_M[3][nR2[i][0][0]]  + Rho_M[3][nR2[i][0][1]]  + Rho_M[3][nR2[i][1][0]]  + Rho_M[3][nR2[i][1][1]]  - 4*Rho_M[3][i]);
         //Equivalent to dO/dt = a - alpha*(P+K2*W)/(P+K2)*O + D*(Laplacian of O)
-		f[4][i] = a - alpha*(Rho_M[0][i]+ K[2]*W0)/(Rho_M[0][i] +K[2])*Rho_M[4][i] + (D[4]*dx1_2)*(Rho_M[4][nR2[i][0][0]]  + Rho_M[4][nR2[i][0][1]] 
+		f[4][i] = a - alpha*(Rho_M[0][i]+ K2W0)/(Rho_M[0][i] +K[2])*Rho_M[4][i] + (Dxd2[4])*(Rho_M[4][nR2[i][0][0]]  + Rho_M[4][nR2[i][0][1]] 
         + Rho_M[4][nR2[i][1][0]]  + Rho_M[4][nR2[i][1][1]]  - 4*Rho_M[4][i]);
 		
 	}
 }
-void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D3Vec_Int &nR2,double a,double c,double gmax,double alpha,
-		double rW, double W0, double (&D)[Sp], double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t,double dt,double dx, int g)
-{
-	std::ofstream errout; //Save Error Logs
-	std::string thr = "ErrLog_" + std::to_string(omp_get_thread_num()) + ".txt";
-	double dt6 = dt/6.0; double dt2 = dt/2.0; double dx1_2 = 1/(dx*dx);
 
+void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D2Vec_Double &K1, D2Vec_Double &K2, D2Vec_Double &K3, D2Vec_Double &K4, D3Vec_Int &nR2,
+		double a,double c,double gmax,double alpha, double rW, double W0, double (&Dxd2)[Sp], double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t,double dt,double dx, int g)
+{
+	//double dt6 = dt/6.0; double dt2 = dt/2.0; double dx1_2 = 1/(dx*dx);
+
+	/** // OLD DECLARATIONS of K1, K2, K3, K4 and Rho_M. Skipped as declaration and assignment is done in rietkerk_Dornic_2D_MultiSp
+	 * and doing it here takes O(n^2) time each time this function is called.
 	D2Vec_Double K1(Sp, vector<double> (g*g, 0.0)); D2Vec_Double K2(Sp, vector<double> (g*g, 0.0));
     D2Vec_Double K3(Sp, vector<double> (g*g, 0.0)); D2Vec_Double K4(Sp, vector<double> (g*g, 0.0));
     D2Vec_Double Rho_M(Sp, vector<double> (g*g, 0.0));
+	*/
 
-	f_2Dor_3Sp(K1, Rho_tsar, nR2, a, c, gmax, alpha, rW, W0, D, K, A,H,E, t, dt, dx1_2, g); //K1 updated.
+	// RECALL: Dxd2[s] = D[s]/dx2
+	f_2Dor_3Sp(K1, Rho_t, nR2, a, c, gmax, alpha, rW, W0, Dxd2, K, A,H,E, t, dt, dx1_2, g); //K1 updated.
 
-	for(int i=0; i < g*g; i++)
+	for(int s= 0; s <Sp; s++)
 	{
-		for(int s= 0; s <Sp; s++)
-			Rho_M[s][i] = Rho_tsar[s][i] + (dt2)*K1[s][i];
+		for(int i=0; i < g*g; i++)
+			Rho_tsar[s][i] = Rho_t[s][i] + (dt2)*K1[s][i];
 	}
 
-	f_2Dor_3Sp(K2, Rho_M, nR2, a, c, gmax, alpha, rW, W0, D, K, A,H,E, t + dt2, dt, dx1_2, g); //K2 updated.
+	f_2Dor_3Sp(K2, Rho_tsar, nR2, a, c, gmax, alpha, rW, W0, Dxd2, K, A,H,E, t + dt2, dt, dx1_2, g); //K2 updated.
 
-	for(int i=0; i < g*g; i++)
+	for(int s= 0; s <Sp; s++)
 	{
-		for(int s= 0; s <Sp; s++)
-			Rho_M[s][i] = Rho_tsar[s][i] + (dt2)*K2[s][i];
+		for(int i=0; i < g*g; i++)
+			Rho_tsar[s][i] = Rho_t[s][i] + (dt2)*K2[s][i];
 	}
-	f_2Dor_3Sp(K3, Rho_M, nR2, a, c, gmax, alpha, rW, W0, D, K, A,H,E, t + dt2, dt, dx1_2, g); //K3 updated.
-	for(int i=0; i < g*g; i++)
+	f_2Dor_3Sp(K3, Rho_tsar, nR2, a, c, gmax, alpha, rW, W0, Dxd2, K, A,H,E, t + dt2, dt, dx1_2, g); //K3 updated.
+	for(int s= 0; s <Sp; s++)
 	{
-		for(int s= 0; s <Sp; s++)
-			Rho_M[s][i] = Rho_tsar[s][i] + (dt)*K3[s][i];
+		for(int i=0; i < g*g; i++)
+			Rho_tsar[s][i] = Rho_t[s][i] + (dt)*K3[s][i];
 	}
-	f_2Dor_3Sp(K4, Rho_M, nR2, a, c, gmax, alpha, rW, W0, D, K, A,H,E, t + dt, dt, dx1_2, g); //K4 updated.
+	f_2Dor_3Sp(K4, Rho_tsar, nR2, a, c, gmax, alpha, rW, W0, Dxd2, K, A,H,E, t + dt, dt, dx1_2, g); //K4 updated.
     
-	for(int i=0; i < g*g; i++)
+	for(int s= 0; s <Sp; s++)
 	{
-		for(int s= 0; s <Sp; s++)
+		for(int i=0; i < g*g; i++)
 		{
 			Rho_t[s][i]+= (dt6)*( K1[s][i] + 2.0*K2[s][i] + 2.0*K3[s][i] + K4[s][i]);
-	
 
 			if( Rho_t[s][i] < 0 || isfinite(Rho_t[s][i]) == false || isnan(Rho_t[s][i]) == true)
 			{
+				std::ofstream errout; //Save Error Logs
+				std::string thr = "ErrLog_" + std::to_string(omp_get_thread_num()) + ".txt";
 				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
         		m6 << "RK4 WAS KO'ED WITH:\t" << Rho_t[s][i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
 				<< " at time:\t:" << t << " For Species:\t:" << s << " with K1[s][i]:   " << K1[s][i] << "\t, K2[s][i]:\t" << K2[s][i] 
 				<< "\t, K3[s][i]:\t" << K3[s][i] << "\t, K4[s][i]:\t" << K4[s][i] << "\t AND Rho(t-dt)" << Rho_tsar[s][i] << endl; //cout << m6.str();
 				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
 			}
-			
 		}
 	}
-
 }
 
 void save_prelimframe(D2Vec_Double &Rho_t, const string &parendir, const string &filenamePattern, double a, double a_st, double a_end, double t, 
@@ -3591,7 +3635,7 @@ void calc_gamma_3Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringS
 		nVeg_frac = 0.35; //Minimum fraction of vegetation cover.
 
 	int L2 = L*L;
-	double eps = 1.0e-50; //Small number to avoid division by zero.
+	double eps = 1.0e-12; //Small number to avoid division by zero.
 
 	int new_length = int(nVeg_frac*nVeg_frac*centralNeighboringSites.size());
 	// Make a copy of the centralNeighboringSites, resized to the fraction nVeg_frac*nVeg_frac.
@@ -3703,7 +3747,7 @@ void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec
 
 
 	int L2 = L*L;
-	double eps = 1.0e-50; //Small number to avoid division by zero.
+	double eps = 1.0e-12; //Small number to avoid division by zero.
 
 	double rho_inverse[SpB] ={1/eps, 1/eps, 1/eps}; //Inverse of average density.
 	for(int s=0; s< SpB; s++)
@@ -3803,6 +3847,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 	double (&D)[Sp], double v[], double (&K)[3], double sigma[], double a_st, double a_end, double a_c, double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], 
 	double chigh[], double clow[], double dt, double dx, double dP, int r, int g)
 {
+	double epsilon = 1.0e-12; //Small number to avoid division by zero.
 	double perc =0.015; //Percentage of high density patches.
 	//Store max value in pR[] in a variable r_max.
 	//NOTE: SpB = Sp - 2; //Number of species excluding water terms.
@@ -3853,7 +3898,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 
 	//Defining Dornic variables for integration schema.
 	//double bdt = b*dt; double cdt = c*dt; 
-	double dx2 = dx*dx; double dx1 = 1/dx; double dx1_2 = 1/(dx2); double dxb2 = dx/2.0;
+	double dx2 = dx*dx; double dx1 = 1/dx; double dx1_2 = 1/(dx2); double dxb2 = dx/2.0; 
 	double diff_coefficient[Sp]={0.0}; double beta[Sp]={0.0}; double lambda_exp[Sp]={0.0}; double lambda[Sp]={0.0}; double sigma2_1[Sp]={0.0};
 	vector<std::pair<double, double>> diff_eff(SpB, {0.0, 0.0}); //Stores effective diffusion coefficient for each species after correcting for advection.
 	//vector <double> gamma_i(SpB, 0.0); //Stores gamma for each species.
@@ -3862,7 +3907,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 	beta[0] = -M[0] - 4*D[0]/(dx2);
 	lambda_exp[0]= exp( (beta[0])*dt); lambda[0] = 2*(beta[0])/(sigma[0]*sigma[0]*(lambda_exp[0] -1.0));
 	diff_coefficient[0] = D[0]/(dx2); sigma2_1[0] = 1/(sigma[0]*sigma[0]);
-	for(int s=1; s < Sp-2; s++)
+	for(int s=1; s < SpB; s++)
 	{
 		diff_coefficient[s] = D[s]/(dx2);
 		sigma2_1[s] = 1/(sigma[s]*sigma[s]);
@@ -3877,6 +3922,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			errout.open(thr, std::ios_base::out); errout << m0.str(); errout.close();
 		}
 	}
+	for(int s= SpB; s < Sp; s++)
+		diff_coefficient[s] = D[s]/(dx2);
 	double Gstar = M[2]/((E[2] -M[2]*H[1][2])*A[1][2]); // MFT Coexistance Steady state for grazer.
 	double alpha_prime = diff_coefficient[0]*4; //Assume each Rho in neighbourhood for alpha estimation averages 1.
 	double poiss_ru = lambda[0]*lambda_exp[0]*2.5; //Mean
@@ -3917,6 +3964,12 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		D2Vec_Double DRho(Sp, vector<double> (g*g, 0.0)); // 2D vector of dim: Sx(L*l) Dummy variable, Kept constant, only updated at end of turn.
 		D2Vec_Double Rho_tsar(Sp, vector<double> (g*g, 0.0)); // 2D vector of dim: Sx(L*l) Dummy variable, Kept constant, only updated at end of turn.
 
+		D2Vec_Double gamma(SpB, vector<double> (g*g, 0.0)); //Stores gamma for each species at each site.
+
+		// 2D vectors of dim: Sx(L*l). Used for RK4 integration (of linear terms) of Rho_dt , after Dornic update.
+		D2Vec_Double K1(Sp, vector<double> (g*g, 0.0)); D2Vec_Double K2(Sp, vector<double> (g*g, 0.0));
+    	D2Vec_Double K3(Sp, vector<double> (g*g, 0.0)); D2Vec_Double K4(Sp, vector<double> (g*g, 0.0));
+
 		D2Vec_Double Rho_M(tot_iter, vector<double> (Sp2, 0.0)); //Stores <rho>x values per time step for a single replicate.
 		//double Rho_M[tot_iter][Sp2] ={0.0}; //Stores <rho>x values per time step for a single replicate.
 
@@ -3937,7 +3990,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		
 		vector <double> sd{g/8.0, g/16.0}; //Setting standard deviation of gaussian distributions of vegetation to g/8 and g/16.
 
-		init_gaussframe(Rho_dt, g*g, sd, amp);
+		init_gaussframe(Rho_dt, g*g, sd, amp); // **/
 	
 		// The first SpB species stored in Rho_dt are to be initialised on frame as Gaussian distributions.
 		// Species 0 is the vegetation, Species 1 is the grazer and Species 2 is the predator.
@@ -4023,7 +4076,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				vector<double>().swap(temp_alt); //Flush temp out of memory.0
 
 				// FRAME SAVING
-				if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 60000 && t <= 120000 || t >= 200 && t <= 10000 
+				if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 60000 && t <= 120000 || t >= 30 && t <= 10000 
 					|| t== 0)
 				{
 					//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
@@ -4054,7 +4107,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					stringstream m3;
 					m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
 					cout << m3.str();
-					*/
+					// */
+					
 
 					// SAVE SELECTED FRAMES
 					if(t < 760)
@@ -4087,13 +4141,12 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
 						cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
 					}
-					// */
-					///**
+					//*/
 					
 					
 					
 				}
-				// */
+				//
 
 				// BLOCK FOR CALCULATING AND TEMP PRELIMINARY FRAMES
 				if( index == int(tot_iter*0.85) || index == int(tot_iter*0.9) || index == int(tot_iter*0.95) || index == int(tot_iter-1))
@@ -4128,7 +4181,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					//cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
 
 					vector<vector<double>>().swap(rho_rep_avg_var_temp); //Flush temp out of memory.
-				}
+				} 
+				// */
 
 				vector <double> temp_1= {DRho[0].begin(),DRho[0].end()}; //Rho_dt for species '0'
 				double rhox_DR = occupied_sites_of_vector(temp_1, g*g); //Finds number of occupied at given t.
@@ -4206,7 +4260,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						<< " at time:\t:" << t << " with Rho"<< s <<"(t-dt,i):   " << DRho[s][i] << "\t and alpha_i:\t" << alpha_i << 
 						"\t and GAMMA ENTRY:\t" << gru << "\n"; cout << m6.str(); cerr << m6.str();
 					}
-					Rho_tsar[s][i] = Rho_dt[s][i];		// This is the rho* value (refer to Dornic et 2005)
+					//Rho_tsar[s][i] = Rho_dt[s][i];		// This is the rho* value (refer to Dornic et 2005)
 				}
 			} // End of Vegetation Integration
 			
@@ -4224,13 +4278,11 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			if (nR_fac < 0.35)
 			{	nR_fac = 0.35; }
 
-			D2Vec_Double gamma(SpB, vector<double> (g*g, 0.0)); //Stores gamma for each species at each site.
-
 			calc_gamma_3Sp(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, nR_fac, r_max_effective, g); 
 			//Calculates gamma for each species at each site.
 
-			/** // BLOCK FOR SAVING GAMMA FRAMES
-			if(t == 0 || t >= t_meas[index-1] -dt/2.0 && t < t_meas[index-1] +dt/2.0 && index >= tot_iter -9 &&  index <= tot_iter)
+			// BLOCK FOR SAVING GAMMA FRAMES
+			if(t == 0 || t >= t_meas[index-1] -dt/2.0 && t < t_meas[index-1] +dt/2.0)// && index >= tot_iter -9 &&  index <= tot_iter)
 			{
 				// Saving gamma values to file at given time points.
 				stringstream L, tm ,d3, p1, rini, a1, a2, Dm1, Dm2, dix, dimitri, geq;
@@ -4269,7 +4321,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			}
 			*/
 			// Now for higher order species.
-			for(int s=1; s< Sp-2; s++)
+			for(int s=1; s< SpB; s++)
             {
 				if(Rhox_avg[s] == 0.0)
 					continue;
@@ -4288,12 +4340,14 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						m5_2 << "STATUS UPDATE AT TIME [t, thr, i, j]\t" << t << " , " << omp_get_thread_num() << " , " << i << " , " << j 
 						<< "\t GAMMA FOUND WITH GAMMA_I:" << gamma[s][i] << "\n"; cout << m5_2.str();
 					} */
+					
 					if( gamma[s][i] < 0.0)
 					{
 						stringstream m5_3;     //To make cout thread-safe as well as non-garbled due to race conditions.
 						m5_3 << "GAMMA_I FALLS BELOW 0,  AT TIME [t, thr, i, j]\t" << t << " , " << omp_get_thread_num() << " , " << i << " , " << j  
 						<< "\t WITH GAMMA_I:" << gamma[s][i] << " for species: " << s << "\n"; cout << m5_3.str(); cerr << m5_3.str(); 
 					}
+					/** // Check if gamma_i is NaN or Inf, if so, SAVE GAMMA & exit the program.
 					if(isnan(gamma[s][i]) == true || isinf(gamma[s][i]) == true)
 					{
 						stringstream m5_3;     //To make cout thread-safe as well as non-garbled due to race conditions.
@@ -4323,6 +4377,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						exit(4);
 						
 					}
+					// */
 
 					//Next sampling the advection vector from v[s].
 					//unif = uniform_real_distribution<double>(0.0, 1.0);
@@ -4410,7 +4465,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						cout << m6.str(); cerr << m6.str();
 						exit(3);
 					}
-					Rho_tsar[s][i] = Rho_dt[s][i];		// This is the rho* value (refer to Dornic et 2005)
+					//Rho_tsar[s][i] = Rho_dt[s][i];		// This is the rho* value (refer to Dornic et 2005)
 					/** COUNTER STATUS UPDATE
 					if(counter%50000 == 0 && counter == i)
 					{
@@ -4423,9 +4478,15 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					*/
 				}
 			}
+			/** // Finally, update Rho_tsar with the new values of Rho_dt for the abiotic species.
+			for(int s=SpB; s< Sp; s++)
+			{
+				for(int i=0;i<Rho_dt[0].size();i++)
+					Rho_tsar[s][i] = Rho_dt[s][i];		
+					// This is the rho* value (refer to Dornic et 2005)
+			} //**/
 
-			// Swap out the gamma vector to free up memory.
-			vector<vector<double>>().swap(gamma);
+			
 			
 			if(counter%50000 == 0)
 			{
@@ -4434,10 +4495,10 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				cout << m5_1.str(); cerr << m5_1.str();
 			}
 			
-
+			// NOTE: diff_coefficient[s] = D[s]/(dx*dx)
 			// Finally RK4 integration of the remaining terms.
 
-			RK4_Integrate_Stochastic_MultiSp(Rho_dt, Rho_tsar, nR2, a, c, gmax, alpha, rW, W0, D, K, A,H,E, t, dt, dx, g);
+			RK4_Integrate_Stochastic_MultiSp(Rho_dt, Rho_tsar, K1, K2, K3, K4, nR2, a, c, gmax, alpha, rW, W0, diff_coefficient, K, A,H,E, t, dt, dx, g);
 			
 			if(counter%50000 == 0)
 			{
@@ -4451,6 +4512,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					
 				for(int i=0;i<Rho_dt[0].size();i++)
 				{
+					/** // CHECK FOR NAN AND INF
 					if( Rho_dt[s][i] < 0 || isinf(Rho_dt[s][i]) == true and so==1)
 					{
 						stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
@@ -4459,6 +4521,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						<< Rho_tsar[s][i] << "\t and (DX, DY):  [" << diff_eff[s].first << " , " << diff_eff[s].second <<  " ]" <<  "\n"; 
 						cout << m6.str(); cerr << m6.str();
 					}
+					// */ 
 
 					if( isnan(Rho_dt[s][i] == true))
 					{
@@ -4469,8 +4532,11 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						cout << m6.str(); cerr << m6.str();
 						lo == -1;
 					}
+					// Set all lattice sites that are less than 10^-12 to 0.0.
+					if(Rho_dt[s][i] < epsilon)
+						Rho_dt[s][i] = 0.0;	
 					DRho[s][i] =Rho_dt[s][i]; //Updating dummy variable (necessary to prevent mixing of time in diffusion)
-					Rho_tsar[s][i] =Rho_dt[s][i]; //Updating dummy variable (necessary to prevent mixing of time in diffusion)
+					//Rho_tsar[s][i] =Rho_dt[s][i]; //Updating dummy variable (necessary to prevent mixing of time in diffusion)
 				}
 			}
 
@@ -4502,7 +4568,9 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				exit(3);
 			}
 		} // End of time loop.
-		
+
+		vector<vector<double>>().swap(gamma); vector<vector<double>>().swap(K1); 
+		vector<vector<double>>().swap(K2); vector<vector<double>>().swap(K3); vector<vector<double>>().swap(K4);
 		vector<vector <double>>().swap(Rho_dt); vector<vector <double>>().swap(DRho); vector<vector <double>>().swap(Rho_tsar);
 		// Freeing up memory.
 		if(int(omp_get_thread_num()) == 5)

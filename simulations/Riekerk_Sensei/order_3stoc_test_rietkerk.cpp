@@ -193,6 +193,9 @@ int main(int argc, char *argv[])
   cout << "Save directory for preliminary data: " << prelim_folder << "\n";
   cout << "Save directory for final data: " << stat_prefix << "\n";
 
+  set_global_user_params(dt, dx); //Set the global parameters for the simulation.
+  cout << "Global parameters set, with dt/2.0 = " << dt2 << " and dx*dx = " << dx2 <<  " and 1/(dx*dx) = " << dx1_2 << "\n";
+
 
   //INITIAL CONDITIONS:
 
@@ -212,7 +215,7 @@ int main(int argc, char *argv[])
   string MFT_O = std::to_string(mO) + " * a + " + std::to_string(cO);
 
   MFT_Vec_CoexExpr.assign({MFT_V, MFT_G, MFT_Pr, MFT_W, MFT_O});
-
+  // NOTE: The following clow is used for analytic MFT based initial conditions. 
   double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 1, 1, 5, init_frac_grazpred, init_frac_grazpred, 1, 1};
 
   // LE ORIGINAL (NORMAL CLOSE TO MFT)
@@ -225,9 +228,9 @@ int main(int argc, char *argv[])
   //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, Gstar, 10, 4, 10};
 
   // NORMAL INIT CLOSE TO MFT
-  //double chigh[2*Sp] = {dP, dP/10000.0, dP/100000.0, 4, 20, 10000.0 + dP, Gstar, 10, 4, 10};
+  double chigh[2*Sp] = {dP, dP/10000.0, dP/100000.0, 4, 20, 10000.0 + dP, Gstar, 10, 4, 10};
   // HIGH INIT > MFT
-  double chigh[2*Sp] = {dP, dP/dP, dP/(10.0*dP), 4, 20, 10000.0 + dP, Gstar*1.5, 15, 4, 10};
+  //double chigh[2*Sp] = {dP, dP/dP, dP/(10.0*dP), 4, 20, 10000.0 + dP, Gstar*1.5, 15, 4, 10};
   // LOW INIT < MFT
   //double chigh[2*Sp] = {dP, dP/dP, dP/(10.0*dP), 4, 20, 10000.0 + dP, 2, 0.6, 4, 10};
 

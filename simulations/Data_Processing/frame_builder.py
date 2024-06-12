@@ -48,10 +48,10 @@ from matplotlib.collections import LineCollection
 
 # User inputs.
 
-in_dir = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_EQ/"
-out_dir = "../../Images/3Sp/StdParam_20_100_EQ/"
+in_dir = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_MFTEQ/"
+out_dir = "../../Images/3Sp/StdParam_20_100_MFTEQ/"
 Path(out_dir).mkdir(parents=True, exist_ok=True)
-prefixes = ["DiC-REF-HI", "DiC-REF-LI", "DiC-NREF-HI", "DiC-NREF-LI"]
+prefixes = ["DiC-REF-1.1HI", "DiC-REF-0.5LI", "DiC-NREF-1.1HI", "DiC-NREF-0.5LI"]
 
 g = 128;  dP = 10000; Geq = 4.802; R_max= -1;
 T_vals =[]
@@ -143,11 +143,11 @@ def auto_guess_avals_tvals(indir, PREFIX, a_vals = [], t_vals= []):
             a = int(a) if a.is_integer() else a
             try:
                 with open(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_vals.txt", 'r') as f:
-                    t_vals = [float(line.strip()) for line in f]
+                    t_vals.extend([float(line.strip()) for line in f])
             except FileNotFoundError:
                 print(f"T_vals.txt not found in the input directory and no T_vals specified for a = {a}. Skipping this a-value.")
                 continue
-        t_vals = [int(T) if T.is_integer() else T for T in t_vals]
+        t_vals= [int(T) if T.is_integer() else T for T in t_vals]
         # Sort and remove duplicates
         t_vals = sorted(list(set(t_vals)))
         # End of T loop
@@ -468,8 +468,12 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, plt_gamma= F
                             print(f"Image not found for a = {a}, T = {T}, R = {R}, s = {s}, Skipping....")
                             continue
         '''
-    home_video(out_dir, out_dir, [PREFIX], input_avals, input_tvals, input_Rmax, 
-               pngformat= "CombinedImg/BioConc_a_{a}_T_{T}_n_{R}.png", videoname = "guess")
+        """
+        home_video(out_dir, out_dir, [PREFIX], input_avals, input_tvals, maxR=  input_Rmax, 
+               pngformat= "CombinedImg/BioConc_a_{a}_T_{T}_n_{R}.png", pngdir= "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/",
+               videoname = "guess")
+        """
+    
 
 ''' # Summary Description of get_timeseriesData(...) (called by analyse_timeseriesData(...))
 This function creates a multi-Indexed DataFrame with the timeseries data for each species.
@@ -674,6 +678,8 @@ def analyse_timeseriesData(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], f
                 ax.set_xlabel(r'Time $(d)$')
                 ax.set_ylabel(r'$\langle \rho_{%g}(t) \rangle_{x}$' % (s))
                 ax.legend()
+            #Set ymax for axs[3] to be 500.
+            axs[2].set_ylim(-5, 500)
             fig.suptitle(r"$\mu(\rho(x, t))$" + f" For {Pre} at a = {a}, dP = {dP}, Geq = {Geq}")
             plt.savefig(savepngdir + f"TimeSeries_a_{a}_dP_{dP}_Geq_{Geq}.png")
             #plt.show()
@@ -727,7 +733,7 @@ def analyse_timeseriesData(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], f
         home_video(out_dir, out_dir, ["TimeSeries/Combined"], a_vals, [Tmax], 1, pngformat= "TimeSeries_AllPrefixes_a_{a}_dP_{dP}_Geq_{Geq}.png", videoname = f"TimeSeries_All_T_{Tmax}.mp4")
     '''
 
-def analyse_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], filename = "MEAN_STD_Surviving_Runs.txt"):
+def analyse_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tavg_window_index = [-30000, 0], filename = "MEAN_STD_Surviving_Runs.txt"):
 
     savefilename = re.sub(r'\.txt$', '', filename)
     if len(prefixes) == 0:
@@ -755,10 +761,52 @@ def analyse_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], filename 
         print(data.index)
         #print(data.describe())
         # Save the data to a csv file
-
         data.to_csv(savedir + f"{savefilename}_dP_{dP}_Geq_{Geq}.csv")
         #Concatenate the data to the combined data
         combined_data = pan.concat([combined_data, data], axis = 0)
+        Avals_list = sorted(data.index.get_level_values('a').unique().to_list())
+        Tavg = pan.DataFrame()
+        # Iterating over the Pre, a indices, average over the last Tavg_window_index values of T and assign to new DataFrame.
+        for a in Avals_list:
+            # Get Tmax for this a value
+            Tmax = data.loc[(slice(None), a, slice(None)), :].index.get_level_values('T').max()
+            Twin_min = Tmax + Tavg_window_index[0]; Twin_max = Tmax + Tavg_window_index[1]
+            print(f"Averaging data for {Pre} at a = {a} for T in range {Twin_min} -- {Twin_max}:")
+            df = data.loc[(slice(None), a, slice(Twin_min, Twin_max)), :].groupby(['Prefix', 'a']).mean()
+            df.index = pan.MultiIndex.from_tuples([(Pre, a, Twin_max)], names = ['Prefix', 'a', 'Twindow'])
+            Tavg = pan.concat([Tavg, df], axis = 0).sort_index(axis = 0)
+        # End of a loop
+
+        print(f"Data for {Pre} after averaging over last {Tavg_window_index[1]} values of T:")
+        print(Tavg.head())
+        print(Tavg.tail())
+        print(Tavg.columns)
+        print(Tavg.index)
+
+        #Save the data to a csv file
+        Tavg.to_csv(savedir + f"DEBUG_Twin_{Twin_min}_{Twin_max}_dP_{dP}_Geq_{Geq}.csv")
+
+        # Use Tavg to create plots of a vs. the mean of the data for each species, with STD as infill.
+        fig, axs = plt.subplots(1, 3, figsize = (20, 6))
+        for s in range(3):
+            ax = axs[s]
+            ax.scatter(Tavg.index.get_level_values('a'), Tavg.iloc[:, 3*s], label = r"$\mu_{%g}$" %(s), color = colours[s], s = 15, alpha = 0.75)
+            err = 2 * np.sqrt(Tavg.iloc[:, 3*s + 1]) # Get 95% confidence interval
+            ax.fill_between(Tavg.index.get_level_values('a'), Tavg.iloc[:, 3*s] - err, Tavg.iloc[:, 3*s] + err, alpha = 0.35, color = colours[s])
+            # Annote the points with the values in data_T.iloc[:, 3*s+2] (which is the COUNT column of the data)
+            for i, txt in enumerate(Tavg.iloc[:, 3*s + 2]):
+                ax.annotate(int(txt), (Tavg.index.get_level_values('a')[i], Tavg.iloc[i, 3*s]))
+            ax.set_title(r" $ \langle \langle \rho_{%g}(x, t = %g) \rangle_{x} \rangle_{r} $" % (s, Twin_max))
+            ax.set_xlabel(r'R $(mm/hr)$')
+            ax.set_ylabel(str(data.columns[3*s]))
+            ax.legend()
+        fig.suptitle(r"$\mu$ and $\sigma$ of" + f" Species For {Pre}, dP = {dP}, Geq = {Geq} B/W {Twin_min} -- {Twin_max}")
+        plt.savefig(savedir + f"MeanSTD_{Pre}_amin_{Avals_list[0]}_amax_{Avals_list[-1]}_dP_{dP}_Geq_{Geq}.png")
+        plt.show()
+        plt.close()
+        
+
+        ''' # Previous version of the code, where we iterate over T values and create plots for each T value.
         # Use the data to create plots.
         # For each T-value, create a plot of a vs. the mean of the data for each species, with STD as infill.
         for T in T_vals:
@@ -781,6 +829,7 @@ def analyse_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], filename 
             plt.savefig(savedir + f"MeanSTD_{Pre}_T_{T}_dP_{dP}_Geq_{Geq}.png")
             plt.show()
             plt.close()
+        '''
 
     savedir = out_dir + "PhaseDiagrams/"
     Path(savedir).mkdir(parents=True, exist_ok=True)
@@ -837,13 +886,22 @@ def recursive_copydir(src, dst, include_filetypes = ["*.txt"],
 
 
 #recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filetypes =["*.png", "*.jpg", "*.jpeg", "*.mp4"], symlinks=False)
-#a_vals = [0.041, 0.0415, 0.042, 0.0425, 0.043, 0.0435, 0.045, 0.047, 0.051]; 
-T_vals= [229087]
-#for Pre in prefixes:
-    #frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= 0, plt_gamma= False, delpng = False)
+#a_vals = [0.041, 0.0415, 0.042, 0.0425, 0.043, 0.044, 0.045, 0.047, 0.05, 0.053]; 
+#T_vals= [229087]
+'''
+for Pre in prefixes:
+    frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= 0, plt_gamma= False, delpng = False)
+    print(f"Done with making frames for {Pre}")
+    for a in a_vals:
+        print(f"Making video for {Pre} at a = {a} \n\n")
+        home_video(out_dir, out_dir, [Pre], [a], T_vals=[], maxR= -1, 
+                   pngformat= "CombinedImg/BioConc_a_{a}_T_{T}_n_{R}.png", pngdir= "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/",
+                     maxR_txtdir = "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/maxR.txt", videoname = "guess",
+                     video_relpath= "{Pre}/Videos/Conc/{a}/{Tmin}-{Tmax}/")
+'''
 #frame_visualiser(in_dir, out_dir, prefixes[0], a_vals, T_vals, maxR= -1, plt_gamma= False, delpng = False)
 #home_video(out_dir, out_dir, prefixes, a_vals, T_vals, R_max, pngformat= "CombinedImg/BioConc_a_{a}_T_{T}_n_{R}.png", videoname = "guess")
 
-#prefixes = ["DIC-REF-HI"]
-#analyse_EQdata(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "MEAN_STD_Surviving_Runs.txt")
-analyse_timeseriesData(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "MEAN_REPLICATES.txt")
+prefixes = ["DIC-REF-1.1HI", "DIC-REF-0.5LI"]
+analyse_EQdata(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "MEAN_STD_Surviving_Runs.txt")
+#analyse_timeseriesData(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "MEAN_REPLICATES.txt")

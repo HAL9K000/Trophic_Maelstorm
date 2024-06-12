@@ -53,7 +53,7 @@ start_screen(){
     p10=$(echo $p10 | tr -d '[:space:]')
     if ! screen -list | grep -q "${screen_names[$screen_index]}"; then
         # Start a new screen session and run the job
-        screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; g++ rietkerk_bjork_basic.cpp order_3stoc_test_rietkerk.cpp -fopenmp -o ${screen_names[$screen_index]}_${p10}.out -std=c++23; ./${screen_names[$screen_index]}_${p10}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 &> stderr_${screen_names[$screen_index]}.txt; cd $curr_dir"
+        screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; g++-12 rietkerk_bjork_basic.cpp order_3stoc_test_rietkerk.cpp -fopenmp -o ${screen_names[$screen_index]}_${p10}.out -std=c++23; ./${screen_names[$screen_index]}_${p10}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 &> stderr_${screen_names[$screen_index]}.txt; cd $curr_dir"
         screen_index=$((screen_index+1))
     else
         #echo "Screen session ${screen_names[$screen_index]} is already running. Using the next screen name."

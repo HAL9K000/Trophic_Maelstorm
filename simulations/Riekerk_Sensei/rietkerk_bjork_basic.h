@@ -53,6 +53,13 @@ inline const int Sp_NV = Sp-3; //Number of grazer and predator species in system
 inline const int Sp4_1 = 4*(Sp -2) +3; // Used for generating statistics on surviving runs
 inline const int Sp2 = 2*Sp; // Used for generating statistics on surviving runs
 
+// Global user-defined parameters for the Rietkerk model.
+inline double dt2 /** = dt/2.0*/; inline double dt6 /** = dt/6.0*/;
+inline double dx2 /** = dx*dx*/; inline double dx1_2 /** = 1.0/(dx*dx)*/; inline double dxb2 /** = dx/2.0/ */; inline double dx1 /** =  1/dx */;
+
+// Rietkerk Model Parameters, set in set_global_user_Rietkerk_params() function.
+//inline double cgmax /** = c*gmax */; inline double K2W0 /**= K[2]*W0 */;inline double A01H01 /** = A[0][1]*H[0][1] */;inline double A12H12 /**= A[1][2]*H[1][2] **/;
+
 // Strings that are used for I/O operations and file naming in the simulations.
 inline string prefix = "DiC-NREF-LI";
 inline string frame_folder = "../Data/Rietkerk/Frames/Stochastic/3Sp/" + prefix + "_"; //Folder to store frames.
@@ -152,11 +159,16 @@ struct zd_coordinates {
 
 inline const double PI = CalculatePi<14>::pi;
 
+//void set_global_user_Rietkerk_params(double c,double gmax,double alpha, double rW, double W0, double (&D)[Sp], 
+//	double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB])
+
 template <typename T> int sgn(T val);
 void increase_stack_limit(long long stack_size);
 bool maxis(int a, int b);
 void add_three(int a, int b, int c); //Test function.
 void set_Prefix(string& user_prefix);
+void set_global_user_params(double dt, double dx);
+
 void display_symbol_table(const exprtk::symbol_table<double>& symbol_table);
 // Custom comparator for sorting pairs based on the squared distance
 bool comparePairs(const pair<int, int>& a, const pair<int, int>& b); 
@@ -241,10 +253,11 @@ void first_order_critical_exp_delta_stochastic(int div, double t_max, double a_s
 
 //------------------- Vegetation + Grazer (+ Soil Water + Surface Water) -------------------//
 
-void f_2Dor_2Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, 
-	double alpha, double rW, double W0, double D[], double K[], double A[Sp][Sp], double H[Sp][Sp], double E[], double t, double dt, double dx1_2, double g);
-void RK4_Integrate_Stochastic_2Sp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D3Vec_Int &nR2,double a,double c,double gmax,double alpha,
-	double rW, double W0, double D[], double K[], double A[Sp][Sp], double H[Sp][Sp], double E[], double t,double dt,double dx, int g);
+void f_2Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, double alpha, 
+	double rW, double W0, double (&Dxd2)[Sp], double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double dx1_2, double g);
+void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D2Vec_Double &K1, D2Vec_Double &K2, D2Vec_Double &K3, D2Vec_Double &K4, D3Vec_Int &nR2,
+	double a,double c,double gmax,double alpha, double rW, double W0, double (&Dxd2)[Sp], double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], 
+	double t,double dt,double dx, int g);
 void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double c, double gmax, double alpha, double rW, double W0, 
 	double D[], double v[], double K[], double sigma[], double a_st, double a_end, double A[Sp][Sp], double H[Sp][Sp], double E[], double M[], double pR[], 
 	double dt, double dx, double dP, int r, int g);
