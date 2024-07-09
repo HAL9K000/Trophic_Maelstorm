@@ -57,6 +57,10 @@ inline const int Sp2 = 2*Sp; // Used for generating statistics on surviving runs
 inline double dt2 /** = dt/2.0*/; inline double dt6 /** = dt/6.0*/;
 inline double dx2 /** = dx*dx*/; inline double dx1_2 /** = 1.0/(dx*dx)*/; inline double dxb2 /** = dx/2.0/ */; inline double dx1 /** =  1/dx */;
 
+// Global user-defined parameters for the predator-prey trophic chain.
+inline double K_P; /** Carrying capacity of predator */
+inline double K_P1; /** Inverse of carrying capacity of predator */
+
 // Rietkerk Model Parameters, set in set_global_user_Rietkerk_params() function.
 //inline double cgmax /** = c*gmax */; inline double K2W0 /**= K[2]*W0 */;inline double A01H01 /** = A[0][1]*H[0][1] */;inline double A12H12 /**= A[1][2]*H[1][2] **/;
 
@@ -167,7 +171,8 @@ void increase_stack_limit(long long stack_size);
 bool maxis(int a, int b);
 void add_three(int a, int b, int c); //Test function.
 void set_Prefix(string& user_prefix);
-void set_global_user_params(double dt, double dx);
+void set_global_system_params(double dt, double dx);
+void set_global_predator_params(double Km);
 
 void display_symbol_table(const exprtk::symbol_table<double>& symbol_table);
 // Custom comparator for sorting pairs based on the squared distance

@@ -48,13 +48,15 @@ from matplotlib.collections import LineCollection
 
 # User inputs.
 
-in_dir = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_MFTEQ/"
-out_dir = "../../Images/3Sp/StdParam_20_100_MFTEQ/"
+in_dir = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_MFTNu/"
+out_dir = "../../Images/3Sp/StdParam_20_100_MFTNu/"
+#in_dir = "StdParam_20_100_Test/"
+#out_dir = "../../Images/3Sp/AdvDiffTest/"
 Path(out_dir).mkdir(parents=True, exist_ok=True)
-prefixes = ["DiC-REF-1.1HI", "DiC-REF-0.5LI", "DiC-NREF-1.1HI", "DiC-NREF-0.5LI"]
+#prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 
 g = 128;  dP = 10000; Geq = 4.802; R_max= -1;
-T_vals =[]
+T_vals =[]; TS_vals =[];
 a_vals = []    
 
 #Making the output directories if they don't exist
@@ -334,7 +336,7 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, plt_gamma= F
                     plt.savefig(out_dir + f"Singular/Rho_s_{s}_a_{a}_T_{T}_n_{R}.png")
                     plt.close()
                 '''
-                # Creating subplots
+                # Creating combinbed subplots
                 fig, axs = plt.subplots(1, 3, figsize = (20, 6))
                 for s in range(3):
                     ax = axs[s]
@@ -349,6 +351,7 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, plt_gamma= F
                 plt.savefig(savepath + f"CombinedImg/BioConc_a_{a}_T_{T}_n_{R}.png")
                 plt.close()
 
+                '''
                 # Creating subplots
                 fig, axs = plt.subplots(1, 2, figsize = (12, 6))
                 for s in range(2):
@@ -363,8 +366,8 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, plt_gamma= F
                 
                 plt.savefig(savepath + f"CombinedImg/WatConc_a_{a}_T_{T}_n_{R}.png")
                 plt.close()
-
-
+                '''
+                
                 if plt_gamma:
                     data_gamma = pan.read_csv(in_dir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/GAMMA_T_{T}_a_{a}_R_{R}.csv", header= 0)
                     data_gamma = data_gamma.iloc[:, 2:]
@@ -386,9 +389,9 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, plt_gamma= F
 
                     #Set super title
                     fig.suptitle(r'$R = %g$, $dP = %g$, $n =%d$' % (a, dP, R))
-                    plt.savefig(savepath + f"CombinedImg/Gamma_a_{a}_T_{T}_n_{R}.png")
+                    plt.savefig(savepath + f"CombinedImg/BioGammaConc_a_{a}_T_{T}_n_{R}.png")
                     plt.close()
-
+                
             # End of R loop
             plt.close()
         # End of T loop
@@ -397,77 +400,6 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, plt_gamma= F
         # Images are arranged to create video in increasing order of T, followed by increasing order of R.
         img_array = []
         
-        ''' PREVIOUS VERSION OF HOME_VIDEO FUNCTION
-        for s in range(3):
-            for R in range(R_max):
-            
-                for T in T_vals:
-                    T = int(T) if T.is_integer() else T
-                
-                    try:
-                        img = cv2.imread(out_dir + f"Singular/Rho_s_{s}_a_{a}_T_{T}_n_{R}.png")
-                        img_array.append(img)
-                    except:
-                        print(f"Image not found for a = {a}, T = {T}, R = {R}, s = {s}, Skipping....")
-                        continue
-
-        height, width, layers = img_array[0].shape; size = (width, height)
-        video_name = out_dir + f'Videos/IndRho{s}_a_{a}.mp4'
-        out = cv2.VideoWriter(video_name, cv2.VideoWriter_fourcc(*'mp4v'), 1, size)
-
-        for i in range(len(img_array)):
-            out.write(img_array[i])
-        out.release()
-        '''
-        '''
-        # Combining images to create video for each a value.
-        # Images are arranged to create video in increasing order of T, followed by increasing order of R.
-        img_array = []; img_array2 = []
-        for R in range(R_max):
-            for T in T_vals:
-                T = int(T) if T.is_integer() else T
-                try:
-                    img = cv2.imread(out_dir + f"Combined/Concentration_a_{a}_T_{T}_n_{R}.png")
-                    img_array.append(img)
-
-                except:
-                    print(f"Image not found for a = {a}, T = {T}, R = {R}, Skipping....")
-                    continue
-                try:
-                    img2 = cv2.imread(out_dir + f"Combined/Gamma_a_{a}_T_{T}_n_{R}.png")
-                    img_array2.append(img2)
-                except:
-                    print(f"Image not found for a = {a}, T = {T}, R = {R}, Skipping....")
-                    continue
-                
-        height, width, layers = img_array[0].shape; size = (width, height)
-        video_name = out_dir + f'Videos/CombinedRho_a_{a}.mp4'
-        out = cv2.VideoWriter(video_name, cv2.VideoWriter_fourcc(*'mp4v'), 1, size)
-
-        for i in range(len(img_array)):
-            out.write(img_array[i])
-        out.release()
-
-        if(len(img_array2) > 0):
-            height, width, layers = img_array2[0].shape; size = (width, height)
-            video_name = out_dir + f'Videos/CombinedGamma_a_{a}.mp4'
-            out = cv2.VideoWriter(video_name, cv2.VideoWriter_fourcc(*'mp4v'), 1, size)
-
-            for i in range(len(img_array2)):
-                out.write(img_array2[i])
-            out.release()
-        # Deleting the images
-        if delpng:
-            for R in range(R_max):
-                for T in T_vals:
-                    for s in range(3):
-                        try:
-                            os.remove(out_dir + f"Singular/Rho_s_{s}_a_{a}_T_{T}_n_{R}.png")
-                            os.remove(out_dir + f"Combined/Concentration_a_{a}_T_{T}_n_{R}.png")
-                        except:
-                            print(f"Image not found for a = {a}, T = {T}, R = {R}, s = {s}, Skipping....")
-                            continue
-        '''
         """
         home_video(out_dir, out_dir, [PREFIX], input_avals, input_tvals, maxR=  input_Rmax, 
                pngformat= "CombinedImg/BioConc_a_{a}_T_{T}_n_{R}.png", pngdir= "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/",
@@ -517,7 +449,7 @@ def get_timeseriesData(indir, PREFIX, a_vals, T_vals, filename = "MEAN_INDV_REPL
 '''
 
 
-'''# Summary Description of get_EQdata(...) (called by analyse_EQdata(...))
+'''# Summary Description of get_FRAME_EQdata(...) (called by analyse_EQdata(...))
 This function creates a multi-Indexed DataFrame with the equilibrium data for each species.
 The indices are as follows:
 Prefix, a, T
@@ -530,7 +462,7 @@ All the data is stored in the DataFrame and returned.
 # List of a_vals provided {in_dir}/{PREFIX}/a_vals.txt
 # List of T_vals provided {in_dir}/{PREFIX}/L_{g}_a_{a_val}/dP_{dP}/Geq_{Geq}/T_{T}/T_vals.txt
 '''
-def get_EQdata(indir, PREFIX, a_vals, T_vals, filename = "MEAN_STD_Surviving_Runs.txt"):
+def get_FRAME_EQdata(indir, PREFIX, a_vals, T_vals, filename = "MEAN_STD_Surviving_Runs.txt"):
 
     a_vals, T_vals = auto_guess_avals_tvals(indir, PREFIX, a_vals, T_vals)
     if a_vals == None:
@@ -581,13 +513,131 @@ def get_EQdata(indir, PREFIX, a_vals, T_vals, filename = "MEAN_STD_Surviving_Run
                 continue
     return data
 
+def get_PRELIM_EQdata(indir, PREFIX, a_vals, tseries_vals, 
+                      include_col_labels= ["t",  "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"], 
+                      meanfilename = "MEAN_TSERIES_T_{TS}.csv"):
+
+    a_vals, _ = auto_guess_avals_tvals(indir, PREFIX, a_vals, [0])
+    if a_vals == None:
+        print("Exiting..."); return;
+    #print(f"List of TS values: {tseries_vals}")
+    if len(tseries_vals) == 0 or tseries_vals == None:
+        for a in a_vals:
+            a = int(a) if a.is_integer() else a
+            # Generate tseries_vals if not provided.
+            try:
+                with open(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/TimeSeries/TimeSeries_vals.txt", 'r') as f:
+                    tseries_vals.extend([float(line.strip()) for line in f])
+            except FileNotFoundError:
+                print(f"TimeSeries_vals.txt not found in the input directory and no TimeSeries_vals specified for a = {a}. Skipping this a-value.")
+                continue
+        # Sort and remove duplicates
+        tseries_vals = [int(T) if T.is_integer() else T for T in tseries_vals]; tseries_vals = sorted(list(set(tseries_vals)))
+
+                                                                                                    
+    print(f"List of a values: {a_vals}")
+    print(f"List of TS values: {tseries_vals}")
+
+    
+    
+    # Create a multi-indexed DataFrame
+    #data = pan.MultiIndex.from_product([[PREFIX], a_vals, T_vals], names = ['Prefix', 'a', 'T'])
+    data = pan.DataFrame()
+
+    # Now populate the DataFrame with the data from the files
+    for a in a_vals:
+        for TS in tseries_vals:
+
+            # Try reading Mean values from meanfilename, only include the columns that fully contain the string in include_col_labels.
+            try:
+                df = pan.read_csv(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/TimeSeries/" + meanfilename.format(Pre=PREFIX, g=g, dP=dP, Geq=Geq, a=a, TS=TS), header= 0)
+                df.columns = df.columns.astype(str)
+                df.columns = [col.strip() for col in df.columns]
+                
+                df.index = pan.MultiIndex.from_tuples([(PREFIX, a, -1, TS)]*len(df), names = ['Prefix', 'a', 'R', 'Tmax'])
+                # Only include the columns that fully contain any of the strings in include_col_labels barring "t"
+                mean_col_labels = include_col_labels.copy(); mean_col_labels.remove("t")
+                df = df[[col for col in df.columns if any([label in col for label in mean_col_labels])] + ["t"]]
+
+                data = pan.concat([data, df], axis = 0).sort_index(axis = 0)
+            except FileNotFoundError:
+                print(f"Mean data not found for a = {a}, TS = {TS}. Skipping this a-value....")
+                continue
+
+            selected_files = glob.glob(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/TimeSeries/TSERIES_T_{TS}_*.csv")
+            # First get maxR for this a and TS value
+            try:
+                with open(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/TimeSeries/maxR_T_{TS}.txt", 'r') as f:
+                    maxR = int(f.readline().strip())
+            except FileNotFoundError:
+                maxR = len(selected_files)
+                print(f"maxR_T_{TS}.txt not found in the input directory for a = {a}, TS = {TS}. Attempting to read from file selection as ... {maxR}.")
+            for f in selected_files:
+                try:
+                    # Read time-series csv files.
+                    df = pan.read_csv(f, header= 0)
+                    #data = pan.read_csv(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/" + filename, header= 0)
+                    # Use the header row as the column names and the second row as the data
+
+                    df.columns = df.columns.astype(str)
+                    # Remove white spaces from column names
+                    df.columns = [col.strip() for col in df.columns]
+                    #print(f"Data for a = {a}, T = {T}:")
+
+                    # Only include the columns specified in include_col_labels.
+                    df = df[include_col_labels]
+
+                    # Check if "t" is all zeros, if so, replace with "t" column values from data slice indexed by [(PREFIX, a, -1, TS)]
+                    if df["t"].sum() == 0:
+                        df["t"] = data.loc[(PREFIX, a, -1, TS), "t"].values
+                    Rval = int(re.search(r"R_(\d+)", f).group(1))
+
+                    # Assign the data to the appropriate index in the DataFrame (for the length of the data)
+                    df.index = pan.MultiIndex.from_tuples([(PREFIX, a, Rval, TS)]*len(df), names = ['Prefix', 'a', 'R', 'Tmax'])
+
+                    #df.index = pan.MultiIndex.from_tuples([(PREFIX, a, Rval, TS)], names = ['Prefix', 'a', 'R', 'Tmax'])
+
+
+                    '''#print(df.info())
+                    #print(df.head())
+                    #print(df.columns)'''
+
+                    #Assign the data df to the appropriate index in the data DataFrame
+                    data = pan.concat([data, df], axis = 0).sort_index(axis = 0)
+                    #print(data.columns)
+                    '''
+                    df = df.iloc[0, :]
+                    print(df.info()); print(data.shape);
+                    print(df.columns)
+                    df = df.to_frame().transpose()
+                    # Check and set column names
+                    if not hasattr(df, 'columns'):
+                        df.columns = df.columns.astype(str)
+                    # Set column names to the first row of the data
+                    df.columns = df.iloc[0, :]
+                    
+                    df.index = pan.MultiIndex.from_tuples([(PREFIX, a, T)], names = ['Prefix', 'a', 'T'])
+                    '''
+                except FileNotFoundError:
+                    print(f"Data not found for a = {a}, TS = {TS}. Skipping....")
+                    continue
+            # End of R loop
+
+
+
+        # End of T loop
+    # End of a loop
+    return data
+
+
+
 '''# Summary Description of analyse_timeseriesData(...)
 This function analyses the timeseries data for each species and creates plots for each species for each Prefix and a value, with T as the x-axis.
 NOTE: This function assumes that the data is stored in the FILENAME the following format:
 R_max   AVG[{var}]_SURV   ...   AVG[{var}]_ALL   ...   AVG[{var}]_R_0   ...   AVG[{var}]_R_{R_max}
 where {var} is one of the species names.
 '''
-def analyse_timeseriesData(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], filename = "MEAN_REPLICATES.txt"):
+def analyse_FRAME_timeseriesData(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], filename = "MEAN_REPLICATES.txt"):
 
     savefilename = re.sub(r'\.txt$', '', filename)
     if len(prefixes) == 0:
@@ -601,7 +651,7 @@ def analyse_timeseriesData(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], f
 
     for Pre in prefixes:
         
-        data = get_EQdata(indir, Pre, init_a_vals, [], filename)
+        data = get_FRAME_EQdata(indir, Pre, init_a_vals, [], filename)
         # We are interested in the AVG columns for each species.
         # Note that the number of columns can vary for each a and T value, as R_max can vary, so we need to handle this.
         # Data has columns for each species given by {var}, of the form:
@@ -733,7 +783,128 @@ def analyse_timeseriesData(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], f
         home_video(out_dir, out_dir, ["TimeSeries/Combined"], a_vals, [Tmax], 1, pngformat= "TimeSeries_AllPrefixes_a_{a}_dP_{dP}_Geq_{Geq}.png", videoname = f"TimeSeries_All_T_{Tmax}.mp4")
     '''
 
-def analyse_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tavg_window_index = [-30000, 0], filename = "MEAN_STD_Surviving_Runs.txt"):
+
+def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseries_vals =[],
+                                   meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"]):
+    savefilename = re.sub(r'\.csv$', '', meanfilename.format(Pre="PREFIX", g="g", dP="dP", Geq="Geq", a="a", TS="TS"))
+    if len(prefixes) == 0:
+        prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(indir, '*/'))]
+    combined_data = pan.DataFrame()
+    sea.set_palette("husl")
+    colours = [hex_list[i][-1] for i in range(len(hex_list))]
+
+    init_a_vals = a_vals; init_TS_vals = tseries_vals;
+    
+
+    for Pre in prefixes:
+        
+        data = get_PRELIM_EQdata(indir, Pre, init_a_vals, init_TS_vals, meanfilename = meanfilename)
+        # We are interested in the AVG columns for each species.
+        # Note that the number of columns can vary for each a and T value, as R_max can vary, so we need to handle this.
+        # Data has columns for each species given by {var}, of the form:
+        # t   AVG[{var}]_SURV   ...   AVG[{var}]_ALL   ...   AVG[{var}]   ...
+        # where {var} is one of the species names. The dataframe is multi-indexed by Prefix, a, R, Tmax,
+        # where R = -1 for the mean values.
+        if data.empty:
+            print(f"No data found for {Pre}. Skipping....")
+            continue
+        print("====================================================================")
+        print(f"Data for {Pre}:")
+        print("====================================================================\n")
+        #print(data.info())
+        print(data.head())
+        print(data.tail())
+        print(data.columns)
+        print(data.index)
+        #print(data.describe())
+
+        # Find Tmax as the maximum value of T in the data.
+        Tmax = data.index.get_level_values('Tmax').max()
+        Tmax = int(Tmax) if float(Tmax).is_integer() else Tmax
+        savecsvdir = out_dir + f"{Pre}/TimeSeries/"
+        Path(savecsvdir).mkdir(parents=True, exist_ok=True)
+
+        # Save the data to a csv file.
+        data.to_csv(savecsvdir + f"{savefilename}_dP_{dP}_Geq_{Geq}.csv")
+        #Concatenate the data to the combined data
+        combined_data = pan.concat([combined_data, data], axis = 0)
+        # Use the data to create plots.
+        # The plots are created for each species for each Prefix and a value, with T as the x-axis.
+        # For each species, create a plot of T vs all the data for that species as lines, with the mean across surviving and all replicates as darker lines.
+        # The means for individual replicates are lighter lines.
+        
+        # Try determining number of species by counting all columns with _SURV in the name.
+        try:
+            num_species = len([col for col in data.columns if "_SURV" in col])/3
+        except IndexError:
+            print(f"No columns with _SURV found in the data. Not plotting data for Prefix {Pre}. Skipping....")
+            num_species = None
+            continue
+        '''
+        # Find column index of first column with _R_0 in the name. If not found, print a warning and set to 0.
+        try:
+            R0_index = data.columns.get_loc([col for col in data.columns if "_R_0" in col][0])
+        except IndexError:
+            print(f"No column with _R_0 found in the data. Not plotting individual replicate data for Prefix {Pre}.")
+            R0_index = None
+        '''
+        print(f"num_species = {num_species}")
+        # Get the list of a values and T values from the data.
+        a_vals = data.index.get_level_values('a').unique().to_list()
+        print(a_vals, tseries_vals)
+        
+        for a in a_vals:
+            a = int(a) if float(a).is_integer() else a
+            for TS in tseries_vals:
+                savepngdir = out_dir + f"{Pre}/TimeSeries/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{TS}/"
+                Path(savepngdir).mkdir(parents=True, exist_ok=True)
+                fig, axs = plt.subplots(1, 3, figsize = (20, 6))
+                for s in range(len(var_labels)):
+                    data_A_TS = data.loc[(slice(None), a, slice(None), TS), :]
+                    # Plotting for a fixed a value, Tmax value species and Prefix for all R and t values.
+                    ax = axs[s]
+                    # RECALL, _SURV and _ALL columns are given by multi_index for R = -1.
+                    data_all = data_A_TS.loc[(slice(None), a, -1, TS), :]
+                    # Plotting mean of surviving replicates ( with _SURV in the name)
+                    ax.plot(data_all["t"], data_all["AVG[" + var_labels[s] + "]_SURV"], label = r"$\mu_{surv}(\rho_{%g})$" %(s), color = colours[s], linestyle = 'solid', linewidth = 2, alpha = 0.9)
+                    # Plotting mean of all replicates ( with _ALL in the name)
+                    ax.plot(data_all["t"], data_all["AVG[" + var_labels[s] + "]_ALL"], label = r"$\mu_{all}(\rho_{%g})$" %(s), color = colours[s], linestyle = 'dashed', linewidth = 1.35, alpha = 0.75)
+
+                    # Infill variance for surviving replicates
+                    err = 2*np.sqrt(data_all["VAR[" + var_labels[s] + "]_SURV"])
+                    ax.fill_between(data_all["t"], data_all["AVG[" + var_labels[s] + "]_SURV"] - err, 
+                                    data_all["AVG[" + var_labels[s] + "]_SURV"] + err, color = colours[s], alpha = 0.25)
+                    
+                    # Now plot the mean of individual replicates (suppress labels that represent columns with solely NaN values).
+                    for R in data_A_TS.index.get_level_values('R').unique():
+                        if R == -1: continue
+                        data_R = data_A_TS.loc[(slice(None), a, R, TS), :]
+                        ax.plot(data_R["t"], data_R[var_labels[s]], color ="grey", linestyle = 'solid', alpha = 0.45)
+                    # End of R loop
+                    ax.set_title(r"$\langle \rho_{%g}(t) \rangle_{x}$ vs $t$" %(s)  + f" at a = {a}")
+                    ax.set_xlabel(r'Time $(d)$')
+                    ax.set_ylabel(r'$\langle \rho_{%g}(t) \rangle_{x}$' % (s))
+                    ax.legend()
+                # End of s loop
+                #Set ymax for axs[3] to be 500.
+                axs[2].set_ylim(-5, 500)
+                fig.suptitle(r"$\mu(\rho(x, t))$" + f" For {Pre} at a = {a}, dP = {dP}, Geq = {Geq}")
+                plt.savefig(savepngdir + f"TimeSeries_a_{a}_dP_{dP}_Geq_{Geq}.png")
+                #plt.show()
+                plt.close()
+            # End of TS loop
+        
+        # End of a loop
+        # Use home_video function to create a video of the plots.
+        home_video(out_dir, out_dir, prefixes=[f"{Pre}/TimeSeries"], a_vals= a_vals, T_vals=[Tmax], maxR= 1, 
+                   pngformat= "TimeSeries_a_{a}_dP_{dP}_Geq_{Geq}.png", pngdir= "{Pre}/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/", 
+                   videoname = f"TimeSeries_{Pre}_Tmax_{Tmax}.mp4", video_relpath= "{Pre}/Videos/{amin}-{amax}/")
+        # Note that there is only one png per a value, so the video will be a simple slideshow (and R_max = 1).
+        
+        input("Press F to Continue...")
+
+
+def analyse_FRAME_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tavg_window_index = [-100000, 0], filename = "MEAN_STD_Surviving_Runs.txt"):
 
     savefilename = re.sub(r'\.txt$', '', filename)
     if len(prefixes) == 0:
@@ -746,7 +917,7 @@ def analyse_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tavg_wind
         savedir = out_dir + f"{Pre}/PhaseDiagrams/"
         Path(savedir).mkdir(parents=True, exist_ok=True)
         
-        data = get_EQdata(indir, Pre, a_vals, [], filename)
+        data = get_FRAME_EQdata(indir, Pre, a_vals, [], filename)
         # Data has columns for each species, of the form:
         # AVG[P(x; t)]	VAR[P(x; t)]	COUNT[P(x; t)]	AVG[G(x; t)]	VAR[G(x; t)]	COUNT[G(x; t)] ...
         # We are interested in the AVG and VAR columns for each species.
@@ -765,17 +936,30 @@ def analyse_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tavg_wind
         #Concatenate the data to the combined data
         combined_data = pan.concat([combined_data, data], axis = 0)
         Avals_list = sorted(data.index.get_level_values('a').unique().to_list())
+        #TSvals_list = sorted(data.index.get_level_values('Tmax').unique().to_list())
         Tavg = pan.DataFrame()
-        # Iterating over the Pre, a indices, average over the last Tavg_window_index values of T and assign to new DataFrame.
+
         for a in Avals_list:
             # Get Tmax for this a value
             Tmax = data.loc[(slice(None), a, slice(None)), :].index.get_level_values('T').max()
-            Twin_min = Tmax + Tavg_window_index[0]; Twin_max = Tmax + Tavg_window_index[1]
+            if(Tavg_window_index[0] < 0 and Tavg_window_index[1] <= 0):
+                Twin_min = Tmax + Tavg_window_index[0]; Twin_max = Tmax + Tavg_window_index[1]
+            else:
+                Twin_min = Tavg_window_index[0]; Twin_max = Tavg_window_index[1]
             print(f"Averaging data for {Pre} at a = {a} for T in range {Twin_min} -- {Twin_max}:")
+            # Try averaging only if Twin_max is less than or equal to Tmax and Twin_min is greater than or equal to 0.
+            if  Twin_min < 0:
+                print(f"Skipping averaging for {Pre} at a = {a} for T in range {Twin_min} -- {Twin_max}.")
+                continue
             df = data.loc[(slice(None), a, slice(Twin_min, Twin_max)), :].groupby(['Prefix', 'a']).mean()
+            if df.empty:
+                print(f"No data found for {Pre} at a = {a} for T in range {Twin_min} -- {Twin_max}. Skipping....")
+                continue
             df.index = pan.MultiIndex.from_tuples([(Pre, a, Twin_max)], names = ['Prefix', 'a', 'Twindow'])
             Tavg = pan.concat([Tavg, df], axis = 0).sort_index(axis = 0)
         # End of a loop
+        # Iterating over the Pre, a indices, average over the last Tavg_window_index values of T and assign to new DataFrame.
+
 
         print(f"Data for {Pre} after averaging over last {Tavg_window_index[1]} values of T:")
         print(Tavg.head())
@@ -801,7 +985,7 @@ def analyse_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tavg_wind
             ax.set_ylabel(str(data.columns[3*s]))
             ax.legend()
         fig.suptitle(r"$\mu$ and $\sigma$ of" + f" Species For {Pre}, dP = {dP}, Geq = {Geq} B/W {Twin_min} -- {Twin_max}")
-        plt.savefig(savedir + f"MeanSTD_{Pre}_amin_{Avals_list[0]}_amax_{Avals_list[-1]}_dP_{dP}_Geq_{Geq}.png")
+        plt.savefig(savedir + f"MeanSTD_{Pre}_amin_{Avals_list[0]}_amax_{Avals_list[-1]}_Twin_{Twin_min}_{Twin_max}_dP_{dP}_Geq_{Geq}.png")
         plt.show()
         plt.close()
         
@@ -857,6 +1041,131 @@ def analyse_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tavg_wind
             plt.close()
 
 
+def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], Tavg_window_index = [-100000, 0], meanfilename = "Mean_TSERIES_T_{TS}.csv",
+                           var_labels= [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"]):
+
+    savefilename = re.sub(r'\.csv$', '', meanfilename.format(Pre="PREFIX", g="g", dP="dP", Geq="Geq", a="a", TS="TS"))
+    if len(prefixes) == 0:
+        prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(indir, '*/'))]
+    combined_data = pan.DataFrame()
+    sea.set_palette("husl")
+    colours = [hex_list[i][-1] for i in range(len(hex_list))]
+    for Pre in prefixes:
+
+        savedir = out_dir + f"{Pre}/PhaseDiagrams/"
+        Path(savedir).mkdir(parents=True, exist_ok=True)
+        
+        data = get_PRELIM_EQdata(indir, Pre, a_vals, TS_vals, meanfilename= meanfilename)
+        # Note that the number of columns can vary for each a and T value, as R_max can vary, so we need to handle this.
+        # Data has columns for each species given by {var}, of the form:
+        # t   AVG[{var}]_SURV   ...   AVG[{var}]_ALL   ...   AVG[{var}]   ...
+        # where {var} is one of the species names. The dataframe is multi-indexed by Prefix, a, R, Tmax,
+        # where R = -1 for the mean values.
+        if data.empty:
+            print(f"No data found for {Pre}. Skipping....")
+            continue
+        print(f"Data for {Pre}:")
+        #print(data.info())
+        print(data.head())
+        print(data.tail())
+        print(data.columns)
+        print(data.index)
+        #print(data.describe())
+        # Save the data to a csv file
+        data.to_csv(savedir + f"{savefilename}_dP_{dP}_Geq_{Geq}.csv")
+        #Concatenate the data to the combined data
+        combined_data = pan.concat([combined_data, data], axis = 0)
+        Avals_list = sorted(data.index.get_level_values('a').unique().to_list())
+        TSvals_list = sorted(data.index.get_level_values('Tmax').unique().to_list())
+        Tavg = pan.DataFrame()
+        # Iterating over the Pre, a indices, average over the last Tavg_window_index values of T and assign to new DataFrame.
+        for a in Avals_list:
+            for TS in TSvals_list:
+                # Get Tmax for this a value
+                Tmax = TS
+                if(Tavg_window_index[0] < 0 and Tavg_window_index[1] <= 0):
+                    Twin_min = Tmax + Tavg_window_index[0]; Twin_max = Tmax + Tavg_window_index[1]
+                else:
+                    Twin_min = Tavg_window_index[0]; Twin_max = Tavg_window_index[1]
+                print(f"Averaging data for {Pre} at a = {a} for T in range {Twin_min} -- {Twin_max}:")
+                # Try averaging only if Twin_max is less than or equal to Tmax and Twin_min is greater than or equal to 0.
+                if  Twin_min < 0:
+                    print(f"Skipping averaging for {Pre} at a = {a} for T in range {Twin_min} -- {Twin_max}.")
+                    continue
+                # Average over the last Tavg_window_index values of t (for average surviving/all replicates) (R = -1)
+                Twin_data = data[(data.index.get_level_values('a') == a) & (data.index.get_level_values('Tmax') == TS) 
+                                 & ( data["t"] >= Twin_min) & (data["t"] <= Twin_max)]
+                df = Twin_data.groupby(['Prefix', 'a', 'R', 'Tmax']).mean()
+                if df.empty:
+                    print(f"No data found for {Pre} at a = {a} for T in range {Twin_min} -- {Twin_max}. Skipping....")
+                    continue
+                # Create a new Multi-index list of tuples with R = -1 for the mean values.
+                index = []; index.extend([(Pre, a, i, Twin_min, Twin_max, TS) for i in sorted(df.index.get_level_values('R').unique())])
+                df.index = pan.MultiIndex.from_tuples(index, names = ['Prefix', 'a', 'R', 'Twin_min', 'Twin_max', 'Tmax'])
+
+                Tavg = pan.concat([Tavg, df], axis = 0).sort_index(axis = 0)
+            # End of a loop
+
+        print(f"Data for {Pre} after averaging over {Tavg_window_index[0]} --- {Tavg_window_index[1]} values of T:")
+        print(Tavg.head())
+        print(Tavg.tail())
+        print(Tavg.columns)
+        print(Tavg.index)
+
+        #Save the data to a csv file
+        Tavg.to_csv(savedir + f"DEBUG_{savefilename}_Twin_{Twin_min}_{Twin_max}_dP_{dP}_Geq_{Geq}.csv")
+
+        # Use Tavg to create plots of a vs. the mean of the data for each species, with STD as infill.
+        fig, axs = plt.subplots(1, 3, figsize = (20, 6))
+        for TS in TSvals_list:
+            Tavg_TS = Tavg.loc[(slice(None), slice(None), slice(None), slice(None), slice(None), TS), :]
+            for s in range(len(var_labels)):
+
+                # First plot scatter plots of Surviving and All replicates for each species.
+                ax = axs[s]
+                # RECALL, _SURV and _ALL columns are given by multi_index for R = -1.
+                Tavg_TS_all = Tavg_TS.loc[(slice(None), slice(None), -1, slice(None), slice(None), TS), :]
+                # Plotting mean of surviving replicates ( with _SURV in the name)
+                ax.scatter(Tavg_TS_all.index.get_level_values('a'), Tavg_TS_all["AVG[" + var_labels[s] + "]_SURV"], label = r"$\mu_{surv}(\rho_{%g})$" %(s), color = colours[s], s = 15, alpha = 0.9, marker = 's')
+                # Annotate the points with percentage of surviving replicates.
+                # This is given by the ratio of the "R_SURV[{var}]" column to the maximum value of R ( which is max value of R for the Prefix, a, Twindow, TS).
+                for i, Rsurv in enumerate(Tavg_TS_all["R_SURV[" + var_labels[s] + "]"]):
+                    # Get maximum value of R for the Prefix, a, Twindow, TS.
+                    Rmax = Tavg_TS.loc[(slice(None), Tavg_TS_all.index.get_level_values('a')[i], slice(None), slice(None), slice(None), TS), :].index.get_level_values('R').max() + 1;
+                    txt = f"{100*Rsurv/Rmax:.1f} %"
+
+                    ax.annotate(txt, (Tavg_TS_all.index.get_level_values('a')[i], Tavg_TS_all["AVG[" + var_labels[s] + "]_SURV"][i]), fontsize = 'x-small', color = 'grey', alpha = 0.5)
+                # Infill variance for surviving replicates
+                err = 2*np.sqrt(Tavg_TS_all["VAR[" + var_labels[s] + "]_SURV"])
+                ax.fill_between(Tavg_TS_all.index.get_level_values('a'), Tavg_TS_all["AVG[" + var_labels[s] + "]_SURV"] - err,
+                                Tavg_TS_all["AVG[" + var_labels[s] + "]_SURV"] + err, color = colours[s], alpha = 0.25)
+            
+                # Plotting mean of all replicates ( with _ALL in the name)
+                ax.scatter(Tavg_TS_all.index.get_level_values('a'), Tavg_TS_all["AVG[" + var_labels[s] + "]_ALL"], label = r"$\mu_{all}(\rho_{%g})$" %(s), color = colours[s], s = 15, alpha = 0.75, marker = 'D', facecolor = 'none')
+
+                # Plotting mean of individual replicates (ignoring R = -1 entries)
+                for R in Tavg_TS.index.get_level_values('R').unique():
+                    if R == -1: 
+                        continue # Skip R = -1 entries (which represent the mean values)
+                    print(f"Plotting data for {Pre} at a = {a} for T in range {Twin_min} -- {Twin_max} for R = {R}")
+                    Tavg_TS_R = Tavg_TS.loc[(slice(None), slice(None), R, slice(None), slice(None), TS), :]
+                    ax.scatter(Tavg_TS_R.index.get_level_values('a'), Tavg_TS_R[var_labels[s]], color ="grey", s = 15, alpha = 0.35)
+                # End of R loop
+
+                ax.set_title(r" $ \langle \langle \rho_{%g}(x, t) \rangle_{x} \rangle_{t} $" % (s))
+                ax.set_xlabel(r'R $(mm/hr)$')
+                ax.set_ylabel(r" $ \langle \langle \rho_{%g}(x, t) \rangle_{x} \rangle_{t} $" % (s))
+                ax.legend()
+            # End of s loop
+            Twin_min = Tavg_TS_all.index.get_level_values("Twin_min").min(); Twin_max = Tavg_TS_all.index.get_level_values("Twin_max").max()
+            fig.suptitle(r"$\mu$ and $\sigma$ of" + f" Species For {Pre}, dP = {dP}, Geq = {Geq} B/W {Twin_min} -- {Twin_max}")
+            plt.savefig(savedir + f"MeanSTD_{Pre}_amin_{Avals_list[0]}_amax_{Avals_list[-1]}_Twin_{Twin_min}_{Twin_max}_dP_{dP}_Geq_{Geq}.png")
+            plt.show()
+            plt.close()
+        # End of TS loop
+    # End of Pre loop
+
+            
 ''' # Summary Description of recursive_copydir(...)
 This function recursively copies files from the source directory to the destination directory.
 src: source directory
@@ -885,23 +1194,45 @@ def recursive_copydir(src, dst, include_filetypes = ["*.txt"],
     print("\n\n__________________________________________________________________________________________\n\n")
 
 
+
+# ============================= PRELIM DATA ANALYSIS FUNCTIONS =============================
+
+
+
+#
 #recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filetypes =["*.png", "*.jpg", "*.jpeg", "*.mp4"], symlinks=False)
-#a_vals = [0.041, 0.0415, 0.042, 0.0425, 0.043, 0.044, 0.045, 0.047, 0.05, 0.053]; 
-#T_vals= [229087]
+#a_vals = [0.041, 0.043] #0.051, 0.053, 0.055]; 
+#T_vals= [158489, 173780, 190546, 208930, 229087, 251189, 275423, 301995, 331131, 363078]
+prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
+TS_vals =[208930]
+
 '''
 for Pre in prefixes:
     frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= 0, plt_gamma= False, delpng = False)
     print(f"Done with making frames for {Pre}")
     for a in a_vals:
         print(f"Making video for {Pre} at a = {a} \n\n")
-        home_video(out_dir, out_dir, [Pre], [a], T_vals=[], maxR= -1, 
+        home_video(out_dir, out_dir, [Pre], [a], T_vals= T_vals, maxR= -1, 
                    pngformat= "CombinedImg/BioConc_a_{a}_T_{T}_n_{R}.png", pngdir= "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/",
+                     maxR_txtdir = "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/maxR.txt", videoname = "guess",
+                     video_relpath= "{Pre}/Videos/Conc/{a}/{Tmin}-{Tmax}/")
+'''
+''' FOR SPREADING TESTS, WITH PREFIX = NREF-GAU/ REF-GAU
+for Pre in prefixes:
+    frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= 0, plt_gamma= True, delpng = False)
+    print(f"Done with making frames for {Pre}")
+    for a in a_vals:
+        print(f"Making video for {Pre} at a = {a} \n\n")
+        home_video(out_dir, out_dir, [Pre], [a], T_vals= T_vals, maxR= -1, 
+                   pngformat= "CombinedImg/BioGammaConc_a_{a}_T_{T}_n_{R}.png", pngdir= "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/",
                      maxR_txtdir = "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/maxR.txt", videoname = "guess",
                      video_relpath= "{Pre}/Videos/Conc/{a}/{Tmin}-{Tmax}/")
 '''
 #frame_visualiser(in_dir, out_dir, prefixes[0], a_vals, T_vals, maxR= -1, plt_gamma= False, delpng = False)
 #home_video(out_dir, out_dir, prefixes, a_vals, T_vals, R_max, pngformat= "CombinedImg/BioConc_a_{a}_T_{T}_n_{R}.png", videoname = "guess")
 
-prefixes = ["DIC-REF-1.1HI", "DIC-REF-0.5LI"]
-analyse_EQdata(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "MEAN_STD_Surviving_Runs.txt")
+#prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
+#analyse_FRAME_EQdata(in_dir, out_dir, prefixes, a_vals, T_vals, Tavg_window_index = [150000, 240000], filename = "MEAN_STD_Surviving_Runs.txt")
 #analyse_timeseriesData(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "MEAN_REPLICATES.txt")
+#analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, meanfilename = "Mean_TSERIES_T_{TS}.csv")
+analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = [150000, 240000], meanfilename = "Mean_TSERIES_T_{TS}.csv")

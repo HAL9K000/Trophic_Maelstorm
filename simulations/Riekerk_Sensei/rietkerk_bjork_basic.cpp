@@ -1,7 +1,7 @@
 #include "rietkerk_bjork_basic.h"
 #include "Debug.h"
 
-double Mm; // Density dependent mortality of predator.
+//double Mm; // Density dependent mortality of predator.
 
 //-------------- Template definitions and declarations must occur in each individual file.
 
@@ -94,7 +94,7 @@ void set_Prefix(string& user_prefix)
 	stat_prefix =  "../Data/Rietkerk/Stochastic/3Sp/1stOrderCC_Rietkerk_" + prefix + "_STOC_P_c_G_"; //Header for frame files.
 }
 
-void set_global_user_params(double dt, double dx)
+void set_global_system_params(double dt, double dx)
 {
 	//Sets the global parameters for the simulation.
 	//These are the parameters that are user-defined and are used in the simulation.
@@ -102,6 +102,15 @@ void set_global_user_params(double dt, double dx)
 
 	dt2 = dt/2.0; dt6= dt/6.0;
 	dx2 = dx*dx; dx1 = 1.0/dx; dx1_2 = 1.0/(dx*dx); double dxb2 = dx/2.0;
+}
+
+void set_global_predator_params(double Km)
+{
+	/** Sets the global parameters for the predator.
+	// Km is the carrying capacity of the predator.
+	//These are set by the user in the main function **/
+	K_P = Km; // Carrying Capacity of the predator
+	K_P1 = 1.0/Km; // Inverse of the carrying capacity of the predator
 }
 
 /** // set_global_user_Rietkerk_params(...) Commented out for now, as it is not used in the current implementation.
@@ -1038,8 +1047,8 @@ void determine_neighbours_Sq8(int g, D3Vec_Int &neighbours_Sq8)
 }
 
 //Sets the density dependent mortality rate.
-void set_density_dependentmortality(double m)
-{	Mm = m;	}
+//void set_density_dependentmortality(double m)
+//{	Mm = m;	}
 
 std::vector<std::pair<int, int>> computeNeighboringSitesCentral(int R)
 {
@@ -3398,13 +3407,13 @@ void f_2Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, 
 		 *  Linear and stochastic terms taken care of by Dornic integration routine previously.
 		**/
 
-		// RECALL: Dxd2[s] = D[s]/dx2
+		// RECALL: Dxd2[s] = D[s]/dx2 AND K_P1 = Inverse of Carrying Capacity of Predator (defined as Km in main())
         f[0][i] = cgmax*Rho_M[3][i]*Rho_M[0][i]/(Rho_M[3][i] +K[1]) -(A[0][1]*Rho_M[0][i]/(1 + A01H01*Rho_M[0][i]))*Rho_M[1][i];
 		//Equivalent to dG/dt = ej*(aij*V*P)/(1+aij*hij*V)  -ajm*G*P/(1+ajm*hjm*G).
 		f[1][i] = (EA1*Rho_M[0][i]/(1 + A01H01*Rho_M[0][i]))*Rho_M[1][i]  
 					-A[1][2]*Rho_M[1][i]/(1 + A12H12*Rho_M[1][i])*Rho_M[2][i];
         //Equivalent to dPr/dt = em*(ajm*G*Pr)/(1+ajm*hjm*G)
-		f[2][i] = (EA2*Rho_M[1][i]/(1 + A12H12*Rho_M[1][i]))*Rho_M[2][i]; //-Mm*Rho_M[2][i]*Rho_M[2][i];
+		f[2][i] = (EA2*Rho_M[1][i]/(1 + A12H12*Rho_M[1][i]))*Rho_M[2][i]; //(1 - Rho_M[2][i]*K_P1)*  -Mm*Rho_M[2][i]*Rho_M[2][i];
 		//Equivalent to dW/dt = alpha*(P+K2*W0)/(P+K2)*O - g_max*P*W/(W+K1) - rW*W + D*(Laplacian of W)
         f[3][i] = alpha*(Rho_M[0][i]+ K2W0)/(Rho_M[0][i] +K[2])*Rho_M[4][i] -gmax*Rho_M[3][i]*Rho_M[0][i]/(Rho_M[3][i] +K[1]) - rW*Rho_M[3][i] 
         + (Dxd2[3])*(Rho_M[3][nR2[i][0][0]]  + Rho_M[3][nR2[i][0][1]]  + Rho_M[3][nR2[i][1][0]]  + Rho_M[3][nR2[i][1][1]]  - 4*Rho_M[3][i]);
@@ -4076,7 +4085,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				vector<double>().swap(temp_alt); //Flush temp out of memory.0
 
 				// FRAME SAVING
-				if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 60000 && t <= 120000 || t >= 30 && t <= 10000 
+				if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 60000 && t <= 150000 || t >= 200 && t <= 10000 
 					|| t== 0)
 				{
 					//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
@@ -4155,7 +4164,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					// and save to file.
 					D2Vec_Double rho_rep_avg_var_temp(index+1, vector<double> (Sp4_1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
 					//std::copy(rho_rep_avg_var.begin(), rho_rep_avg_var.begin() + index, rho_rep_avg_var_temp.begin());
-					var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index+1, j);
+					var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index+1, 0);
 
 					//Finally save to file.
 					stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, geq, jID; // cgm, sig0;
@@ -4278,10 +4287,10 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			if (nR_fac < 0.35)
 			{	nR_fac = 0.35; }
 
-			calc_gamma_3Sp(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, nR_fac, r_max_effective, g); 
+			calc_gamma_3Sp_NonRefugia(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, nR_fac, r_max_effective, g); 
 			//Calculates gamma for each species at each site.
 
-			// BLOCK FOR SAVING GAMMA FRAMES
+			/** // BLOCK FOR SAVING GAMMA FRAMES
 			if(t == 0 || t >= t_meas[index-1] -dt/2.0 && t < t_meas[index-1] +dt/2.0)// && index >= tot_iter -9 &&  index <= tot_iter)
 			{
 				// Saving gamma values to file at given time points.
@@ -4675,7 +4684,7 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 	//double mean[Sp] = {1.0, 0.05}; double sd[Sp] = {0.25, 0.0125};
 	//init_randframe(Rho_0, Sp,  g*g); //Returns Rho_0 with a full initial frame filled with 0.2.
 
-	set_density_dependentmortality(M[2]); //Sets the density dependent mortality rate.
+	//set_density_dependentmortality(M[2]); //Sets the density dependent mortality rate.
 
 	vector<double> a_space = linspace(a_start, a_end, div);
 	cout << "NOSTRA" <<endl;
@@ -4687,6 +4696,10 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 
 	//vector <double> t_measure = linspace(40.0, 1000.0, 25); // Computes and returns linearly distributed points from t= 20 to 240 (the latter rounded down to 1 decimal place
 	t_measure.insert(t_measure.begin(), 0.0);
+
+	//Remove last element of t_measure
+	t_measure.pop_back();
+
 
 	//vector <double> t_linearwindow = linspace(int(0.8*t_max), int(0.8*t_max) + 1000, 25); // Computes and returns linearly distributed points from t= 20 to 240 (the latter rounded down to 1 decimal place
 

@@ -62,6 +62,8 @@ int main(int argc, char *argv[])
   hjm = 1; // Handling time in hrs
   em =0.85; mm = 0.061609*pow(100.0, -0.25)/8760.0; // Mortality rate in hr^{-1}
 
+  double Km = pow(10.0, 1.22)*pow(100.0, -0.31); // Carrying capacity of predator in kg/km^2s
+
   double Gstar = mm/((em -mm*hjm)*ajm); //Steady state for grazer.
   double H[SpB][SpB] ={{0, hij, 0}, 
                      {hij, 0.0, hjm}, 
@@ -193,10 +195,11 @@ int main(int argc, char *argv[])
   cout << "Save directory for preliminary data: " << prelim_folder << "\n";
   cout << "Save directory for final data: " << stat_prefix << "\n";
 
-  set_global_user_params(dt, dx); //Set the global parameters for the simulation.
+  set_global_system_params(dt, dx); //Set the global parameters for the simulation.
   cout << "Global parameters set, with dt/2.0 = " << dt2 << " and dx*dx = " << dx2 <<  " and 1/(dx*dx) = " << dx1_2 << "\n";
 
-
+  set_global_predator_params(Km); //Set the global parameters for the predator.
+  cout << "Global parameters for Predator set, with Carrying Capacity of Pr = " << K_P << " kg/km^2\n";
   //INITIAL CONDITIONS:
 
   // Equations for MFT E Eqilibrium values  as functions of a (Rainfall).
