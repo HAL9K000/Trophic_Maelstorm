@@ -1,12 +1,12 @@
-#include "rietkerk_bjork_basic.h"
+#include "MultiSPDP.h"
 
 int main(int argc, char *argv[])
 {
   increase_stack_limit(1024L); //Increase stack limit to 1024 MB.
 
   string preFIX; // Prefix for the output files
-  double a_c =1/24.0;
-  double c, gmax, alpha, d, rW, W0, t_max, dt, dx; //int g, div;
+  //double a_c =1/24.0;
+  double b, c, gmax, alpha, d, rW, W0, t_max, dt, dx; //int g, div;
   double a_start, a_end; double r; double dP; // Kick for high initial state
   int g, div;
 
@@ -20,7 +20,7 @@ int main(int argc, char *argv[])
 
   // Using units of mass = kg, length = km, time = hr.
   // ASSUMING MASS OF  GRAZER = 20 kg, MASS OF PREDATOR = 100 kg.
-  c = 10000; gmax = 0.05*pow(10, -3.0)/24.0; d = 0.25/24.0; alpha =0.2/24.0; W0 = 0.2; rW = 0.2/24.0; // From Bonachela et al 2015
+  b = pow(10.0, -6.00); // ~ aij in km^2/(hr kg)
 
   //double p0i = 0.5; double p0j= p0i/200; double p0j= 2.25; double p0m= 8; // In g/m^2
 
@@ -28,7 +28,6 @@ int main(int argc, char *argv[])
   
   dx= 0.1 ; //From Bonachela et al 2015 (in km)
   d0 = 0.00025/24.0; d1=0.0298; d2= 0.05221; d3 = 0.00025/24.0; d4= 0.025/24.0; //From Bonachela et al 2015 (in km^2/hr)
-  k0= 0; k1 = 5; k2 =5000;
   s0 = sqrt(d0/(dx*dx)); // ~ D0/(dx)^2 (in kg^{0.5}/(km hr))
   s1 = 1; // ~ D/(dx)^2 (in kg^{0.5}/(km hr))
   s2 = 3; // ~ D/(dx)^2 (in kg^{0.5}/(km hr))
@@ -39,7 +38,6 @@ int main(int argc, char *argv[])
   v2 = 0.40587; //In km/hr
 
   double D[Sp] ={d0, d1, d2, d3, d4}; //Diffusion coefficients for species.
-  double K[3] ={k0, k1, k2}; //Diffusion coefficients for species.
   double sigma[Sp] ={s0, s1, s2, 0, 0}; //Demographic stochasticity coefficients for species.
   double v[Sp] ={0, v1, v2, 0, 0}; //Velocity of species.
 
@@ -105,7 +103,7 @@ int main(int argc, char *argv[])
   if(argc == 1)
   {
     cout << "Please enter all the arguments within the script.\n";
-    cout << "Enter desired time-step (~0.1 is a good choice): ";
+    cout << "Enter desired time-step (~0.1 hr is a good choice): ";
     cin >> dt;
 
     cout << "Enter maximum duration of simulation (in hrs): ";
@@ -116,6 +114,11 @@ int main(int argc, char *argv[])
 
     cout << "Enter the desired number of replicates (r): ";
     cin >> r;
+
+    cout << "Enter the value of b (Density-Dependent Mortality of DP Veg):";
+    cin >> b;
+
+    double a_c = M[1]*b/(A[0][1]*(E[1] - M[1]*H[0][1])); // Critical value of a for grazer co-existance.
 
     cout << "Note that a relevant value of 'a' may be construed as:\t" << setprecision(10) << a_c <<endl;
 
@@ -140,25 +143,26 @@ int main(int argc, char *argv[])
 
   }
   // If the user has entered the correct number of arguments, then the arguments are read from the command line.
-  else if(argc == 11)
+  else if(argc == 12)
   {
     dt = atof(argv[1]);
     t_max = atof(argv[2]);
     g = atoi(argv[3]);
     r = atoi(argv[4]);
-    a_start = atof(argv[5]);
-    a_end = atof(argv[6]);
-    div = atoi(argv[7]);
-    dP = atof(argv[8]);
-    init_frac_grazpred = atof(argv[9]);
-    preFIX = argv[10];
+    b = atof(argv[5]);
+    a_start = atof(argv[6]);
+    a_end = atof(argv[7]);
+    div = atoi(argv[8]);
+    dP = atof(argv[9]);
+    init_frac_grazpred = atof(argv[10]);
+    preFIX = argv[11];
   }
   // If there are otherwise an arbitrary number of arguements, terminate the program.
   else
   {
     cout << "Please enter the correct number of arguments.\n";
-    cout << "The correct number of arguments is 8.\n";
-    cout << "The arguments are as follows: dt, t_max, g, r, a_start, a_end, div, dP, PREFIX.\n";
+    cout << "The correct number of arguments is 11.\n";
+    cout << "The arguments are as follows: dt, t_max, g, r, b, a_start, a_end, div, dP, init_frac_grazpred, PREFIX.\n";
     exit(1);
   }
 

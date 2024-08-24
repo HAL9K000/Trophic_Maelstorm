@@ -3413,7 +3413,7 @@ void f_2Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, 
 		f[1][i] = (EA1*Rho_M[0][i]/(1 + A01H01*Rho_M[0][i]))*Rho_M[1][i]  
 					-A[1][2]*Rho_M[1][i]/(1 + A12H12*Rho_M[1][i])*Rho_M[2][i];
         //Equivalent to dPr/dt = em*(ajm*G*Pr)/(1+ajm*hjm*G)
-		f[2][i] = (EA2*Rho_M[1][i]/(1 + A12H12*Rho_M[1][i]))*Rho_M[2][i]; //(1 - Rho_M[2][i]*K_P1)*  -Mm*Rho_M[2][i]*Rho_M[2][i];
+		f[2][i] = (EA2*Rho_M[1][i]/(1 + A12H12*Rho_M[1][i]))*(1 - Rho_M[2][i]*K_P1)*Rho_M[2][i]; //  -Mm*Rho_M[2][i]*Rho_M[2][i];
 		//Equivalent to dW/dt = alpha*(P+K2*W0)/(P+K2)*O - g_max*P*W/(W+K1) - rW*W + D*(Laplacian of W)
         f[3][i] = alpha*(Rho_M[0][i]+ K2W0)/(Rho_M[0][i] +K[2])*Rho_M[4][i] -gmax*Rho_M[3][i]*Rho_M[0][i]/(Rho_M[3][i] +K[1]) - rW*Rho_M[3][i] 
         + (Dxd2[3])*(Rho_M[3][nR2[i][0][0]]  + Rho_M[3][nR2[i][0][1]]  + Rho_M[3][nR2[i][1][0]]  + Rho_M[3][nR2[i][1][1]]  - 4*Rho_M[3][i]);

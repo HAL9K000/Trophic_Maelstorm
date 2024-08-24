@@ -48,8 +48,8 @@ from matplotlib.collections import LineCollection
 
 # User inputs.
 
-in_dir = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_MFTNu/"
-out_dir = "../../Images/3Sp/StdParam_20_100_MFTNu/"
+in_dir = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_CORDDM/"
+out_dir = "../../Images/3Sp/StdParam_20_100_CORDDM_MFT/"
 #in_dir = "StdParam_20_100_Test/"
 #out_dir = "../../Images/3Sp/AdvDiffTest/"
 Path(out_dir).mkdir(parents=True, exist_ok=True)
@@ -513,6 +513,83 @@ def get_FRAME_EQdata(indir, PREFIX, a_vals, T_vals, filename = "MEAN_STD_Survivi
                 continue
     return data
 
+
+''' # Summary Description of get_FRAME_POTdata(...) (called by analyse_POTdata(...))
+This function creates a multi-Indexed DataFrame with the potential data for each species.
+The indices are as follows:
+Prefix, a, T, maxR
+The columns are determined by reading the header of comma-delineated csv file Pot_Well.csv
+which is located in the directory {in_dir}/{PREFIX}/L_{g}_a_{a_val}/dP_{dP}/Geq_{Geq}/T_{T}/Pot_Well/
+The column names should be the same for all such files in all such directories.
+The data is stored in the DataFrame and returned.
+maxR is determined by reading the first line of the text file maxR.txt located in the path:
+{in_dir}/{PREFIX}/L_{g}_a_{a_val}/dP_{dP}/Geq_{Geq}/T_{T}/
+
+Additionally, the local minima is provided in the csv file LOCAL_MINIMA.csv located in the same directory as Pot_Well.csv.
+If read_local_minima is set to True, the local minima data is read and stored in another DataFrame and returned.
+The local minima data is stored in the Multi-Indexed DataFrame with the same indices as the potential data.
+
+Returns: (data, local_minima) if read_local_minima is set to True, else (data, None)
+'''
+
+def get_FRAME_POTdata(indir, PREFIX, a_vals, T_vals, return_localminima= True, potfilename = "Pot_Well.csv", minimafilename = "LOCAL_MINIMA.csv"):
+
+    a_vals, T_vals = auto_guess_avals_tvals(indir, PREFIX, a_vals, T_vals)
+    if a_vals == None:
+        print("Exiting..."); return;
+    print(f"List of a values: {a_vals}")
+    print(f"List of T values: {T_vals}")
+
+    # Create a multi-indexed DataFrame
+    data = pan.DataFrame()
+    local_minima = pan.DataFrame()
+
+    # Now populate the DataFrame with the data from the files
+    for a in a_vals:
+        for T in T_vals:
+            # First Read maxR from maxR.txt
+
+            try:
+                with open(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/maxR.txt", 'r') as f:
+                    maxR = int(f.readline ().strip())
+            except FileNotFoundError:
+                print(f"maxR.txt not found in the input directory for a = {a}, T = {T}. Skipping this a-value.")
+                continue
+            try:
+                # Read comma-delineated csv file
+                df = pan.read_csv(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/Pot_Well/" + potfilename, header= 0)
+                # Use the header row as the column names and the second row as the data
+                df.columns = df.columns.astype(str)
+                #print(f"Data for a = {a}, T = {T}:")
+                df.index = pan.MultiIndex.from_tuples([(PREFIX, a, T , maxR)]*len(df), names = ['Prefix', 'a', 'T', 'MaxR'])
+
+                #Assign the data df to the appropriate index in the data DataFrame
+                data = pan.concat([data, df], axis = 0).sort_index(axis = 0)
+
+            except FileNotFoundError:
+                print(f"Data not found for a = {a}, T = {T}. Skipping....")
+                continue
+
+            if return_localminima:
+                # Read comma-delineated csv file
+                try:
+                    df = pan.read_csv(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/Pot_Well/" + minimafilename, header= 0)
+                    # Use the header row as the column names and the second row as the data
+                    df.columns = df.columns.astype(str)
+                    #print(f"Data for a = {a}, T = {T}:")
+
+                    df.index = pan.MultiIndex.from_tuples([(PREFIX, a, T , maxR)]*len(df), names = ['Prefix', 'a', 'T', 'MaxR'])
+
+                    #Assign the data df to the appropriate index in the data DataFrame
+                    local_minima = pan.concat([local_minima, df], axis = 0).sort_index(axis = 0)
+
+                except FileNotFoundError:
+                    print(f"Local Minima data not found for a = {a}, T = {T}. Skipping....")
+                    continue
+
+    return (data, local_minima)
+
+
 def get_PRELIM_EQdata(indir, PREFIX, a_vals, tseries_vals, 
                       include_col_labels= ["t",  "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"], 
                       meanfilename = "MEAN_TSERIES_T_{TS}.csv"):
@@ -783,6 +860,100 @@ def analyse_FRAME_timeseriesData(indir, out_dir, prefixes=[], a_vals=[], T_vals 
         home_video(out_dir, out_dir, ["TimeSeries/Combined"], a_vals, [Tmax], 1, pngformat= "TimeSeries_AllPrefixes_a_{a}_dP_{dP}_Geq_{Geq}.png", videoname = f"TimeSeries_All_T_{Tmax}.mp4")
     '''
 
+def analyse_FRAME_POTdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], find_minima= True, filename = "Pot_Well.csv", 
+                          minimafilename = "LOCAL_MINIMA.csv", var_labels= [ "P(x; t)" , "G(x; t)", "Pr(x; t)", "O(x; t)"]):
+
+    savefilename = re.sub(r'\.csv$', '', filename)
+    saveminimafilename = re.sub(r'\.csv$', '', minimafilename)
+    if len(prefixes) == 0:
+        prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(indir, '*/'))]
+    combined_data = pan.DataFrame()
+    sea.set_palette("husl")
+    colours = [hex_list[i][-1] for i in range(len(hex_list))]
+
+    init_a_vals = a_vals; init_T_vals = T_vals
+    
+
+    for Pre in prefixes:
+        
+        data, local_minima = get_FRAME_POTdata(indir, Pre, init_a_vals, init_T_vals, find_minima, filename, minimafilename)
+        # We are interested in the AVG columns for each species.
+        # Note that the number of columns can vary for each a and T value, as R_max can vary, so we need to handle this.
+        # Data has columns for each species given by {var}, of the form:
+        # R_max   AVG[{var}]_SURV   ...   AVG[{var}]_ALL   ...   AVG[{var}]_R_0   ...   AVG[{var}]_R_{R_max}
+        if data.empty:
+            print(f"No data found for {Pre}. Skipping....")
+            continue
+        if local_minima.empty and find_minima:
+            print(f"WARNING: No local minima data found for {Pre}. Skipping....")
+            continue
+        
+        print("====================================================================")
+        print(f"Data for {Pre}:")
+        print("====================================================================\n")
+        #print(data.info())
+        print(data.head())
+        print(data.tail())
+        print(data.columns)
+        print(data.index)
+        #print(data.describe())
+
+        # Find Tmax as the maximum value of T in the data.
+        Tmax = data.index.get_level_values('T').max()
+        Tmax = int(Tmax) if float(Tmax).is_integer() else Tmax
+        savecsvdir = out_dir + f"{Pre}/Pot_Well/"
+        Path(savecsvdir).mkdir(parents=True, exist_ok=True)
+
+        # Saving minima data to a csv file if it exists.
+        if not local_minima.empty:
+            local_minima.to_csv(savecsvdir + f"{saveminimafilename}_dP_{dP}_Geq_{Geq}.csv")
+            
+        # Save the data to a csv file.
+        data.to_csv(savecsvdir + f"{savefilename}_dP_{dP}_Geq_{Geq}.csv")
+        # Use the data to create plots.
+
+        # The plots are created for each species for each Prefix, a value and T value, for each species.
+
+        a_vals_list = data.index.get_level_values('a').unique().to_list()
+        for a in a_vals_list:
+            a = int(a) if float(a).is_integer() else a
+            for T in T_vals:
+                savepngdir = out_dir + f"{Pre}/Pot_Well/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/"
+                Path(savepngdir).mkdir(parents=True, exist_ok=True)
+                fig, axs = plt.subplots(1, len(var_labels), figsize = (20, 6))
+                for s in range(len(var_labels)):
+                    data_A = data.loc[(slice(None), a, T, slice(None)), :]
+                    # Plotting for a fixed a value, species and Prefix for all R values.
+                    ax = axs[s]
+                    # For each species, plot the first and third columns
+                    ax.plot(data_A["BINS[" + var_labels[s] + "]"], data_A["POTENTIAL_WELL[" + var_labels[s] + "]"], label = r"$V(" + var_labels[s] + ")$",
+                            color = colours[s], linestyle = 'solid', linewidth = 2, alpha = 0.85)
+                    if find_minima:
+                        # If Find_minima is set to True, plot the local minima data, as diamond points.
+                        ax.plot(local_minima.loc[(slice(None), a, T, slice(None)), "LOCAL_MINIMA[" + var_labels[s] + "]"], 
+                                local_minima.loc[(slice(None), a, T, slice(None)), "MIN_POT[" + var_labels[s] + "]"], 
+                                marker = 'D', color = colours[s], linestyle = 'None', alpha = 0.9, label = "Local Minima")
+                    ax.set_title(r"$V(" + var_labels[s] + ")$ vs " + r"$\langle $" + var_labels[s] + r"$(x, t) \rangle_{x}$" + f" at a = {a}, T = {T}")
+                    ax.set_xlabel(r'$\rho( ' + var_labels[s] + ')$')
+                    ax.set_ylabel(r'$V(' + var_labels[s] + ')$')
+                    ax.legend()
+                # Noting maxR for the plot title.
+                maxR = data_A.index.get_level_values('MaxR').max()
+                fig.suptitle(r"$V(\rho(x, t))$" + f" For {Pre} at a = {a}, dP = {dP}, Geq = {Geq}, T = {T}, n = {maxR}")
+                plt.savefig(savepngdir + f"Pot_Well_a_{a}_T_{T}_dP_{dP}_Geq_{Geq}.png")
+                #plt.show()
+                plt.close()
+            # End of T loop
+        # End of a loop
+        # Use home_video function to create a video of the plots.
+        home_video(out_dir, out_dir, prefixes=[f"{Pre}/Pot_Well"], a_vals= a_vals_list, T_vals=T_vals, maxR= 1, 
+                   pngformat= "Pot_Well_a_{a}_T_{T}_dP_{dP}_Geq_{Geq}.png", pngdir= "{Pre}/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/", 
+                   videoname = f"Pot_Well_{Pre}_Tmax_{Tmax}.mp4", video_relpath= "{Pre}/Videos/{amin}-{amax}/")
+        # Note that there is only one png per a value, so the video will be a simple slideshow (and R_max = 1).
+        input("Press F to Continue...")
+        
+
+
 
 def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseries_vals =[],
                                    meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"]):
@@ -798,6 +969,7 @@ def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseri
 
     for Pre in prefixes:
         
+
         data = get_PRELIM_EQdata(indir, Pre, init_a_vals, init_TS_vals, meanfilename = meanfilename)
         # We are interested in the AVG columns for each species.
         # Note that the number of columns can vary for each a and T value, as R_max can vary, so we need to handle this.
@@ -851,6 +1023,7 @@ def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseri
         print(f"num_species = {num_species}")
         # Get the list of a values and T values from the data.
         a_vals = data.index.get_level_values('a').unique().to_list()
+        tseries_vals = data.index.get_level_values('Tmax').unique().to_list()
         print(a_vals, tseries_vals)
         
         for a in a_vals:
@@ -1200,13 +1373,17 @@ def recursive_copydir(src, dst, include_filetypes = ["*.txt"],
 
 
 #
-#recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filetypes =["*.png", "*.jpg", "*.jpeg", "*.mp4"], symlinks=False)
-#a_vals = [0.041, 0.043] #0.051, 0.053, 0.055]; 
-#T_vals= [158489, 173780, 190546, 208930, 229087, 251189, 275423, 301995, 331131, 363078]
-prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
-TS_vals =[208930]
+recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filetypes =["*.png", "*.jpg", "*.jpeg", "*.mp4"], symlinks=False)
+a_vals = [0.042, 0.043] #0.051, 0.053, 0.055]; 
+T_vals= [158489, 173780, 190546, 208930, 229087, 251189, 275423, 301995, 331131, 363078]
+#prefixes = ["DIC-DDM1-NREF-0.5LI", "DIC-DDM5-NREF-0.5LI", "DIC-DDM10-NREF-0.5LI", "DIC-DDM5-NREF-1.1HI"]
+prefixes = ["COR-DDM5-NREF-0.5HI", "COR-DDM10-NREF-0.5HI", "COR-DDM1-NREF-0.5HI"]
+#prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
+TS_vals = [208930] #[190546]; #[109648];
+#a_vals = [0.04, 0.041, 0.042, 0.046, 0.048]; 
+#T_vals = [208930]
 
-'''
+
 for Pre in prefixes:
     frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= 0, plt_gamma= False, delpng = False)
     print(f"Done with making frames for {Pre}")
@@ -1216,7 +1393,7 @@ for Pre in prefixes:
                    pngformat= "CombinedImg/BioConc_a_{a}_T_{T}_n_{R}.png", pngdir= "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/",
                      maxR_txtdir = "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/maxR.txt", videoname = "guess",
                      video_relpath= "{Pre}/Videos/Conc/{a}/{Tmin}-{Tmax}/")
-'''
+#'''
 ''' FOR SPREADING TESTS, WITH PREFIX = NREF-GAU/ REF-GAU
 for Pre in prefixes:
     frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= 0, plt_gamma= True, delpng = False)
@@ -1235,4 +1412,8 @@ for Pre in prefixes:
 #analyse_FRAME_EQdata(in_dir, out_dir, prefixes, a_vals, T_vals, Tavg_window_index = [150000, 240000], filename = "MEAN_STD_Surviving_Runs.txt")
 #analyse_timeseriesData(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "MEAN_REPLICATES.txt")
 #analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, meanfilename = "Mean_TSERIES_T_{TS}.csv")
-analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = [150000, 240000], meanfilename = "Mean_TSERIES_T_{TS}.csv")
+#analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = [150000, 240000], meanfilename = "Mean_TSERIES_T_{TS}.csv")
+
+
+#analyse_FRAME_POTdata(in_dir, out_dir, prefixes, a_vals, T_vals, find_minima= True, filename = "Pot_Well.csv", 
+#                          minimafilename = "LOCAL_MINIMA.csv", var_labels= [ "P(x; t)" , "G(x; t)", "Pr(x; t)"])

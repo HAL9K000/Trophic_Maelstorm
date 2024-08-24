@@ -89,5 +89,7 @@
         "variant": "cpp",
         "expected": "cpp",
         "spanstream": "cpp"
-    }
+    },
+    "C_Cpp.default.compilerPath": "D:\\cygwin64\\bin\\g++.exe",
+    "C_Cpp.errorSquiggles": "enabled"
 }

@@ -11,6 +11,7 @@ import copy
 
 import scipy.stats as stats
 from scipy.interpolate import CubicSpline
+from scipy.interpolate import InterpolatedUnivariateSpline
 
 '''
 This script contains a set of utility functions that can be used to read and write text files, read and write csv files,
@@ -315,6 +316,22 @@ def gen_MEAN_INDVL_Colsfiledata(files, pathtodir="", ext="csv", exclude_col_labe
     df_pooled = df_pooled.fillna(0)
     return df_pooled
 
+
+''' # Summary of the function quadratic_spline_roots(...)
+    The function quadratic_spline_roots(spl) finds the roots of a quadratic spline function spl.
+    It does so by finding the roots of the quadratic spline function in each interval [a, b] of the spline.
+    Stolen from: https://stackoverflow.com/questions/50371298/find-maximum-minimum-of-a-1d-interpolated-function
+'''
+def quadratic_spline_roots(spl):
+    roots = []
+    knots = spl.get_knots()
+    for a, b in zip(knots[:-1], knots[1:]):
+        u, v, w = spl(a), spl((a+b)/2), spl(b)
+        t = np.roots([u+w-2*v, w-u, 2*v])
+        t = t[np.isreal(t) & (np.abs(t) <= 1)]
+        roots.extend(t*(b-a)/2 + (b+a)/2)
+    return np.array(roots)
+
 """ # Summary of the function gen_potential_well_data(...)
 The following function gen_potential_well_data(files, pathtodir="", ext="csv", exclude_col_labels= ["a_c", "x", "L"], evaluate_local_minima =True)
 will generate the potential well data from the files in files.
@@ -446,29 +463,35 @@ def gen_potential_well_data(files, pathtodir="", ext="csv", exclude_col_labels= 
         if(evaluate_local_minima):
             # Find the local minima of the potential well data in col.
             # Use CubicSpline to find the local minima.
-            local_minima = []
-
+            local_minima = []; min_pot =[];
+            # local_minima will store the x-values corresponding to the local minima of the potential well.
+            # min_pot will store the potential well values at the local minima (y-values).
             # First check if the potential well is entirely flat.
             if is_zero or is_flat:
                 # Append the eval_range corresponding to potential well = 0 to local_minima.
                 local_minima.append(eval_range[np.argmin(np.abs(potential_well))])
-                df_local_minima["LOCAL_MINIMA[" + col + "]"] = pan.Series(local_minima)
+                min_pot.append(0)
+                df_local_minima["LOCAL_MINIMA[" + col + "]"] = pan.Series(local_minima);
+                df_local_minima["MIN_POT[" + col + "]"] = pan.Series(min_pot);
                 continue
 
-            cs = CubicSpline(eval_range, potential_well)
+            cs = InterpolatedUnivariateSpline(eval_range, potential_well, k=3)
             # Find the local minima.
             cs_1st_derivative = cs.derivative()
-            cs_2nd_derivative = cs.derivative(nu=2)
-            extrema = cs_1st_derivative.roots()
+            cs_2nd_derivative = cs.derivative(n=2)
+            extrema = quadratic_spline_roots(cs_1st_derivative)
             for x in extrema:
                 if cs_2nd_derivative(x) > 0:
                     local_minima.append(x)
+                    min_pot.append(cs(x))
             # If the potential well is entirely flat, return a warning and set local minima to None.
             if len(local_minima) == 0:
                 print("Warning: Entirely flat potential well for column " + col + ". Local minima set to NAN.")
                 local_minima.append(np.nan)
+                min_pot.append(np.nan)
             # Store the list of local minima in df_local_minima.
             df_local_minima["LOCAL_MINIMA[" + col + "]"] = pan.Series(local_minima)
+            df_local_minima["MIN_POT[" + col + "]"] = pan.Series(min_pot)
 
     # Done with all columns in col_labels.     
     return (df_kde, df_local_minima) if evaluate_local_minima else (df_kde, None)

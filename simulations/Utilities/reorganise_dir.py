@@ -46,7 +46,7 @@ The script accepts the following arguments:
 
 '''
 
-prefixes =[ "DiC-NREF-0.5LI", "DiC-NREF-0.1LI"]#, "DiC-NEW"]
+prefixes =["DiC-NREF-1.1HI", "DiC-NREF-0.5LI", "DiC-NREF-0.1LI"]#, "DiC-NEW"]
 #prefixes =["DiC-NREF-HI", "DiC-NREF-LI"]
 #prefixes =["", "DiC", "BURNIN", "DiC-BURNIN", "DDM-DiC", "DDM-DiC-BURNIN"]
 root_dir = "../Data/Amarel/Rietkerk/Prelims/Stochastic/3Sp/"

@@ -62,6 +62,7 @@ int main(int argc, char *argv[])
   hjm = 1; // Handling time in hrs
   em =0.85; mm = 0.061609*pow(100.0, -0.25)/8760.0; // Mortality rate in hr^{-1}
 
+  double allo_pred_frac; // Fraction of allometrically predicted carrying capacity for predator.
   double Km = pow(10.0, 1.22)*pow(100.0, -0.31); // Carrying capacity of predator in kg/km^2s
 
   double Gstar = mm/((em -mm*hjm)*ajm); //Steady state for grazer.
@@ -93,7 +94,7 @@ int main(int argc, char *argv[])
   cout << "Diffusion Constants For Species:\n";
   cout << "D0 = " << setprecision(16) << D[0] << "\t D1 = " << D[1] << "\t D2 = " << setprecision(16) << D[2] << "\t D3 = " << setprecision(16) << D[3] << endl;
 
-  cout << "This is a 3Sp (Three) Stochastic Rietkerk Model Script WITHOUT DDM\n";
+  cout << "This is a 3Sp (Three) Stochastic Rietkerk Model Script WITH DDM\n";
 
   cout << "\n============================================================\n";
 
@@ -134,13 +135,16 @@ int main(int argc, char *argv[])
     cout << "Enter fractional deviation from MFT for initial conditions of Grazer and Predator above R_c (0.5-1.2 is a good choice): ";
     cin >> init_frac_grazpred;
 
+    cout << "Enter fractional deviation from predicted allometric predator carrying capacity (1-5.0 is a good choice): ";
+    cin >> allo_pred_frac;
+
     cout << "Enter Prefix (common choices include 'DiC-REF', 'DDM-DiC-BURNIN', 'nDiC' etc.) If not provided, default value: " 
         + prefix + " will be used: ";
     cin >> preFIX;
 
   }
   // If the user has entered the correct number of arguments, then the arguments are read from the command line.
-  else if(argc == 11)
+  else if(argc == 12)
   {
     dt = atof(argv[1]);
     t_max = atof(argv[2]);
@@ -151,14 +155,15 @@ int main(int argc, char *argv[])
     div = atoi(argv[7]);
     dP = atof(argv[8]);
     init_frac_grazpred = atof(argv[9]);
-    preFIX = argv[10];
+    allo_pred_frac = atof(argv[10]);
+    preFIX = argv[11];
   }
   // If there are otherwise an arbitrary number of arguements, terminate the program.
   else
   {
     cout << "Please enter the correct number of arguments.\n";
     cout << "The correct number of arguments is 8.\n";
-    cout << "The arguments are as follows: dt, t_max, g, r, a_start, a_end, div, dP, PREFIX.\n";
+    cout << "The arguments are as follows: dt, t_max, g, r, a_start, a_end, div, dP, initGP, frDDM,  PREFIX.\n";
     exit(1);
   }
 
@@ -197,6 +202,10 @@ int main(int argc, char *argv[])
 
   set_global_system_params(dt, dx); //Set the global parameters for the simulation.
   cout << "Global parameters set, with dt/2.0 = " << dt2 << " and dx*dx = " << dx2 <<  " and 1/(dx*dx) = " << dx1_2 << "\n";
+
+  cout << "Inputted fractional deviation from Predicted Carrying Capacity for Predator: " << allo_pred_frac << "\n";
+  set_global_predator_params(allo_pred_frac*Km); //Set the global parameters for the predator.
+  cout << "Global parameters for Predator set, with Carrying Capacity of Pr = " << K_P << " kg/km^2\n";
   //INITIAL CONDITIONS:
 
   // Equations for MFT E Eqilibrium values  as functions of a (Rainfall).
