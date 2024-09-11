@@ -20,7 +20,7 @@ int main(int argc, char *argv[])
 
   // Using units of mass = kg, length = km, time = hr.
   // ASSUMING MASS OF  GRAZER = 20 kg, MASS OF PREDATOR = 100 kg.
-  b = pow(10.0, -6.00); // ~ aij in km^2/(hr kg)
+  b = pow(10.0, -7.00); // ~ aij in km^2/(hr kg)
 
   //double p0i = 0.5; double p0j= p0i/200; double p0j= 2.25; double p0m= 8; // In g/m^2
 
@@ -83,7 +83,7 @@ int main(int argc, char *argv[])
   
   cout << "Presets are as follows:\n";
   cout << "For the vegetation:\n";
-  cout << "c = " << c << "\t gmax = " << gmax << "\t d = " << d << "\t alpha = " << alpha << "\t W0 = " << W0 << "\t rW = " << rW << endl;
+  cout << "c = " << c << "\t b = " << b << "\t kappa = " << kappa << endl;
   cout << "\n MFT Vegetation Co-existance Equilibrium Density = " << Vstar << " kg/km^2\n" << endl;
   cout << "For the grazer:\n";
   cout << "aij = " << aij << "\t hij = " << hij << "\t ej = " << ej << "\t mj = " << mj << endl;
@@ -201,7 +201,7 @@ int main(int argc, char *argv[])
   // Equations for MFT E Eqilibrium values  as functions of a (Rainfall).
 
   
-  double mG = E[1]/(kappa); double cG = -b*M[1]/(kappa*kappa); 
+  double mG = E[1]/(kappa); double cG = b*M[1]/(kappa*kappa); 
   // Coexistance equilibrium density of grazer as a function of a. (Geq = mG*a + cG)
   double mV = 1/b; // Vegetation only equilibrium density as a function of a. (Veq = a/b =mV*a)
   double mW = -3.90344309; double cW = 5.18;
@@ -211,7 +211,7 @@ int main(int argc, char *argv[])
   string MFT_PreV = std::to_string(mV) + " * a";
   string MFT_PreG = std::to_string(0.0);
   string MFT_V = std::to_string(Vstar);
-  string MFT_G = std::to_string(mG) + " * a + " + std::to_string(cG);
+  string MFT_G = std::to_string(mG) + " * a - " + std::to_string(cG);
   
 
   MFT_Vec_CoexExpr.assign({MFT_PreV, MFT_PreG, MFT_V, MFT_G});
@@ -274,66 +274,12 @@ int main(int argc, char *argv[])
   string path_to_folder = frame_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str();
   recursive_dir_create(path_to_folder);
 
-  /**
-  stringstream foldername;
-	foldername << frame_folder 
-  << ast.str() << "-" << est.str() << "_dP_" << dPo.str() << "_Geq_" << geq.str() << "/";
-	// Creating a string stream instance to store the values of the parameters in the file name.
-	struct stat info2;
-	if( stat( foldername.str().c_str(), &info2 ) != 0 )
-	{
-		cout << "Cannot access " << foldername.str() << ". Creating directory." << endl;
-		const int dir_err = system(("mkdir " + foldername.str()).c_str());
-		if (-1 == dir_err)
-		{
-			printf("Error creating directory!n");
-			exit(3);
-		}
-	}
-  */
-
-  path_to_folder = prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Geq_" + geq.str() +"/TimeSeries";
+  path_to_folder = prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() +"/TimeSeries";
   recursive_dir_create(path_to_folder);
-  
-  /**
-  stringstream foldername2;
-	foldername2 << prelim_folder 
-  << ast.str() << "-" << est.str() << "_dP_" << dPo.str() << "_Geq_" << geq.str() << "/";
-	// Creating a string stream instance to store the values of the parameters in the file name.
-	// This is done to avoid overwriting of files.
 
-	struct stat info1;
-	if( stat( foldername2.str().c_str(), &info1 ) != 0 )
-	{
-		cout << "Cannot access " << foldername2.str() << ". Creating directory." << endl;
-		const int dir_err = system(("mkdir " + foldername2.str()).c_str());
-		if (-1 == dir_err)
-		{
-			printf("Error creating directory!n");
-			exit(3);
-		}
-	}
-  */
   
-  recursive_dir_create("../Data/Rietkerk/Stochastic/3Sp");
+  recursive_dir_create("../Data/DP/Stochastic/2Sp");
   
-  /**
-	// Creating a string stream instance to store the values of the parameters in the file name.
-	// This is done to avoid overwriting of files.
-  stringstream foldername3;
-	foldername3 << "../Data/Rietkerk/Stochastic/3Sp/";
-	struct stat info0;
-	if( stat( foldername3.str().c_str(), &info0 ) != 0 )
-	{
-		cout << "Cannot access " << foldername3.str() << ". Creating directory." << endl;
-		const int dir_err = system(("mkdir " + foldername3.str()).c_str());
-		if (-1 == dir_err)
-		{
-			printf("Error creating directory!n");
-			exit(3);
-		}
-	}
-  */
   first_order_critical_exp_delta_stochastic_MultiSp(div, t_max, a_start, a_end, a_c, b, c, D, v, sigma, A, H, E, M, pR, chigh, scaling_factor, dt, dx, dP, r, g);
   
   //Finally recursively delete all the contents of the Temp folder.

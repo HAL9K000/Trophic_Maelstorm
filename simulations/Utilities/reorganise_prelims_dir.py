@@ -8,10 +8,15 @@ import shutil
 import sys
 import argparse
 import copy
+import warnings
 
 import scipy.stats as stats
 
 from glow_up import *
+
+# Show the first FutureWarning that occurs in the script, then ignore all future FutureWarnings.
+warnings.simplefilter(action='once', category=FutureWarning)
+warnings.simplefilter(action='once', category=Warning)
 
 '''
 This script reorganises the directory structure of the data files in the Rietkerk model.
@@ -57,6 +62,7 @@ out_dir_noprefix = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_MFT
 
 dP = 10000
 Geq = 4.802 # Optional. If Geq is not used in the subdirectory name, set Geq = "NA".
+Veq = 7.4774  # Optional. If Veq is not used in the subdirectory name, set Veq = "NA".
 L= [128]
 tmin = 100000; tmax = None; 
 # Optional. If tmin and tmax are not provided, set tmin = None and tmax = None.
@@ -85,6 +91,8 @@ def set_prelims_inputs():
     # Value of Geq in the subdirectory names in root_dir (if "NA", Geq is not used in the subdirectory name).
     parser.add_argument("--Geq", help="Value of Geq in the subdirectory names in root_dir, use 'NA' if not used.")
     # List of values of L to be used in the subdirectory names in out_dir.
+    parser.add_argument("--Veq", help="Value of Veq in the subdirectory names in root_dir, use 'NA' if not used.")
+    # List of values of L to be used in the subdirectory names in out_dir.
     parser.add_argument("--L", nargs="+", help="List of values of L to be used in the subdirectory names in out_dir.")
     # Extract n largest values of T in each sub-directory if indx_vals_t = -n, n smallest values of T if indx_vals_t = n.
     parser.add_argument("--indx_vals_t", type=int, help="Extract n largest values of T in each sub-directory if indx_vals_t = -n, n smallest values of T if indx_vals_t = n.")
@@ -93,7 +101,7 @@ def set_prelims_inputs():
     # Parse the arguments.
     args = parser.parse_args()
 
-    global prefixes, root_dir, out_dir_noprefix, dP, Geq, L, indx_vals_t, dt, dynamic_inspect
+    global prefixes, root_dir, out_dir_noprefix, dP, Geq, Veq, L, indx_vals_t, dt, dynamic_inspect
 
     # Set the input values.
     if args.default:
@@ -435,5 +443,5 @@ def main():
 
 set_prelims_inputs()
 
-#main()
+main()
 post_process(prefixes)

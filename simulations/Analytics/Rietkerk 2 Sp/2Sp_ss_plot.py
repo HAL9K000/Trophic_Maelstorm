@@ -5,6 +5,7 @@ import seaborn as sea
 import cmath
 import math
 import numpy.linalg as la
+import scipy.optimize as opt
 
 
 
@@ -16,9 +17,10 @@ d0 = 0.00025/24.0; d1=0.0298; d2 = 0.00025/24.0; d3= 0.025/24.0; #From Bonachela
 k0= 0; k1 = 5; k2 =5000;
 
 # Parmeters for grazer (Pawar & Co)
-aij = 3.6*pow(10.0, -6.08)*pow(20.0, -0.37); # in km^2/(hr kg)
+mG = 20.0; # Mass of producer in kg
+aij = 3.6*pow(10.0, -6.08)*pow(mG, -0.37); # in km^2/(hr kg)
 hij = 1; #Handling time in hrs
-ej =0.45; mj = 0.061609*pow(20.0, -0.25)/8760.0; # Mortality rate in hr^{-1}
+ej =0.45; mj = 0.061609*pow(mG, -0.25)/8760.0; # Mortality rate in hr^{-1}
 
 # Parameters for grazer (Kefi and Brose)
 #Assuming mass of producer (mi) = 1 kg, mass of grazer (mj) = 10 kg
@@ -49,6 +51,23 @@ R_plus_min = 2*rW*k1 + omega + 2*rW*k1*math.sqrt(1 +omega/(rW*k1));
 R_minus_min = 2*rW*k1 + omega - 2*rW*k1*math.sqrt(1 +omega/(rW*k1));
 
 
+def sci_notation(num, decimal_digits=1, precision=None, exponent=None):
+    """
+    Returns a string representation of the scientific
+    notation of the given number formatted for use with
+    LaTeX or Mathtext, with specified number of significant
+    decimal digits and precision (number of decimal digits
+    to show). The exponent to be used can also be specified
+    explicitly.
+    """
+    if exponent is None:
+        exponent = int(math.floor(math.log10(abs(num))))
+    coeff = round(num / float(10**exponent), decimal_digits)
+    if precision is None:
+        precision = decimal_digits
+
+    return r"${0:.{2}f}\cdot10^{{{1:d}}}$".format(coeff, exponent, precision)
+
 ''' 
 This script will plot certain functions of a variable "R" with defined functional form, across a range of values of R (specified by user).
 Each of these functions will be plotted on the same graph, with the x-axis being the range of R values, 
@@ -56,6 +75,20 @@ and the y-axis being the value of the function.
 Pretty colour palette will be used to distinguish between the functions (using Seaborn).
 Some of the functions can return imaginary values for certain values of R, in which case they will not be plotted for those values of R.
 '''
+
+
+# Define functional forms of the equilibrium values of the variables as functions of R for scipy.optimize.root to find the roots.
+def saturating_exponential(x, A, b,c):
+    return A*(1 - np.exp(-b*(x-c)))
+
+def linear(x, m, c):
+    return m*x + c
+
+def quadratic(x, A, B, C):
+    return A*x**2 + B*x + C
+
+def cubic(x, A, B, C, D):
+    return A*x**3 + B*x**2 + C*x + D
 
 # Define the functions to be plotted.
 
@@ -337,6 +370,61 @@ def stable_ss_plot():
     print("Number of true values in checkstable_coex_minus: ", np.sum(checkstable_coex_minus))
     print("Number of true values in checkstable_coex: ", np.sum(checkstable_coex))
 
+    # Many values of Wstar_plus and Wstar_minus are complex.
+    # First for these range of complex values, we fit a linear function to the real part of the values.
+    # Next we find the minimum value of R in this range, where the real part of Wstar_plus is positive ( > 0).
+    # We print this out alongside R_c, R_plus_min and R_minus_min.
+
+    # Fit a linear function to the real part of Wstar_plus and Wstar_minus where they are complex and stable.
+    cmask1 = np.iscomplex(Wstar_plus); cmask2 = np.iscomplex(Wstar_minus);
+    mask1 = np.logical_and(cmask1, checkstable_coex_plus); mask2 = np.logical_and(cmask2, checkstable_coex_minus);
+    #mask1 = np.iscomplex(Wstar_plus[checkstable_coex_plus]); mask2 = np.iscomplex(Wstar_minus[checkstable_coex_minus]);
+    R_complex_range = R[mask1 ]; #R_complex_range = R_complex_range[mask1];
+    print("Number of complex values in Wstar_plus: ", np.sum(mask1))
+    print("Number of complex values in Wstar_minus: ", np.sum(mask2)) # Both are the same.
+    print("Number of complex values in Wstar_plus[mask1]: ", len(Wstar_minus[mask2]))
+    print("Number of complex values in R_complex_range: ", len(R_complex_range))
+    print("The range of R values where Wstar_plus is complex: ", R_complex_range[0], R_complex_range[-1])
+
+    # Fit a linear function to the real part of Wstar_plus where it is complex.
+    # We will use this to find the minimum value of R where the real part of Wstar_plus is positive.
+
+    # Fit a linear function to the real part of Wstar_plus where it is complex.
+    popt_plus_Wst, pcov_plus_Wst = opt.curve_fit(linear, R_complex_range, np.real(Wstar_plus[mask1]))
+    # Find the minimum value of R where the real part of Wstar_plus is positive (calling this R_trans_plus).
+    R_trans_plus = (popt_plus_Wst[1])/popt_plus_Wst[0]
+    # Also find this value using just Wstar_plus and R values without fitting a linear function.
+    # This will be used to check the accuracy of the linear fit.
+
+    #This is the minimum value of R where the real part of Wstar_plus is positive.
+    # Do this by finding the first value of R where the real part of Wstar_plus is positive.
+
+    Wstar_complex_plus_realvals = np.real(Wstar_plus[mask1])
+    # Smallest positive value in Wstar_complex_plus_realvals
+    Wstar_complex_plus_minpos = Wstar_complex_plus_realvals[Wstar_complex_plus_realvals > 0].min()
+    # Find the index of this value in Wstar_plus[mask1] and use this to find the corresponding value of R.
+    index = np.where(Wstar_complex_plus_realvals == Wstar_complex_plus_minpos)[0][0]
+    R_trans_plus_check = R_complex_range[index]
+
+    # Now fit a linear function to the real part of Gstar_plus where it is complex.
+    print("Number of complex values in Gstar_plus: ", np.sum(mask1))
+    print("Number of complex values in Gstar_minus: ", np.sum(mask2)) # Both are the same.
+    print("Number of complex values in R_complex_range: ", len(R_complex_range))
+    print("The range of R values where Gstar_plus is complex: ", R_complex_range[0], R_complex_range[-1])
+
+    # Fit a linear function to the real part of Gstar_plus where it is complex.
+    popt_plus_Gst, pcov_plus_Gst = opt.curve_fit(linear, R_complex_range, np.real(Gstar_plus[mask1]))
+    # Linear function fit for Ostar_coex
+    popt_plus_Ost, pcov_plus_Ost = opt.curve_fit(linear, R, Ostar_coex(R))
+
+    print("Linear fit parameters for Wstar_plus: ", popt_plus_Wst)
+    print("Linear fit parameters for Gstar_plus: ", popt_plus_Gst)
+    print("Linear fit parameters for Ostar_coex: ", popt_plus_Ost)
+
+    print(" R_c_plus = %g, R_c_plus_check = %g, R_c = %g" %(R_trans_plus, R_trans_plus_check, R_trans ))
+
+
+
     
     fig, ax = plt.subplots(2,2, sharex=True, figsize=(15,10))
     sea.set(style='whitegrid')
@@ -391,6 +479,41 @@ def stable_ss_plot():
     plt.savefig('STANDARD Stable_ALLO_2Sp_ss_plot Rst --- %g Rend --- %g.png' %(R[0], R[-1]), dpi=1000)
     plt.show()
     plt.close()
+
+    # Now plot the functional forms with the linear fits for Wstar_plus, Gstar_plus and Ostar_coex.
+    fig, ax = plt.subplots(3,1, sharex=True, figsize=(15,10))
+    sea.set(style='whitegrid')
+    sea.set_palette('husl')
+    ax[0].plot(R[checkstable_coex_plus], Wstar_plus[checkstable_coex_plus], label='$W^*_\mathrm{Coexist+}$', alpha=0.75)
+    ax[0].plot(R_complex_range, linear(R_complex_range, *popt_plus_Wst), label= r"$W^* = %g\times R + %g$" %(popt_plus_Wst[0], popt_plus_Wst[1]), alpha=0.75)
+    ax[0].set_title('Locally Stable $W^*$ vs R')
+    
+    ax[1].plot(R[checkstable_coex_plus], Gstar_plus[checkstable_coex_plus], label='$G^*_\mathrm{Coexist+}$', alpha=0.75)
+    ax[1].plot(R_complex_range, linear(R_complex_range, *popt_plus_Gst), label= r"$G^* = %g\times R + %g$" %(popt_plus_Gst[0], popt_plus_Gst[1]), alpha=0.75)
+    ax[1].set_title('Locally Stable $G^*$ vs R')
+
+    ax[2].plot(R, Ostar_coex(R), label='$O^*_\mathrm{Coexist}$', alpha=0.75)
+    ax[2].plot(R, linear(R, *popt_plus_Ost), label= r"$O^* = %g\times R + %g$" %(popt_plus_Ost[0], popt_plus_Ost[1]), alpha=0.75)
+    ax[2].set_title('Locally Stable $O^*$ vs R')
+
+    for i in range(3):
+        axes = ax[i]
+        axes.axvline(x=R_plus_min, color='tomato', linestyle='-.' )
+        axes.axvline(x=R_minus_min, color='tomato', linestyle='-.')
+        axes.axvline(x = R_trans, color='gray', linestyle=':', label= '$R_c$')
+        axes.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+        axes.set_xlabel('R $(mm/hr)$')
+        axes.set_ylabel('Stable Equilibrium values $kg m^{-2}$')
+        axes.tick_params(axis='both')
+    
+    plt.tight_layout()
+    figure = plt.gcf() # get current figure
+    figure.set_size_inches(15, 10)
+    plt.savefig('STANDARD LinearFit_Stable_ALLO_2Sp_ss_plot Rst --- %g Rend --- %g.png' %(R[0], R[-1]), dpi=1000)
+    plt.show()
+    plt.close()
+
+
 
     
 

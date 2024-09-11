@@ -8,19 +8,26 @@ import shutil
 import sys
 import argparse
 import copy
+import warnings
 
 import scipy.stats as stats
 from scipy.interpolate import CubicSpline
 
 from glow_up import *
 
+# Show the first FutureWarning that occurs in the script, then ignore all future FutureWarnings.
+warnings.simplefilter(action='once', category=FutureWarning)
+
+
 '''
 This script reorganises the directory structure of the data files in the Rietkerk model.
 The original directory structure (filepaths) are as follows:
-root_dir/{PREFIX}*_dP_{dP}_Geq_{Geq}/FRAME_*_G_{g}_T_{T}_*_a_{a_val}_*_R_{R}.csv
+root_dir/{PREFIX}*_dP_{dP}_Geq_{Geq}/FRAME_*_G_{g}_T_{T}_*_a_{a_val}_*_R_{R}.csv OR
+root_dir/{PREFIX}*_dP_{dP}_Veq_{Veq}/FRAME_*_G_{g}_T_{T}_*_a_{a_val}_*_R_{R}.csv
 
 The new directory structure (filepaths) will be as follows:
-out_dir/{PREFIX}/L_{g}_a_{a_val}/dP_{dP}/Geq_{Geq}/T_{T}/FRAME_T_{T}_a_{a_val}_R_{R}.csv
+out_dir/{PREFIX}/L_{g}_a_{a_val}/dP_{dP}/Geq_{Geq}/T_{T}/FRAME_T_{T}_a_{a_val}_R_{R}.csv OR
+out_dir/{PREFIX}/L_{g}_a_{a_val}/dP_{dP}/Geq_{Veq}/T_{T}/FRAME_T_{T}_a_{a_val}_R_{R}.csv
 
 The script will:
 1. Find all immediate subdirectories in root_dir.
@@ -46,21 +53,23 @@ The script accepts the following arguments:
 
 '''
 
-prefixes =["DiC-NREF-1.1HI", "DiC-NREF-0.5LI", "DiC-NREF-0.1LI"]#, "DiC-NEW"]
-#prefixes =["DiC-NREF-HI", "DiC-NREF-LI"]
+#prefixes =["DiC-NREF-1.1HI", "DiC-NREF-0.5LI", "DiC-NREF-0.1LI"]#, "DiC-NEW"]
+prefixes =["DiC-GAU-NREF"]
 #prefixes =["", "DiC", "BURNIN", "DiC-BURNIN", "DDM-DiC", "DDM-DiC-BURNIN"]
-root_dir = "../Data/Amarel/Rietkerk/Prelims/Stochastic/3Sp/"
-#out_dir_noprefix = "../Data/Rietkerk/Reorganised_Frames/Stoc/3Sp/StdParam_20_100_Test/"
+#root_dir = "../Data/Amarel/Rietkerk/Prelims/Stochastic/3Sp/"
+root_dir = "../Data/Remote/Rietkerk/Frames/Stochastic/2Sp/"
+out_dir_noprefix = "../Data/Remote/Rietkerk/Reorganised_Frames/Stoc/2Sp/AMPTEST_20_100/"
 
-out_dir_noprefix = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_MFTNu/"
+#out_dir_noprefix = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_MFTNu/"
 
 dP = 10000
-Geq = 4.802 # Optional. If Geq is not used in the subdirectory name, set Geq = "NA".
+Geq = "NA" # Optional. If Geq is not used in the subdirectory name, set Geq = "NA".
+Veq = 7.4774  # Optional. If Veq is not used in the subdirectory name, set Veq = "NA".
 L= [128]
 indx_vals_t = -25
 #Extract n largest values of T if indx_vals_t = -n, 
 # n smallest values of T if indx_vals_t = n.
-tmin = 60000; tmax = None; 
+tmin = None; tmax = None; 
 dynamic_inspect = False;    # Set to True to stop script periodically and inspect values of parameters and outputs.
 
 def set_frames_input():
@@ -68,17 +77,18 @@ def set_frames_input():
     # Boolean flag for dynamic input values.
     parser.add_argument("--dynamic", action="store_true", help="Use dynamic input values for the script.")
     parser.add_argument("--prefixes", nargs="+", help="List of prefixes to be used in the subdirectory names in out_dir.")
-    parser.add_argument("--root_dir", help="Root directory containing the original data files.")
-    parser.add_argument("--out_dir_noprefix", help="Output directory where the reorganised data files will be stored.")
+    parser.add_argument("--indir", help="Root directory containing the original data files.")
+    parser.add_argument("--outdir", help="Output directory where the reorganised data files will be stored.")
     parser.add_argument("--dP", type=int, help="Value of dP in the subdirectory names in root_dir.")
     parser.add_argument("--Geq", help="Value of Geq in the subdirectory names in root_dir (if 'NA', Geq is not used in the subdirectory name).")
+    parser.add_argument("--Veq", help="Value of Veq in the subdirectory names in root_dir if Geq is unknown (if 'NA', Veq is not used in the subdirectory name).")
     parser.add_argument("--L", nargs="+", type=int, help="List of values of L to be used in the subdirectory names in out_dir.")
     parser.add_argument("--indx_vals_t", type=int, help="Extract n largest values of T in each sub-directory if indx_vals_t = -n, n smallest values of T if indx_vals_t = n.")
     parser.add_argument("--tmin", help="Minimum value of T to be extracted, must be integer or None.")
     parser.add_argument("--tmax", help="Maximum value of T to be extracted, must be integer or None.")
     args = parser.parse_args()
 
-    global prefixes, root_dir, out_dir_noprefix, dP, Geq, L, indx_vals_t, tmin, tmax, dynamic_inspect
+    global prefixes, root_dir, out_dir_noprefix, dP, Geq, Veq, L, indx_vals_t, tmin, tmax, dynamic_inspect
 
     if args.dynamic:
         # First list all immediate subdirectories in root_dir as information to the user.
@@ -92,6 +102,7 @@ def set_frames_input():
         print("out_dir_noprefix: " + out_dir_noprefix)
         print("dP: " + str(dP))
         print("Geq: " + str(Geq))
+        print("Veq: " + str(Veq))
         print("L: " + str(L))
         print("indx_vals_t: " + str(indx_vals_t))
         print(f"Tmin:   {tmin} \t Tmax:   {tmax}")
@@ -104,6 +115,8 @@ def set_frames_input():
             dP = int(input("Enter new dP: "))
             Geq = input("Enter new Geq ('NA' where it isn't applicable): ")
             Geq = float(Geq) if Geq.isfloat() else Geq
+            Veq = input("Enter new Veq ('NA' where it isn't applicable): ")
+            Veq = float(Veq) if Veq.isfloat() else Veq
             L = [int(x) for x in input("Enter new L: ").split()]
             indx_vals_t = int(input("Enter new indx_vals_t: "))
             tmin = input("Enter new tmin: "); tmin = int(tmin) if tmin.isnumeric() else None
@@ -114,14 +127,16 @@ def set_frames_input():
     else:
         if args.prefixes:
             prefixes = args.prefixes
-        if args.root_dir:
-            root_dir = args.root_dir
-        if args.out_dir_noprefix:
+        if args.indir:
+            root_dir = args.indir
+        if args.outdir:
             out_dir_noprefix = args.out_dir_noprefix
         if args.dP:
             dP = args.dP
         if args.Geq:
             Geq = float(args.Geq) if args.Geq.isfloat() else "NA"
+        if args.Geq:
+            Veq = float(args.Veq) if args.Veq.isfloat() else "NA"
         if args.L:
             L = args.L; L = [int(x) for x in L]
         if args.indx_vals_t:
@@ -136,6 +151,7 @@ def set_frames_input():
         print("out_dir_noprefix: " + out_dir_noprefix)
         print("dP: " + str(dP))
         print("Geq: " + str(Geq))
+        print("Veq: " + str(Veq))
         print("L: " + str(L))
         print("indx_vals_t: " + str(indx_vals_t))
         
@@ -147,7 +163,8 @@ def set_frames_input():
 # A wrapper function that post-processes the data files in out_dir_noprefix, after the main() function has been executed/
 # Out_dir_noprefix is the output directory where the reorganised data files are stored.
 # It is structured as follows:
-# out_dir_noprefix/{PREFIX}/L_{g}_a_{a_val}/dP_{dP}/Geq_{Geq}/T_{T}/FRAME_T_{T}_a_{a_val}_R_{R}.csv
+# out_dir_noprefix/{PREFIX}/L_{g}_a_{a_val}/dP_{dP}/Geq_{Geq}/T_{T}/FRAME_T_{T}_a_{a_val}_R_{R}.csv OR
+# out_dir_noprefix/{PREFIX}/L_{g}_a_{a_val}/dP_{dP}/Geq_{Veq}/T_{T}/FRAME_T_{T}_a_{a_val}_R_{R}.csv
 # The function will:
 # 1. Find all immediate subdirectories in out_dir_noprefix if prefixes is empty, or in out_dir_noprefix/{PREFIX} for each PREFIX in prefixes.
 # 2. Recursively navigate to each sub-directory that contains files of the form "FRAME*.csv".
@@ -178,7 +195,7 @@ def post_process(prefixes= []):
             # Or one can calculate the spatial power spectrum of the files in the subdirectory.
 
             # Find mean and standard deviation of each column in each file in files if the column values are non-zero.
-            '''#Mean and Std Rho Density & Max Replicates
+            #Mean and Std Rho Density & Max Replicates
             df_surviving = gen_MEAN_SD_COLSfiledata(files, pathtodir=subdirpath, ext="csv", nonzero=True, add_counts= True)
             df_all = gen_MEAN_SD_COLSfiledata(files, pathtodir=subdirpath, ext="csv", nonzero=False, add_counts= True)
             
@@ -193,7 +210,7 @@ def post_process(prefixes= []):
             
             #'''
 
-            '''# Find max R in files.
+            # Find max R in files.
             Rvals=[]; find_vals(files, ["R_[\d]+"], Rvals) 
             # Assumes R is an integer and files are of the form "FRAME_T_{T}_a_{a_val}_R_{R}.csv"
             maxR = max([int(re.sub("R_", "", r)) for r in Rvals])
@@ -214,7 +231,7 @@ def post_process(prefixes= []):
                     df_replicates.to_csv(subdirpath + "/MEAN_REPLICATES.txt", sep="\t", index=False, header=True)
             except Exception as e:
                 print("Error: Could not write MEAN_REPLICATES to " + subdirpath + "/MEAN_REPLICATES.txt with error message: \n" + str(e))
-            #'''
+            #
             
             # Find potential well data in files using gen_potential_well_data.
             # Save the potential well data to a csv file in subdirpath/Pot_Well.
@@ -229,7 +246,7 @@ def post_process(prefixes= []):
                     df_local_minima.to_csv(subdirpath + "/Pot_Well/LOCAL_MINIMA.csv", sep=",", index=False, header=True)
             except Exception as e:
                 print("Error: Could not write potential well data to " + subdirpath + "/Pot_Well/Pot_Well.csv with error message: \n" + str(e))
-            
+            #'''  
         # Done with all subdirectories in out_dir_noprefix/{pre} that contain files of the form "FRAME*.csv".
         print("\n=====================================================================================================\n")
         print(f"Done post-processing for prefix: {pre}...")
@@ -249,15 +266,21 @@ def main():
         else:
             out_dir = out_dir_noprefix + pre + "/"
         
-        #Subdirectories are of the form "PREFIX*_dP_{dP}_Geq_{val}"
+        #Subdirectories are of the form "PREFIX*_dP_{dP}_Geq_{val}" OR "PREFIX*_dP_{dP}_Veq_{val}".
         #Using regex and glob, create a sorted list of subdir (in ascending order of val (can be float or integer)) with prefix pre.
         
-        if(Geq == "NA"):
+        if (Geq == "NA" and Veq == "NA"):
             subdir = sorted(glob.glob(os.path.join(root_dir, pre + "_*_dP_" + str(dP))), 
                             key=lambda x: float(re.findall(r'[\d]*[.][\d]+', x)[0]) if re.findall(r'[\d]*[.][\d]+', x) else int(re.findall(r'[\d]+', x)[-1]))
         else:
-            subdir = sorted(glob.glob(os.path.join(root_dir, pre + "_*_dP_" + str(dP) + "_Geq_" + str(Geq))), 
+
+            if(Geq != "NA"):
+                subdir = sorted(glob.glob(os.path.join(root_dir, pre + "_*_dP_" + str(dP) + "_Geq_" + str(Geq))), 
                         key=lambda x: float(re.findall(r'[\d]*[.][\d]+', x)[0]) if re.findall(r'[\d]*[.][\d]+', x) else int(re.findall(r'[\d]+', x)[-1]))
+            elif (Veq != "NA"):
+                subdir = sorted(glob.glob(os.path.join(root_dir, pre + "_*_dP_" + str(dP) + "_Veq_" + str(Veq))), 
+                        key=lambda x: float(re.findall(r'[\d]*[.][\d]+', x)[0]) if re.findall(r'[\d]*[.][\d]+', x) else int(re.findall(r'[\d]+', x)[-1]))
+            
         
         subdir_test = [os.path.basename(s) for s in subdir]
         print("Found subdirectories: " + str(subdir_test))
@@ -320,7 +343,11 @@ def main():
                     f.close()
                                 
                 for a in a_vals:
-                    savedir = "L_" + str(g) + "_a_" + str(a) + "/dP_" + str(dP) + "/Geq_" + str(Geq) + "/"
+                    savedir = "L_" + str(g) + "_a_" + str(a) + "/dP_" + str(dP) + "/Geq_" 
+                    if Geq == "NA" and Veq != "NA":
+                        savedir += str(Veq) + "/"
+                    else:
+                        savedir += str(Geq) + "/"
                     outdir = out_dir + savedir
                     # Recursively create outdir (and parent directories) if it doesn't exist.
                     Path(outdir).mkdir(parents=True, exist_ok=True)
@@ -449,7 +476,7 @@ def main():
 
 
 set_frames_input()
-#main()
+main()
 post_process(prefixes)
 #dir = "\\\\?\\D:\\cygwin64\\home\\koust\\Code\\Trophic_Maelstorm\\simulations\\Data\\Remote\\Rietkerk\\Frames\\Stochastic\\3Sp\\DDM_DiC_BURNIN_0.025-0.065_dP_30000_Geq_4.802";
 #rename(dir, "_RANDDDMDiCBURNIN_ThreeSp_P_c_DP", "")

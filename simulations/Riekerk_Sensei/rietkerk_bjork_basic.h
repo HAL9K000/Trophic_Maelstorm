@@ -46,9 +46,31 @@ namespace fs = std::filesystem;
 #define BERSERK_DYNAMICS_H
 
 
+/** Defining a compiler macro SPB if not already defined. 
+ * This is used to determine the number of species in the system (default =3)
+ * This is done by including the appropriate header file based on the value of SPB, which in turn
+ * defines the appropriate (inline) constants for the system.
+ * This is done by passing the compiler flag -DSPB=2 or -DSPB=3 to the compiler.
+*/
+#ifndef SPB
+	#define SPB 3 //Number of biota species in the system (default value used if NOT defined).
+#endif
 
-inline const int Sp = 5; //Total number of species in the system.
-inline const int SpB = Sp -2; //Number of biota species in the system.
+#if SPB == 3
+	#include "rietkerk_bjork_constants_3Sp.h"
+#elif SPB == 2
+	#include "rietkerk_bjork_constants_2Sp.h"
+#else
+	#error "Number of species not supported. Pass valid compiler flag as -DSPB=2 or -DSPB=3"
+#endif
+
+
+//------------------------- GLOBAL CONSTANTS --------------------------------------------------------------//
+
+
+
+//inline const int Sp = 5; //Total number of species in the system.
+inline const int SpB = Sp - 2; //Number of biota species in the system.
 inline const int Sp_NV = Sp-3; //Number of grazer and predator species in system.
 inline const int Sp4_1 = 4*(Sp -2) +3; // Used for generating statistics on surviving runs
 inline const int Sp2 = 2*Sp; // Used for generating statistics on surviving runs
@@ -66,19 +88,19 @@ inline double K_P1; /** Inverse of carrying capacity of predator */
 
 // Strings that are used for I/O operations and file naming in the simulations.
 inline string prefix = "DiC-NREF-LI";
-inline string frame_folder = "../Data/Rietkerk/Frames/Stochastic/3Sp/" + prefix + "_"; //Folder to store frames.
-inline string prelim_folder = "../Data/Rietkerk/Prelims/Stochastic/3Sp/"+ prefix +"_"; //Folder to store preliminary data.
+inline string frame_folder = "../Data/Rietkerk/Frames/Stochastic/"+ std::to_string(SpB) +"Sp/" + prefix + "_"; //Folder to store frames.
+inline string prelim_folder = "../Data/Rietkerk/Prelims/Stochastic/"+ std::to_string(SpB) +"Sp/"+ prefix +"_"; //Folder to store preliminary data.
 inline const string frame_prefix = "/FRAME_P_c_DP_G_"; //Prefix for frame files.
 inline const string gamma_prefix = "/GAMMA_G_"; //Prefix for gamma files.
 inline const string prelim_prefix = "/PRELIM_AGGRAND_P_c_ID_"; //Prefix for preliminary data files.
 inline const string replicate_prefix = "/PRELIM_TSERIES_P_c_DP_G_"; //Prefix for replicate time-series data files.
-inline const string frame_header = "a_c,  x,  P(x; t), G(x; t), Pr(x; t), W(x; t), O(x; t) \n"; //Header for frame files.
-inline string stat_prefix = "../Data/Rietkerk/Stochastic/3Sp/1stCC_Rietkerk_" + prefix + "_P_c_G_";
+//inline const string frame_header = "a_c,  x,  P(x; t), G(x; t), Pr(x; t), W(x; t), O(x; t) \n"; //Header for frame files.
+inline string stat_prefix = "../Data/Rietkerk/Stochastic/"+ std::to_string(SpB) +"Sp/1stCC_Rietkerk_" + prefix + "_P_c_G_";
 
 // Strings that are used for the Expertk library to parse mathematical expressions.
 // These represent MFT-versions of the species Coexistance equilibria wrt to the order parameter (Rainfall, given by a).
 
-inline vector<string> MFT_Vec_CoexExpr(Sp, ""); //Vector of MFT Coexistance expressions for all species.
+inline vector<string> MFT_Vec_CoexExpr(2*Sp, ""); //Vector of MFT Coexistance expressions for all species.
 
 //inline exprtk::symbol_table<double> global_symbol_table; //Symbol table for the Expertk library.
 
@@ -182,6 +204,7 @@ void init_fullframe(D2Vec_Double &array, int Sp, int size);
 
 void init_randbistableframe(D2Vec_Double &array, int size, double R, double R_c, double perc,  double c_high[], double c_low[]);
 // NOTE: The following function REQUIRES the exprtk library to be included in the project.
+void init_exprtk_randbiMFTframe_Improved(D2Vec_Double &array, int size, double R, double R_c, double dP, double perc,  double c_spread[]);
 void init_exprtk_randbiMFTframe(D2Vec_Double &array, int size, double R, double R_c, double dP, double perc,  double c_spread[]);
 
 
@@ -258,17 +281,21 @@ void first_order_critical_exp_delta_stochastic(int div, double t_max, double a_s
 
 //------------------- Vegetation + Grazer (+ Soil Water + Surface Water) -------------------//
 
-void f_2Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, double alpha, 
-	double rW, double W0, double (&Dxd2)[Sp], double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double dx1_2, double g);
-void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D2Vec_Double &K1, D2Vec_Double &K2, D2Vec_Double &K3, D2Vec_Double &K4, D3Vec_Int &nR2,
-	double a,double c,double gmax,double alpha, double rW, double W0, double (&Dxd2)[Sp], double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], 
-	double t,double dt,double dx, int g);
+void f_2Dor_2Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, double alpha, double rW, 
+	double W0, double (&Dxd2)[Sp], double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], 
+	double t, double dt, double dx1_2, double g);
+void RK4_Integrate_Stochastic_2Sp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D2Vec_Double &K1, D2Vec_Double &K2, D2Vec_Double &K3, D2Vec_Double &K4, D3Vec_Int &nR2,
+		double a,double c,double gmax,double alpha, double rW, double W0, double (&Dxd2)[Sp], double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], 
+		double t,double dt,double dx, int g);
+
+void calc_gamma_2Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringSites, D2Vec_Double &Rho_t, D2Vec_Double &gamma,  
+			double (&Rho_avg)[Sp], vector <std::pair<double, int>>& rfrac, double nVeg_frac, int r_max, int L);
 void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double c, double gmax, double alpha, double rW, double W0, 
-	double D[], double v[], double K[], double sigma[], double a_st, double a_end, double A[Sp][Sp], double H[Sp][Sp], double E[], double M[], double pR[], 
-	double dt, double dx, double dP, int r, int g);
-void first_order_critical_exp_delta_stochastic_2Sp(int div, double t_max, double a_start, double a_end,  double c, double gmax, double alpha,
-	double rW, double W0,  double D[], double v[], double K[], double sigma[], double A[Sp][Sp], double H[Sp][Sp], double E[], double M[], double pR[],
-	double dt, double dx, double dP, int r,  int g);
+	double (&D)[Sp], double v[], double (&K)[3], double sigma[], double a_st, double a_end, double a_c, double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], 
+	double chigh[], double clow[], double dt, double dx, double dP, int r, int g, double Gstar  = -1.0,  double Vstar = -1.0 );
+void first_order_critical_exp_delta_stochastic_2Sp(int div, double t_max, double a_start, double a_end, double a_c,  double c, double gmax, double alpha,
+	double rW, double W0,  double (&D)[Sp], double v[], double (&K)[3], double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], double ch[], double clo[],
+	double dt, double dx, double dP, int r,  int g, double Gstar  = -1.0,  double Vstar = -1.0 );
 
 //------------------- Vegetation + Grazer + Predator (+ Soil Water + Surface Water) -------------------//
 void save_prelimframe(D2Vec_Double &Rho_t, const string &parendir, const string &filenamePattern, double a, double a_st, double a_end, 
@@ -289,9 +316,9 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 		double rW, double W0, double (&D)[Sp], double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t,double dt,double dx, int g);
 void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double c, double gmax, double alpha, double rW, double W0, 
 	double (&D)[Sp], double v[], double (&K)[3], double sigma[], double a_st, double a_end, double a_c, double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], 
-	double chigh[], double clow[], double dt, double dx, double dP, int r, int g);
+	double chigh[], double clow[], double dt, double dx, double dP, int r, int g, double Gstar  = -1.0,  double Vstar = -1.0 );
 void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double a_start, double a_end, double a_c,  double c, double gmax, double alpha,
 	double rW, double W0,  double (&D)[Sp], double v[], double (&K)[3], double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[],
-	double ch[], double clo[], double dt, double dx, double dP, int r,  int g);
+	double ch[], double clo[], double dt, double dx, double dP, int r,  int g,double Gstar  = -1.0,  double Vstar = -1.0);
 
 #endif

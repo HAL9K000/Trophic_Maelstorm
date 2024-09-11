@@ -11,6 +11,7 @@ simulations/NSLE_Mage/
 *.mp4
 *.7z
 *.png
+*.ai
 !MSThesisFigures/NPDPSchema.png
 !MSThesisFigures/TCPSchema.png
 !MSThesisFigures/DensityTable.png

@@ -315,7 +315,7 @@ int main(int argc, char *argv[])
 	}
   */
   
-  recursive_dir_create("../Data/Rietkerk/Stochastic/3Sp");
+  recursive_dir_create("../Data/Rietkerk/Stochastic/"+ std::to_string(SpB) +"Sp");
   
   /**
 	// Creating a string stream instance to store the values of the parameters in the file name.
@@ -335,7 +335,7 @@ int main(int argc, char *argv[])
 	}
   */
  
-  first_order_critical_exp_delta_stochastic_3Sp(div, t_max, a_start, a_end, a_c, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR, chigh, clow, dt, dx, dP, r, g);
+  first_order_critical_exp_delta_stochastic_3Sp(div, t_max, a_start, a_end, a_c, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR, chigh, clow, dt, dx, dP, r, g, Gstar);
   
   //Finally recursively delete all the contents of the Temp folder.
   #ifdef _WIN32

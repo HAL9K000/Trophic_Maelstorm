@@ -89,9 +89,9 @@ void set_Prefix(string& user_prefix)
 {
 	//Sets the global prefix for the output files.
 	prefix = user_prefix; 
-	frame_folder = "../Data/Rietkerk/Frames/Stochastic/3Sp/" + prefix + "_";  //Folder to store frames.
-	prelim_folder  = "../Data/Rietkerk/Prelims/Stochastic/3Sp/"+ prefix +"_"; //Folder to store preliminary data.
-	stat_prefix =  "../Data/Rietkerk/Stochastic/3Sp/1stOrderCC_Rietkerk_" + prefix + "_STOC_P_c_G_"; //Header for frame files.
+	frame_folder = frame_folder + prefix + "_";  //Folder to store frames.
+	prelim_folder  = prelim_folder+ prefix +"_"; //Folder to store preliminary data.
+	stat_prefix =  stat_prefix + prefix + "_STOC_P_c_G_"; //Header for frame files.
 }
 
 void set_global_system_params(double dt, double dx)
@@ -233,7 +233,7 @@ void init_exprtk_randbiMFTframe(D2Vec_Double &array, int size, double R, double 
 
 	mutex errorMutex; // Mutex to make error messages thread-safe
 	// Create expression objects for each species
-    std::vector<exprtk::expression<double>> expressions(Sp);
+    std::vector<exprtk::expression<double>> expressions(2*Sp);
     exprtk::parser<double> parser;
 
 	// Create a local symbol table, copying the global symbol table
@@ -936,6 +936,8 @@ void recursive_dir_create(const string& path_to_dir)
 			system(command.c_str());
 		#endif
 	#endif
+
+	cout << "Directory " << path_to_dir << " created..." << endl;
 
 }
 
@@ -2710,12 +2712,12 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 	//Round to 3 decimal places.
 	stringstream L, boba, coco, tm ,d3, p1, p2, rini, Dm0, Dm1, aij, hij, dix, dimitri, Sig0, geq, ID;
 
-	double Gstar = M[2]/((E[2] -M[2]*H[1][2])*A[1][2]); // MFT estimate of Grazer density at coexistence.
+	double Vstar = M[2]/((E[2] -M[2]*H[1][2])*A[1][2]); // MFT estimate of Grazer density at coexistence.
 
   	L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << a_start; p2  << a_end; rini << r; 
 	boba << setprecision(4) << b;; coco << setprecision(4) << c;
   	Dm0 << setprecision(3) << D[0]; Dm1 << setprecision(3) << D[1]; Sig0 << sigma[0]; dix << setprecision(2) << dx; 
-	aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1]; geq << setprecision(5) << Gstar;
+	aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1]; geq << setprecision(5) << Vstar;
 	ID << id;
 
 	ofstream output_1stdp;
@@ -2723,12 +2725,12 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 	output_1stdp.open(stat_prefix + L.str() 
 	+ "_T_" + tm.str() + "_dt_" + d3.str() + "_D1_"+ Dm1.str() +
 	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + 
-	"_Geq_"+ geq.str() /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv");
+	"_Veq_"+ geq.str() /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv");
 
 	cout << "Save file name: " <<endl;
 	cout << stat_prefix + L.str() 
 	+ "_T_" + tm.str() + "_dt_" + d3.str() + "_D1_"+ Dm1.str() + "_S0_" + Sig0.str() +
-	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + "_Geq_"+ geq.str() /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv" <<endl;
+	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + "_Veq_"+ geq.str() /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv" <<endl;
 
 	// Output =  | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |
 

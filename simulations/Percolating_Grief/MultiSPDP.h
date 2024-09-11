@@ -64,15 +64,15 @@ inline double K_P1; /** Inverse of carrying capacity of predator */
 //inline double cgmax /** = c*gmax */; inline double K2W0 /**= K[2]*W0 */;inline double A01H01 /** = A[0][1]*H[0][1] */;inline double A12H12 /**= A[1][2]*H[1][2] **/;
 
 // Strings that are used for I/O operations and file naming in the simulations.
-inline string prefix = "DiC-NREF-LI";
-inline string frame_folder = "../Data/DP/Frames/Stochastic/3Sp/" + prefix + "_"; //Folder to store frames.
-inline string prelim_folder = "../Data/DP/Prelims/Stochastic/3Sp/"+ prefix +"_"; //Folder to store preliminary data.
+inline string prefix = "DiC-NREF-NI";
+inline string frame_folder = "../Data/DP/Frames/Stochastic/2Sp/"; //Folder to store frames.
+inline string prelim_folder = "../Data/DP/Prelims/Stochastic/2Sp/"; //Folder to store preliminary data.
 inline const string frame_prefix = "/FRAME_P_c_DP_G_"; //Prefix for frame files.
 inline const string gamma_prefix = "/GAMMA_G_"; //Prefix for gamma files.
 inline const string prelim_prefix = "/PRELIM_AGGRAND_P_c_ID_"; //Prefix for preliminary data files.
 inline const string replicate_prefix = "/PRELIM_TSERIES_P_c_DP_G_"; //Prefix for replicate time-series data files.
 
-inline string stat_prefix = "../Data/Rietkerk/Stochastic/3Sp/1stCC_Rietkerk_" + prefix + "_P_c_G_";
+inline string stat_prefix = "../Data/DP/Stochastic/2Sp/1stCC_";
 
 inline const string frame_header = "a_c,  x,  P(x; t), G(x; t)\n"; //Header for frame files.
 

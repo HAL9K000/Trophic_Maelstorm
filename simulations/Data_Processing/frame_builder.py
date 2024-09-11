@@ -48,14 +48,14 @@ from matplotlib.collections import LineCollection
 
 # User inputs.
 
-in_dir = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_CORDDM/"
-out_dir = "../../Images/3Sp/StdParam_20_100_CORDDM_MFT/"
-#in_dir = "StdParam_20_100_Test/"
-#out_dir = "../../Images/3Sp/AdvDiffTest/"
+#in_dir = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_CORDDM/"
+#out_dir = "../../Images/3Sp/StdParam_20_100_CORDDM_MFT/"
+in_dir = "../Data/Remote/Rietkerk/Reorganised_Frames/Stoc/2Sp/AMPTEST_20_100/"
+out_dir = "../../Images/2Sp/AdvDiffTest/"
 Path(out_dir).mkdir(parents=True, exist_ok=True)
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 
-g = 128;  dP = 10000; Geq = 4.802; R_max= -1;
+g = 128;  dP = 10000; Geq = 7.4774; R_max= -1;
 T_vals =[]; TS_vals =[];
 a_vals = []    
 
@@ -373,7 +373,7 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, plt_gamma= F
                     data_gamma = data_gamma.iloc[:, 2:]
                     fig, axs = plt.subplots(2, 3, figsize = (20, 12))
 
-                    for s in range(3):
+                    for s in range(2):
                         ax1 = axs[0, s]
                         ax2 = axs[1, s]
                         data_Sp = np.array(data.iloc[:, s]).reshape(g, g)
@@ -1374,10 +1374,12 @@ def recursive_copydir(src, dst, include_filetypes = ["*.txt"],
 
 #
 recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filetypes =["*.png", "*.jpg", "*.jpeg", "*.mp4"], symlinks=False)
-a_vals = [0.042, 0.043] #0.051, 0.053, 0.055]; 
-T_vals= [158489, 173780, 190546, 208930, 229087, 251189, 275423, 301995, 331131, 363078]
+a_vals = [0.04, 0.042] #0.051, 0.053, 0.055]; 
+T_vals=[]
+#T_vals= [158489, 173780, 190546, 208930, 229087, 251189, 275423, 301995, 331131, 363078]
 #prefixes = ["DIC-DDM1-NREF-0.5LI", "DIC-DDM5-NREF-0.5LI", "DIC-DDM10-NREF-0.5LI", "DIC-DDM5-NREF-1.1HI"]
-prefixes = ["COR-DDM5-NREF-0.5HI", "COR-DDM10-NREF-0.5HI", "COR-DDM1-NREF-0.5HI"]
+prefixes = ["DiC-GAU-NREF"]
+#prefixes = ["COR-DDM5-NREF-0.5HI", "COR-DDM10-NREF-0.5HI", "COR-DDM1-NREF-0.5HI"]
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 TS_vals = [208930] #[190546]; #[109648];
 #a_vals = [0.04, 0.041, 0.042, 0.046, 0.048]; 
