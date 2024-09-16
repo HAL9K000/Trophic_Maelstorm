@@ -20,7 +20,7 @@ int main(int argc, char *argv[])
 
   // Using units of mass = kg, length = km, time = hr.
   // ASSUMING MASS OF  GRAZER = 20 kg, MASS OF PREDATOR = 100 kg.
-  b = pow(10.0, -7.00); // ~ aij in km^2/(hr kg)
+  b = pow(10.0, -6.00); // ~ aij in km^2/(hr kg)
 
   //double p0i = 0.5; double p0j= p0i/200; double p0j= 2.25; double p0m= 8; // In g/m^2
 
@@ -55,10 +55,6 @@ int main(int argc, char *argv[])
   aij = 3.6*pow(10.0, -6.08)*pow(20.0, -0.37); // in km^2/(hr kg)
   hij = 1; // Handling time in hrs
   ej =0.45; mj = 0.061609*pow(20.0, -0.25)/8760.0; // Mortality rate in hr^{-1}
-  //Predator of mass 100 kg.
-  ajm = 3.6*pow(10.0, -6.08)*pow(100.0, -0.37); // in km^2/(hr kg)
-  hjm = 1; // Handling time in hrs
-  em =0.85; mm = 0.061609*pow(100.0, -0.25)/8760.0; // Mortality rate in hr^{-1}
 
   
 
@@ -88,9 +84,6 @@ int main(int argc, char *argv[])
   cout << "For the grazer:\n";
   cout << "aij = " << aij << "\t hij = " << hij << "\t ej = " << ej << "\t mj = " << mj << endl;
   cout << "\nMFT Grazer Co-existance Critical Threshold = " << a_c << " hr^{-1}\n" << endl;
-  cout << "For the predator:\n";
-  cout << "ajm = " << ajm << " " << A[1][2] << "\t hjm = " << hjm << " " << H[1][2] 
-       << "\t em = " << em << " " << E[2] <<  "\t mm = " << mm <<  " " << M[2] << endl;
   cout << "\n System-level details:\n";
   cout << "pi = " << PI  << endl;
 
@@ -98,6 +91,7 @@ int main(int argc, char *argv[])
   cout << "D0 = " << setprecision(16) << D[0] << "\t D1 = " << D[1] << "\t D2 = " << setprecision(16) << D[2] << "\t D3 = " << setprecision(16) << D[3] << endl;
 
   cout << "This is a 2Sp (Two) Stochastic DP Model Script WITHOUT DDM\n";
+  cout << "Header Species Check: " << std::to_string(SpB) << "\n";
 
   cout << "\n============================================================\n";
 
@@ -201,12 +195,9 @@ int main(int argc, char *argv[])
   // Equations for MFT E Eqilibrium values  as functions of a (Rainfall).
 
   
-  double mG = E[1]/(kappa); double cG = b*M[1]/(kappa*kappa); 
+  double mG = E[1]/(kappa); double cG = E[1]*b*M[1]/(kappa*kappa); 
   // Coexistance equilibrium density of grazer as a function of a. (Geq = mG*a + cG)
   double mV = 1/b; // Vegetation only equilibrium density as a function of a. (Veq = a/b =mV*a)
-  double mW = -3.90344309; double cW = 5.18;
-  double mO = 120.4744181; double cO = 0.58243061;
-  double  A_Pr = 4.49723728e+05; double b_Pr = -1.73381257;
 
   string MFT_PreV = std::to_string(mV) + " * a";
   string MFT_PreG = std::to_string(0.0);
@@ -216,7 +207,7 @@ int main(int argc, char *argv[])
 
   MFT_Vec_CoexExpr.assign({MFT_PreV, MFT_PreG, MFT_V, MFT_G});
   // NOTE: The following clow is used for analytic MFT based initial conditions. 
-  double scaling_factor[2*Sp] = {5, dP/dP,  5, init_frac_grazpred};
+  double scaling_factor[2*Sp] = {1, dP/dP,  1, init_frac_grazpred};
 
   // LE ORIGINAL (NORMAL CLOSE TO MFT)
   //double clow[2*Sp] = {0, dP/50000.0, dP/500000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};
@@ -267,26 +258,27 @@ int main(int argc, char *argv[])
 
   //init_constframe(Rho_0, Sp,  g*g, mean); //Returns Rho_0 with a full initial frame filled with 0.2.
 
-  stringstream ast, est, dPo, geq; ast << a_start; est  << a_end; dPo << dP;
+  stringstream ast, est, dPo, veq; ast << a_start; est  << a_end; dPo << dP; veq << setprecision(5) << Vstar;
 
   
 	// This is done to avoid overwriting of files.
-  string path_to_folder = frame_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str();
+  string path_to_folder = frame_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Veq_" + veq.str();
   recursive_dir_create(path_to_folder);
 
-  path_to_folder = prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() +"/TimeSeries";
+  path_to_folder = prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() 
+                  + "_Veq_" + veq.str() +"/TimeSeries";
   recursive_dir_create(path_to_folder);
 
   
-  recursive_dir_create("../Data/DP/Stochastic/2Sp");
+  recursive_dir_create("../Data/DP/Stochastic/"+ std::to_string(SpB) +"Sp");
   
-  first_order_critical_exp_delta_stochastic_MultiSp(div, t_max, a_start, a_end, a_c, b, c, D, v, sigma, A, H, E, M, pR, chigh, scaling_factor, dt, dx, dP, r, g);
+  first_order_critical_exp_delta_stochastic_MultiSp(div, t_max, a_start, a_end, a_c, b, c, D, v, sigma, A, H, E, M, pR, chigh, scaling_factor, dt, dx, dP, r, g, -1.0, Vstar);
   
   //Finally recursively delete all the contents of the Temp folder.
   #ifdef _WIN32
   string command = "rmdir /s /q " + prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Geq_" + geq.str() +"/Temp";
   #else
-  string command = "rm -r " + prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Geq_" + geq.str() +"/Temp";
+  string command = "rm -r " + prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Veq_" + veq.str() +"/Temp";
   #endif
   system(command.c_str());
 

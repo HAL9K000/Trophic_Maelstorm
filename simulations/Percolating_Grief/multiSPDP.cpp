@@ -89,9 +89,9 @@ void set_Prefix(string& user_prefix)
 {
 	//Sets the global prefix for the output files.
 	prefix = user_prefix; 
-	frame_folder = frame_folder + prefix + "_";  //Folder to store frames.
-	prelim_folder  = prelim_folder+ prefix +"_"; //Folder to store preliminary data.
-	stat_prefix =  stat_prefix + prefix + "_STOC_P_c_G_"; //Header for frame files.
+	frame_folder = "../Data/DP/Frames/Stochastic/"+ std::to_string(SpB) +"Sp/" + prefix + "_";  //Folder to store frames.
+	prelim_folder  = "../Data/DP/Prelims/Stochastic/"+ std::to_string(SpB) +"Sp/"+ prefix +"_"; //Folder to store preliminary data.
+	stat_prefix =  "../Data/DP/Stochastic/"+ std::to_string(SpB) +"Sp/1stOrderCC_Rietkerk_" + prefix + "_STOC_P_c_G_"; //Header for frame files.
 }
 
 void set_global_system_params(double dt, double dx)
@@ -264,15 +264,15 @@ void init_exprtk_randbiMFTframe(D2Vec_Double &array, int size, double R, double 
 			<< R << " , " << thr << " , " << expression_string << "\n";
 		}
 
-		//std::cerr << "Value of expression for species " << s << " for [a, thr, expr]: " 
-		//	<< R << " , " << thr << " , " << expressions[s].value() << "\n";
+		std::cerr << "Value of expression for species " << s << " for [a, thr, expr]: " 
+			<< R << " , " << thr << " , " << expressions[s].value() << "\n";
 	}
-
+	/** // IN THE CASE OF NON-HOMOGENOUS PERTURBATIONS 
 	if (R < R_c)
 	{
 		double highval_veg = std::max(dP, c_spread[0]*(expressions[0].value()));
-		/** Use the max function to calculate the maximum of the two values, dP and c_spread[Sp]*expressions[0].value()
-		// and assign it to the first species. */
+		// Use the max function to calculate the maximum of the two values, dP and c_spread[Sp]*expressions[0].value()
+		// and assign it to the first species.
 		for(size_t i=0; i< size; i++)
 		{
 			double r = unif(rng);
@@ -295,8 +295,8 @@ void init_exprtk_randbiMFTframe(D2Vec_Double &array, int size, double R, double 
 	else if ( R >= R_c)
 	{
 		double highval_veg = std::max(dP, c_spread[Sp]*(expressions[Sp].value()));
-		/** Use the max function to calculate the maximum of the two values, dP and c_spread[Sp]*expressions[0].value()
-		// and assign it to the first species. */
+		// Use the max function to calculate the maximum of the two values, dP and c_spread[Sp]*expressions[0].value()
+		// and assign it to the first species.
 		for(size_t i=0; i< size; i++)
 		{
 			double r = unif(rng);
@@ -316,6 +316,40 @@ void init_exprtk_randbiMFTframe(D2Vec_Double &array, int size, double R, double 
 			// Set the other species to their MFT values multiplied by the constant values in c_spread
 		}
 	}
+	//*/
+
+	// IN THE CASE OF HOMOGENOUS INITIALISATION (NO PERTURBATIONS)
+	if (R < R_c)
+	{
+		for(size_t i=0; i< size; i++)
+		{
+			for(size_t s=0; s< Sp; s++)
+			{
+				// If the MFT condition before the critical point is 0, set the species to c_spread[s]
+				// Otherwise, set the species to the MFT value multiplied by the constant values in c_spread
+				if(expressions[s].value() == 0)
+					array[s][i] = c_spread[s];
+				else
+					array[s][i] = c_spread[s]*expressions[s].value();
+			}
+		}
+	}
+	else if ( R >= R_c)
+	{
+		for(size_t i=0; i< size; i++)
+		{
+			// Set the other species to the constant values
+			for(size_t s=0; s< Sp; s++)
+			{
+				if(expressions[s + Sp].value() != 0)
+					array[s][i] = c_spread[s + Sp]*expressions[s+Sp].value();
+				else
+					array[s][i] = c_spread[s + Sp];
+			}	
+			// Set ALL SPECIES HOMOGENOUSLY to their MFT values multiplied by the constant values in c_spread
+		}
+	}
+	//*/
 
 	//errorMutex.lock();
 	local_symbol_table.remove_variable("a");
@@ -684,43 +718,36 @@ void var_mean_incremental_surv_runs(D2Vec_Double &t_avg_var_rep_N, const D2Vec_D
 	 * Note rep_avg_Var[t][3] stores number of surviving runs at t.
 	*/
 	vector<double> mean_prev(size);
-	for(int s=0; s < Sp -2; s++)
+	for(int s=0; s < SpB; s++)
 	{
 	for(int i=0; i<size; i++)
 	{
-		int r= t_avg_var_rep_N[i][4*s+ 5]+1; //Number of surviving replicates
+		int r= t_avg_var_rep_N[i][4*s+ 3]+1; //Number of surviving replicates
 		if(X_curr[i][2*s+ 0] == 0.0)
 		{	//Non-surviving run. No-updates required. Also <rho(t)>x == 0, it remains 0 for t' > t.
 			break;
 		}
 		else
 		{	//Number of surviving run at time t.
-			mean_prev[i] = t_avg_var_rep_N[i][4*s+ 3]; //Stores X_n-1 mean data as temp variable.
-			if(t_avg_var_rep_N[i][4*s + 5] == 0.0)
+			mean_prev[i] = t_avg_var_rep_N[i][4*s+ 1]; //Stores X_n-1 mean data as temp variable.
+			if(t_avg_var_rep_N[i][4*s + 3] == 0.0)
 			{	//First surviving run encountered at time t, encountered here.
-				t_avg_var_rep_N[i][4*s+ 3] = X_curr[i][2*s+ 1]; t_avg_var_rep_N[i][4*s+ 4] = 0.0; 
-				t_avg_var_rep_N[i][4*s+ 6] = X_curr[i][2*s+ 0];
+				t_avg_var_rep_N[i][4*s+ 1] = X_curr[i][2*s+ 1]; t_avg_var_rep_N[i][4*s+ 2] = 0.0; 
+				t_avg_var_rep_N[i][4*s+ 4] = X_curr[i][2*s+ 0];
 			}
 			else
 			{	//Not the first surviving run, which means r = rep_avg_var[i][3]+1 >=2
-				t_avg_var_rep_N[i][4*s+ 3] = (X_curr[i][2*s+1] + (r-1)*t_avg_var_rep_N[i][4*s+ 3])/r; //Note r>= 1.
-				t_avg_var_rep_N[i][4*s+ 6] = (X_curr[i][2*s+0] + (r-1)*t_avg_var_rep_N[i][4*s+6])/r; //Note r>= 1.
+				t_avg_var_rep_N[i][4*s+ 1] = (X_curr[i][2*s+1] + (r-1)*t_avg_var_rep_N[i][4*s+ 1])/r; //Note r>= 1.
+				t_avg_var_rep_N[i][4*s+ 4] = (X_curr[i][2*s+0] + (r-1)*t_avg_var_rep_N[i][4*s+4])/r; //Note r>= 1.
 				//Calculating and storing incremental variance (V^2_n) [For formula derivation, refer to notes.]
-				t_avg_var_rep_N[i][4*s+4] = (t_avg_var_rep_N[i][4*s+3] - mean_prev[i])*(t_avg_var_rep_N[i][4*s+3] - mean_prev[i]) +
-				(1/(r-1))*( (r-2)*t_avg_var_rep_N[i][4*s+4] + 
-				(X_curr[i][2*s+1] - t_avg_var_rep_N[i][4*s+3])*(X_curr[i][2*s+1] - t_avg_var_rep_N[i][4*s+3]));
+				t_avg_var_rep_N[i][4*s+2] = (t_avg_var_rep_N[i][4*s+1] - mean_prev[i])*(t_avg_var_rep_N[i][4*s+1] - mean_prev[i]) +
+				(1/(r-1))*( (r-2)*t_avg_var_rep_N[i][4*s+2] + 
+				(X_curr[i][2*s+1] - t_avg_var_rep_N[i][4*s+1])*(X_curr[i][2*s+1] - t_avg_var_rep_N[i][4*s+1]));
 			}
-			t_avg_var_rep_N[i][4*s+5] = r; //At the end, update number of succesful runs.
+			t_avg_var_rep_N[i][4*s+3] = r; //At the end, update number of succesful runs.
 		}
 	}
 	}
-	for(int i=0; i<size; i++)
-	{	//For soil water (W) and surface water (0) respectively
-		t_avg_var_rep_N[i][1] = (X_curr[i][2*(Sp-2)+1] + (j)*t_avg_var_rep_N[i][1])/(j+1);
-		t_avg_var_rep_N[i][2] = (X_curr[i][2*(Sp-1)+1] + (j)*t_avg_var_rep_N[i][2])/(j+1); 
-		//Note r>= 1 as all replicates of water are surviving as per definition.
-	}
-
 	//Swap memory to free up space.
 	vector <double>().swap(mean_prev);
 	
@@ -1183,10 +1210,10 @@ void save_prelimframe(D2Vec_Double &Rho_t, const string &parendir, const string 
 	double tot_rows = Rho_t.size();
 	for(int i=0; i< tot_rows; i++)
 	{	// Recall Rho is: | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |    #Surviving Runs    |   #Active Sites |
-		oss << a << ","<< r+1 << "," << g << "," << Rho_t[i][0] << "," << Rho_t[i][1] << "," << Rho_t[i][2] << ",";
+		oss << a << ","<< r+1 << "," << g << "," << Rho_t[i][0] << ",";
 		for(int s=0; s <SpB; s++)
 		{
-			oss << Rho_t[i][4*s + 3] << "," << Rho_t[i][4*s +4] << "," << Rho_t[i][4*s +5] << "," << Rho_t[i][4*s +6] << ","; 
+			oss << Rho_t[i][4*s + 1] << "," << Rho_t[i][4*s +2] << "," << Rho_t[i][4*s +3] << "," << Rho_t[i][4*s +4] << ","; 
 		}
 		oss <<  "\n";
 	}
@@ -1470,10 +1497,13 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 	*/
 
 	// RECALL: Dxd2[s] = D[s]/dx2
-	if( SpB == 3)
+	#if SPB == 3
 		f_DP_Dor_3Sp(K1, Rho_t, nR2, b, c, Dxd2, A, H, E, t, dt, dx1_2, g); //K1 updated, For 3 Species.
-	else if( SpB == 2)
+	#elif SPB == 2
 		f_DP_Dor_2Sp(K1, Rho_t, nR2, b, c, Dxd2, A, H, E, t, dt, dx1_2, g); //K1 updated, For 2 Species.
+	#else
+		cerr << "Error: Species number not supported. Exiting." << endl; exit(1);
+	#endif
 	
 	for(int s= 0; s <Sp; s++)
 	{
@@ -1481,10 +1511,11 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 			Rho_tsar[s][i] = Rho_t[s][i] + (dt2)*K1[s][i];
 	}
 
-	if ( SpB == 3)
+	#if SPB == 3
 		f_DP_Dor_3Sp(K2, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt2, dt, dx1_2, g); //K2 updated.
-	else if( SpB == 2)
+	#elif SPB == 2
 		f_DP_Dor_2Sp(K2, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt2, dt, dx1_2, g); //K2 updated.
+	#endif
 
 	for(int s= 0; s <Sp; s++)
 	{
@@ -1492,21 +1523,23 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 			Rho_tsar[s][i] = Rho_t[s][i] + (dt2)*K2[s][i];
 	}
 
-	if (SpB == 3)
+	#if SPB == 3
 		f_DP_Dor_3Sp(K3, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt2, dt, dx1_2, g); //K3 updated.
-	else if( SpB == 2)
+	#elif SPB == 2
 		f_DP_Dor_2Sp(K3, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt2, dt, dx1_2, g); //K3 updated.
+	#endif
 
 	for(int s= 0; s <Sp; s++)
 	{
 		for(int i=0; i < g*g; i++)
 			Rho_tsar[s][i] = Rho_t[s][i] + (dt)*K3[s][i];
 	}
-	if (SpB == 3)
+	#if SPB == 3
 		f_DP_Dor_3Sp(K4, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt, dt, dx1_2, g); //K4 updated.
-	else if( SpB == 2)
+	#elif SPB == 2
 		f_DP_Dor_2Sp(K4, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt, dt, dx1_2, g); //K4 updated.
-    
+    #endif
+
 	for(int s= 0; s <Sp; s++)
 	{
 		for(int i=0; i < g*g; i++)
@@ -1761,7 +1794,7 @@ void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec
 
 void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double b, double c, double (&D)[Sp], double v[],
     double sigma[], double a_st, double a_end, double a_c, double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], 
-	double chigh[], double clow[], double dt, double dx, double dP, int r, int g, double Gstar /* = -1*/)
+	double chigh[], double clow[], double dt, double dx, double dP, int r, int g, double Gstar /* = -1*/, double Vstar /* = -1*/)
 {
 	double epsilon = 1.0e-12; //Small number to avoid division by zero.
 	double perc =0.015; //Percentage of high density patches.
@@ -1998,11 +2031,12 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 				{
 					//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
 					
-					stringstream L, tm ,d3, p1, rini, gm, a1, a2, Dm0, Dm1, Dm2, alph, w0t, aij, hij, dix, dimitri, sig0, sig1, geq;
+					stringstream L, tm ,d3, p1, rini, gm, a1, a2, Dm0, Dm1, Dm2, alph, w0t, aij, hij, dix, dimitri, sig0, sig1, geq, veq;
 
   					L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; dix << setprecision(2) << dx;
   					rini << j; Dm0 << D[0]*pow(10.0, 7.0); Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2]; 
-					a1 << a_st; a2  << a_end; sig0 << sigma[0]; sig1 << sigma[1]; dimitri  << dP; geq << Gstar;
+					a1 << a_st; a2  << a_end; sig0 << sigma[0]; sig1 << sigma[1]; dimitri  << dP;
+					geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
 					//gm << setprecision(3) << gmax; w0t << setprecision(3) << W0; alph << setprecision(3) << alpha; aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1]; 
 					// Three replicates are over.
 
@@ -2013,7 +2047,9 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 					string parendir = "";
 
 					// Creating a file instance called output to store output data as CSV.
-					if(Gstar != -1)
+					if(Vstar != -1)
+						parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str();
+					else if(Gstar != -1)
 						parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
 					else
 						parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
@@ -2058,10 +2094,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 						m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
 						cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
 					}
-					//*/
-					
-					
-					
+					//*/	
 				}
 				//
 
@@ -2075,17 +2108,21 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 					var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index+1, 0);
 
 					//Finally save to file.
-					stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, geq, jID; // cgm, sig0;
+					stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, geq, veq, jID; // cgm, sig0;
 					a1 << a_st; a2 << a_end;
 					L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(5) << a; dimitri << dP;
-					rini << j; Dm << setprecision(4) << D[2]; geq << setprecision(5) << Gstar;// cgm << c*gmax; sig0 << sigma[0]; 
+					rini << j; Dm << setprecision(4) << D[2]; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;// cgm << c*gmax; sig0 << sigma[0]; 
 
 					string parendir = "";
-					if (Gstar != -1)
-						parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str() + "/TimeSeries";
+					// Creating a file instance called output to store output data as CSV.
+					if(Vstar != -1)
+						parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str()+ "/TimeSeries";
+					else if(Gstar != -1)
+						parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str()+ "/TimeSeries";
 					else
-						parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/TimeSeries";
-					// Accounting for presence/absence of Geq in the filename.
+						parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str()+ "/TimeSeries";
+
+					// Accounting for presence/absence of Geq/Veq in the filename.
 
 					//double ran_jid = (unif(rng)*1000.0)/1000.0; jID << ran_jid; // Random number between 0 and 1.
 					
@@ -2196,10 +2233,11 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 			if (nR_fac < 0.35)
 			{	nR_fac = 0.35; }
 
-			if (SpB == 2)
+			#if SPB == 2
 				calc_gamma_2Sp_NonRefugia(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, nR_fac, r_max_effective, g);
-			else if (SpB == 3)
-				calc_gamma_3Sp_NonRefugia(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, nR_fac, r_max_effective, g); 
+			#elif SPB == 3
+				calc_gamma_3Sp_NonRefugia(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, nR_fac, r_max_effective, g);
+			#endif 
 			//Calculates gamma for each species at each site.
 
 			/** // BLOCK FOR SAVING GAMMA FRAMES
@@ -2501,17 +2539,15 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 			{	
 				for(int s =0; s< SpB; s++)
 				{
-					rho_rep_avg_var[i][4*s+ 3] = Rho_M[i][2*s + 1]; // Avg density of frame at given time point i.
-					rho_rep_avg_var[i][4*s+ 4] = 0.0; // Variance in avg frame density.
-					rho_rep_avg_var[i][4*s+ 6] = Rho_M[i][2*s]; // Number of active sites in frame at given time point i.
+					rho_rep_avg_var[i][4*s+ 1] = Rho_M[i][2*s + 1]; // Avg density of frame at given time point i.
+					rho_rep_avg_var[i][4*s+ 2] = 0.0; // Variance in avg frame density.
+					rho_rep_avg_var[i][4*s+ 4] = Rho_M[i][2*s]; // Number of active sites in frame at given time point i.
 
 					if(Rho_M[i][2*s] > 0) //Ensuring only surviving runs are considered
-					{ rho_rep_avg_var[i][4*s+5 ] = 1;  } //One surviving run as of now
+					{ rho_rep_avg_var[i][4*s+3 ] = 1;  } //One surviving run as of now
 					else if(Rho_M[i][2*s] == 0) //Ensuring only surviving runs are considered
-					{ rho_rep_avg_var[i][4*s + 5] = 0;  } //No surviving run as of now
+					{ rho_rep_avg_var[i][4*s + 3] = 0;  } //No surviving run as of now
 				}
-				rho_rep_avg_var[i][1] = Rho_M[i][2*(Sp-2) + 1]; // Avg density of frame at given time point i.
-				rho_rep_avg_var[i][2] = Rho_M[i][2*(Sp-1) + 1]; // Avg density of frame at given time point i.
 				
 			} //Namely Var(t,r=1) = 0, Mean_Rho(t, r=1) = Rho_M(t)
 		}
@@ -2527,14 +2563,16 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 
 		if((j+1)%2 == 1 || (j+1)%2 == 0)
 		{	//Start logging at every multiple of 2
-			stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, rini_prev, Dm, sig0, geq, jID;
+			stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, rini_prev, Dm, sig0, geq, veq, jID;
 			
 			a1 << a_st; a2 << a_end;
   			L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << setprecision(5) << a; dimitri << dP;
-  			rini << j; Dm << setprecision(4) << D[2]; sig0 << sigma[0]; geq << setprecision(5) << Gstar;
+  			rini << j; Dm << setprecision(4) << D[2]; sig0 << sigma[0]; geq << setprecision(5) << Gstar, veq << setprecision(5) << Vstar;
 
 			string parendir = "";
-			if (Gstar != -1)
+			if(Vstar != -1)
+				parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str();
+			else if(Gstar != -1)
 				parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
 			else
 				parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
@@ -2577,7 +2615,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 
 void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, double a_start, double a_end, double a_c, double b,  double c, 
 	double (&D)[Sp], double v[], double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], double ch[], double clo[],
-	double dt, double dx, double dP, int r,  int g, double Gstar /*= -1*/)
+	double dt, double dx, double dP, int r,  int g, double Gstar /*= -1*/, double Vstar /* = -1. */)
 {
 	//init_fullframe(Rho_0, g*g); //Returns Rho_0 with a full initial frame filled with ones.
 	//double mean[Sp] = {1.0, 0.05}; double sd[Sp] = {0.25, 0.0125};
@@ -2668,7 +2706,7 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 		 * Namely CExpRho_a is structured as:
 		 * | 	a		|    t 		|     <<Rho1(t)>>x,r			|    Var[<Rho1(t)>x],r    |
 		**/
-		dP_Dornic_2D_MultiSp(CExpRho_a, t_measure, t_max, a_space[i], b, c, D, v, sigma, a_start, a_end, a_c, A,H,E,M, pR, ch, clo, dt, dx, dP, r, g, Gstar);
+		dP_Dornic_2D_MultiSp(CExpRho_a, t_measure, t_max, a_space[i], b, c, D, v, sigma, a_start, a_end, a_c, A,H,E,M, pR, ch, clo, dt, dx, dP, r, g, Gstar, Vstar);
 		//RK4_Wrapper_2D(CExpRho_a, t_measure, t_max, a_space[i], c, gmax, alpha, d, rW, W0, D, K , a_start, a_end, dt, dx, dP, r, g);
 		//expanded_percolationDornic_2D(CExpRho_a, t_measure, Rho_0,  t_max, a_space[i], b, c, D, sigma, dt, dx, r, g);
         //crtexp_DP_Basic(grid_size, comp_data, p_space[i], r_init, length);
@@ -2710,27 +2748,42 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 	//Store a uniformly distributed random number between 0 and 1 (rounded to 3 decimal places).
 	double id = round(unif(rng)* 1000.0) / 1000.0; //Random number between 0 and 1.
 	//Round to 3 decimal places.
-	stringstream L, boba, coco, tm ,d3, p1, p2, rini, Dm0, Dm1, aij, hij, dix, dimitri, Sig0, geq, ID;
+	stringstream L, boba, coco, tm ,d3, p1, p2, rini, Dm0, Dm1, aij, hij, dix, dimitri, Sig0, geq, veq, ID;
 
-	double Vstar = M[2]/((E[2] -M[2]*H[1][2])*A[1][2]); // MFT estimate of Grazer density at coexistence.
+	//double Vstar = M[2]/((E[2] -M[2]*H[1][2])*A[1][2]); // MFT estimate of Grazer density at coexistence.
 
   	L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << a_start; p2  << a_end; rini << r; 
 	boba << setprecision(4) << b;; coco << setprecision(4) << c;
   	Dm0 << setprecision(3) << D[0]; Dm1 << setprecision(3) << D[1]; Sig0 << sigma[0]; dix << setprecision(2) << dx; 
-	aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1]; geq << setprecision(5) << Vstar;
+	aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1]; 
+	geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
 	ID << id;
 
 	ofstream output_1stdp;
   // Creating a file instance called output to store output data as CSV.
-	output_1stdp.open(stat_prefix + L.str() 
-	+ "_T_" + tm.str() + "_dt_" + d3.str() + "_D1_"+ Dm1.str() +
-	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + 
-	"_Veq_"+ geq.str() /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv");
+    string savename="";
+	if(Vstar != -1)
+	{
+		savename = stat_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_D1_"+ Dm1.str() +
+		"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + 
+		"_Veq_"+ veq.str() /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv";
+	}
+	else if(Gstar != -1)
+	{
+		savename = stat_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_D1_"+ Dm1.str() +
+		"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + 
+		"_Geq_"+ geq.str() /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv";
+	}
+	else
+	{
+		savename = stat_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_D1_"+ Dm1.str() +
+		"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv";
+	}
 
 	cout << "Save file name: " <<endl;
 	cout << stat_prefix + L.str() 
 	+ "_T_" + tm.str() + "_dt_" + d3.str() + "_D1_"+ Dm1.str() + "_S0_" + Sig0.str() +
-	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + "_Veq_"+ geq.str() /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv" <<endl;
+	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + "_Veq_"+ veq.str() /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv" <<endl;
 
 	// Output =  | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |
 

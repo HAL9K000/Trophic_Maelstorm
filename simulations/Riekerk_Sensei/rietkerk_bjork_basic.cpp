@@ -5113,7 +5113,7 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 	//Round to 3 decimal places.
 	stringstream L, coco, tm ,d3, p1, p2, rini, Dm0, Dm1, aij, hij, cgm, alph, dix, dimitri, Sig0, geq, ID;
 
-	double Gstar = M[2]/((E[2] -M[2]*H[1][2])*A[1][2]); // MFT estimate of Grazer density at coexistence.
+	//double Gstar = M[2]/((E[2] -M[2]*H[1][2])*A[1][2]); // MFT estimate of Grazer density at coexistence.
 
   	L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << a_start; p2  << a_end; rini << r; 
 	alph << alpha; cgm << c*gmax; coco << setprecision(4) << c;

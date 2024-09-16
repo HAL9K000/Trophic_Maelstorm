@@ -106,6 +106,11 @@ while [[ $current_iter -lt $stop_iter ]]; do
             continue
         fi
 
+        #Remove trailing whitespaces and new lines from outdir
+        # Remove trailing whitespaces and backslash (/) from outdir and indir
+        outdir=$(echo "$outdir" | sed 's/[[:space:]]*\/$//' | sed 's/[[:space:]]*$//')
+        indir=$(echo "$outdir" | sed 's/[[:space:]]*\/$//' | sed 's/[[:space:]]*$//')
+
         # Check if outdir exists and has non-zero size
         if [[ -d "$outdir" && $(du -sb "$outdir" | awk '{print $1}') -gt 0 ]]; then
             if [[ -z "${renamed_outdirs[$outdir]}" ]]; then
@@ -147,6 +152,10 @@ while [[ $current_iter -lt $stop_iter ]]; do
             log_error "Invalid line: $line"
             continue
         fi
+
+        # Remove trailing whitespaces and backslash (/) from outdir and indir
+        outdir=$(echo "$outdir" | sed 's/[[:space:]]*\/$//' | sed 's/[[:space:]]*$//')
+        indir=$(echo "$outdir" | sed 's/[[:space:]]*\/$//' | sed 's/[[:space:]]*$//')
 
         # Check if outdir exists and has non-zero size
         if [[ -d "$outdir" && $(du -sb "$outdir" | awk '{print $1}') -gt 0 ]]; then

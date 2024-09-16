@@ -127,24 +127,38 @@ def set_frames_input():
     else:
         if args.prefixes:
             prefixes = args.prefixes
+            #Remove newline, tab and trailing or leading whitespaces from prefixes.
+            prefixes = [pre.strip("\n\t ").lstrip().rstrip() for pre in prefixes]
         if args.indir:
             root_dir = args.indir
         if args.outdir:
-            out_dir_noprefix = args.out_dir_noprefix
+            out_dir_noprefix = args.outdir
         if args.dP:
-            dP = args.dP
+            try:
+                dP = int(args.dP)
+            except ValueError:
+                print("Need to provide an integer value for dP. Terminating script..."); sys.exit(1)
         if args.Geq:
-            Geq = float(args.Geq) if args.Geq.isfloat() else "NA"
-        if args.Geq:
-            Veq = float(args.Veq) if args.Veq.isfloat() else "NA"
+            try:
+                Geq = float(args.Geq)
+            except ValueError:
+                print("Setting Geq to NA..."); Geq = "NA"
+        if args.Veq:
+            try:
+                Veq = float(args.Veq)
+            except ValueError:
+                print("Setting Veq to NA..."); Veq = "NA"
         if args.L:
             L = args.L; L = [int(x) for x in L]
         if args.indx_vals_t:
-            indx_vals_t = args.indx_vals_t
+            try:
+                indx_vals_t = int(args.indx_vals_t)
+            except ValueError:
+                print("Setting indx vals to -10..."); indx_vals_t = -10;
         if args.tmin:
-            tmin = args.tmin if args.tmin.isnumeric() else None
+            tmin = int(args.tmin) if args.tmin.isnumeric() else None
         if args.tmax:
-            tmax = args.tmax if args.tmax.isnumeric() else None
+            tmax = int(args.tmax) if args.tmax.isnumeric() else None
 
         print("prefixes: " + str(prefixes))
         print("root_dir: " + root_dir)
@@ -291,7 +305,8 @@ def main():
             subdir = [sub for sub in subdir if str(os.path.basename(sub))[0].isdigit()]
 
         print("Found subdirectories: " + str(subdir))
-        input("Press Enter to continue...")
+        if dynamic_inspect:
+            input("Press Enter to continue...")
     
         for g in L:
 
@@ -331,15 +346,16 @@ def main():
                             line.strip("\n")
                             if out_dir + "/L_" +str(g) + "_*" in line:
                                 print("WARNING!!!: " + out_dir + " already exists in " + sub + "/savedir.txt")
-                                print("Do you want to skip this directory ('skip'/1) or continue overwriting ('continue'/2)?")
-                                choice = input("Enter choice: ")
-                                if choice == "skip" or choice == "1":
-                                    continue
-                                elif choice == "continue" or choice == "2":
-                                    break
-                                else:
-                                    print("Invalid choice. Skipping directory.")
-                                    continue
+                                if dynamic_inspect:
+                                    print("Do you want to skip this directory ('skip'/1) or continue overwriting ('continue'/2)?")
+                                    choice = input("Enter choice: ")
+                                    if choice == "skip" or choice == "1":
+                                        continue
+                                    elif choice == "continue" or choice == "2":
+                                        break
+                                    else:
+                                        print("Invalid choice. Skipping directory.")
+                                        continue
                     f.close()
                                 
                 for a in a_vals:

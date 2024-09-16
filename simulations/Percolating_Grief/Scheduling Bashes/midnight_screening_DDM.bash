@@ -2,7 +2,7 @@
 
 # This script is used in conjunction with the Linux utility screen.
 # It is used to run a series of jobs in parallel, each in a separate screen session.
-# It accepts two arguments: the input file, and SpB (the number of biotic species).
+# It accepts one argument: the input file.
 # The input file is a tab delineated txt file with the following columns:
 #dt	t_max	L	R	a_st	a_end	div	dP	PREFIXES
 # where the seventh arguement on each line (corresponding to div) gives the number of threads.
@@ -14,8 +14,8 @@
 screen_names=("casablanca" "tangiers" "tunis" "fes" "maghreb" "marrakesh" "rabat" "algiers" "medea" "gibraltar" "dakar")
 
 # Check if the number of arguments is at least 1
-if [ $# -lt 2 ]; then
-    echo "Usage: $0 <Path/to/init_file.txt> <SpB>"
+if [ $# -lt 1 ]; then
+    echo "Usage: $0 <Path/to/init_file.txt>"
     exit 1
 fi
 
@@ -41,26 +41,25 @@ curr_dir=$(pwd)
 # It will then execute the compiled program with the input parameters in that screen and finally return the updated screen_index.
 start_screen(){
     local file_path=$1
-    local spb=$2
-    local screen_index=$3
-    local i=$4
+    local screen_index=$2
+    local i=$3
     # If screen_index exceeds the length of the screen_names array, issue an error message and exit
     if [ $((screen_index)) -ge ${#screen_names[@]} ]; then
         echo "Error: Insufficient screen names provided. Exiting."
         exit 1
     fi
-    read -r p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 <<< $(sed -n "$((i+2))p" $1)
+    read -r p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 p11 <<< $(sed -n "$((i+2))p" $1)
     #Remove trailing whitespaces and new lines from p9
-    p10=$(echo $p10 | tr -d '[:space:]')
+    p11=$(echo $p11 | tr -d '[:space:]')
     if ! screen -list | grep -q "${screen_names[$screen_index]}"; then
         # Start a new screen session and run the job
-        screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; g++-12 -DSPB=${spb} rietkerk_bjork_basic.cpp order_${spb}stoc_test_rietkerk.cpp -fopenmp -o ${screen_names[$screen_index]}_${p10}.out -std=c++23; ./${screen_names[$screen_index]}_${p10}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 &> stderr_${screen_names[$screen_index]}.txt; cd $curr_dir"
+        screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; g++-12 rietkerk_bjork_basic-DDM.cpp order_3DDMstoc_test_rietkerk.cpp -fopenmp -o ${screen_names[$screen_index]}_${p11}.out -std=c++23; ./${screen_names[$screen_index]}_${p11}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 $p11 &> stderr_${screen_names[$screen_index]}.txt; cd $curr_dir"
         screen_index=$((screen_index+1))
     else
         #echo "Screen session ${screen_names[$screen_index]} is already running. Using the next screen name."
         screen_index=$((screen_index+1))
         # Recursively call the function with the updated screen_idx
-        screen_index=$(start_screen $file_path $spb $screen_index $i)
+        screen_index=$(start_screen $file_path $screen_index $i)
     fi
     echo "$screen_index"
 }
@@ -71,8 +70,7 @@ screen_idx=0
 
 # Read the input file and start a screen session for each job
 for ((i=0; i<num_screens; i++)); do
-    screen_idx=$(start_screen $1 $2 $screen_idx $i)
-    #echo "Screen index: $screen_idx"
+    screen_idx=$(start_screen $1 $screen_idx $i)
     LINE=$(sed -n "$((i+2))p" $1)
     echo "Starting screen session ${screen_names[$((screen_idx-1))]} for job $i with parameters: $LINE"
 done

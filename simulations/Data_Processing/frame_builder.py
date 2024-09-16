@@ -50,8 +50,8 @@ from matplotlib.collections import LineCollection
 
 #in_dir = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_CORDDM/"
 #out_dir = "../../Images/3Sp/StdParam_20_100_CORDDM_MFT/"
-in_dir = "../Data/Remote/Rietkerk/Reorganised_Frames/Stoc/2Sp/AMPTEST_20_100/"
-out_dir = "../../Images/2Sp/AdvDiffTest/"
+in_dir = "../Data/Remote/Rietkerk/Reorg_Frames/2Sp/StdParam_20_MFT/"
+out_dir = "../../Images/2Sp/StdParam_20_MFT/"
 Path(out_dir).mkdir(parents=True, exist_ok=True)
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 
@@ -965,12 +965,12 @@ def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseri
     colours = [hex_list[i][-1] for i in range(len(hex_list))]
 
     init_a_vals = a_vals; init_TS_vals = tseries_vals;
-    
+    include_col_labels = ["t"] + var_labels
 
     for Pre in prefixes:
         
 
-        data = get_PRELIM_EQdata(indir, Pre, init_a_vals, init_TS_vals, meanfilename = meanfilename)
+        data = get_PRELIM_EQdata(indir, Pre, init_a_vals, init_TS_vals, meanfilename = meanfilename, include_col_labels= include_col_labels)
         # We are interested in the AVG columns for each species.
         # Note that the number of columns can vary for each a and T value, as R_max can vary, so we need to handle this.
         # Data has columns for each species given by {var}, of the form:
@@ -1223,12 +1223,13 @@ def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], 
     combined_data = pan.DataFrame()
     sea.set_palette("husl")
     colours = [hex_list[i][-1] for i in range(len(hex_list))]
+    include_col_labels = ["t"] + var_labels
     for Pre in prefixes:
 
         savedir = out_dir + f"{Pre}/PhaseDiagrams/"
         Path(savedir).mkdir(parents=True, exist_ok=True)
         
-        data = get_PRELIM_EQdata(indir, Pre, a_vals, TS_vals, meanfilename= meanfilename)
+        data = get_PRELIM_EQdata(indir, Pre, a_vals, TS_vals, meanfilename= meanfilename, include_col_labels= include_col_labels)
         # Note that the number of columns can vary for each a and T value, as R_max can vary, so we need to handle this.
         # Data has columns for each species given by {var}, of the form:
         # t   AVG[{var}]_SURV   ...   AVG[{var}]_ALL   ...   AVG[{var}]   ...
@@ -1374,18 +1375,18 @@ def recursive_copydir(src, dst, include_filetypes = ["*.txt"],
 
 #
 recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filetypes =["*.png", "*.jpg", "*.jpeg", "*.mp4"], symlinks=False)
-a_vals = [0.04, 0.042] #0.051, 0.053, 0.055]; 
+a_vals = [0.048, 0.051, 0.054] #0.051, 0.053, 0.055]; 
 T_vals=[]
 #T_vals= [158489, 173780, 190546, 208930, 229087, 251189, 275423, 301995, 331131, 363078]
 #prefixes = ["DIC-DDM1-NREF-0.5LI", "DIC-DDM5-NREF-0.5LI", "DIC-DDM10-NREF-0.5LI", "DIC-DDM5-NREF-1.1HI"]
-prefixes = ["DiC-GAU-NREF"]
+prefixes = ["DiC-S8LI"]#,"DiC-S7LI", "DiC-0.1LI"]
 #prefixes = ["COR-DDM5-NREF-0.5HI", "COR-DDM10-NREF-0.5HI", "COR-DDM1-NREF-0.5HI"]
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
-TS_vals = [208930] #[190546]; #[109648];
+TS_vals = [229087]  #[208930] #[190546]; #[109648];
 #a_vals = [0.04, 0.041, 0.042, 0.046, 0.048]; 
 #T_vals = [208930]
 
-
+#'''
 for Pre in prefixes:
     frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= 0, plt_gamma= False, delpng = False)
     print(f"Done with making frames for {Pre}")
@@ -1413,8 +1414,8 @@ for Pre in prefixes:
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 #analyse_FRAME_EQdata(in_dir, out_dir, prefixes, a_vals, T_vals, Tavg_window_index = [150000, 240000], filename = "MEAN_STD_Surviving_Runs.txt")
 #analyse_timeseriesData(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "MEAN_REPLICATES.txt")
-#analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, meanfilename = "Mean_TSERIES_T_{TS}.csv")
-#analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = [150000, 240000], meanfilename = "Mean_TSERIES_T_{TS}.csv")
+#analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r"])
+#analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = [150000, 240000], meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r"])
 
 
 #analyse_FRAME_POTdata(in_dir, out_dir, prefixes, a_vals, T_vals, find_minima= True, filename = "Pot_Well.csv", 

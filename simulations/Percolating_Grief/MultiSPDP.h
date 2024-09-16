@@ -44,9 +44,18 @@ namespace fs = std::filesystem;
 
 #define BERSERK_DYNAMICS_H
 
+#ifndef SPB
+	#define SPB 3 //Number of biota species in the system (default value used if NOT defined).
+#endif
 
+#if SPB == 3
+	#include "MultiSPDP_constants_3Sp.h"
+#elif SPB == 2
+	#include "MultiSPDP_constants_2Sp.h"
+#else
+	#error "Number of species not supported. Pass valid compiler flag as -DSPB=2 or -DSPB=3"
+#endif
 
-inline const int Sp = 2; //Total number of species in the system.
 inline const int SpB = Sp; //Number of biota species in the system.
 inline const int Sp_NV = Sp-1; //Number of grazer and predator species in system.
 inline const int Sp4_1 = 4*(Sp) +1; // Used for generating statistics on surviving runs
@@ -65,19 +74,17 @@ inline double K_P1; /** Inverse of carrying capacity of predator */
 
 // Strings that are used for I/O operations and file naming in the simulations.
 inline string prefix = "DiC-NREF-NI";
-inline string frame_folder = "../Data/DP/Frames/Stochastic/2Sp/"; //Folder to store frames.
-inline string prelim_folder = "../Data/DP/Prelims/Stochastic/2Sp/"; //Folder to store preliminary data.
+inline string frame_folder = "../Data/DP/Frames/Stochastic/"+ std::to_string(SpB) +"Sp/" + prefix + "_"; //Folder to store frames.
+inline string prelim_folder = "../Data/DP/Prelims/Stochastic/"+ std::to_string(SpB) +"Sp/"+ prefix +"_"; //Folder to store preliminary data.
 inline const string frame_prefix = "/FRAME_P_c_DP_G_"; //Prefix for frame files.
 inline const string gamma_prefix = "/GAMMA_G_"; //Prefix for gamma files.
 inline const string prelim_prefix = "/PRELIM_AGGRAND_P_c_ID_"; //Prefix for preliminary data files.
 inline const string replicate_prefix = "/PRELIM_TSERIES_P_c_DP_G_"; //Prefix for replicate time-series data files.
 
-inline string stat_prefix = "../Data/DP/Stochastic/2Sp/1stCC_";
+inline string stat_prefix = "../Data/DP/Stochastic/"+ std::to_string(SpB) +"Sp/1stCC_"  + prefix + "_P_c_G_";
 
-inline const string frame_header = "a_c,  x,  P(x; t), G(x; t)\n"; //Header for frame files.
-
-inline const string prelimheader = " a , r, L, t , <<P(x; t)>_x>_r, Var[<P(x; t)>_x]_r, # Surviving Runs P(x; t),"
-	" # Active Sites P(x; t), <<G(x; t)>_x>_r, Var[<G(x; t)>_x]_r, # Surviving Runs G(x; t), # Active Sites G(x; t), \n";
+//inline const string prelimheader = " a , r, L, t , <<P(x; t)>_x>_r, Var[<P(x; t)>_x]_r, # Surviving Runs P(x; t),"
+//	" # Active Sites P(x; t), <<G(x; t)>_x>_r, Var[<G(x; t)>_x]_r, # Surviving Runs G(x; t), # Active Sites G(x; t), \n";
 
 // Strings that are used for the Expertk library to parse mathematical expressions.
 // These represent MFT-versions of the species Coexistance equilibria wrt to the order parameter (Rainfall, given by a).
@@ -278,9 +285,9 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 	double b, double c, double (&Dxd2)[Sp], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t,double dt,double dx, int g);
 void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double b, double c, double (&D)[Sp], double v[],
     double sigma[], double a_st, double a_end, double a_c, double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], 
-	double chigh[], double clow[], double dt, double dx, double dP, int r, int g, double Gstar = -1);
+	double chigh[], double clow[], double dt, double dx, double dP, int r, int g, double Gstar = -1, double Vstar = -1);
 void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, double a_start, double a_end, double a_c, double b,  double c, 
 	double (&D)[Sp], double v[], double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], double ch[], double clo[],
-	double dt, double dx, double dP, int r,  int g, double Gstar = -1);
+	double dt, double dx, double dP, int r,  int g, double Gstar = -1, double Vstar = -1);
 
 #endif

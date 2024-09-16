@@ -139,26 +139,48 @@ def set_prelims_inputs():
     else:
         if args.prefixes:
             prefixes = args.prefixes
+            #Remove newline, tab and trailing or leading whitespaces from prefixes.
+            prefixes = [pre.strip("\n\t ").lstrip().rstrip() for pre in prefixes]
         if args.indir:
             root_dir = args.indir
         if args.outdir:
             out_dir_noprefix = args.outdir
         if args.dP:
-            dP = args.dP
+            try:
+                dP = int(args.dP)
+            except ValueError:
+                print("Need to provide an integer value for dP. Terminating script..."); sys.exit(1)
         if args.Geq:
-            Geq = float(args.Geq) if args.Geq != "NA" else "NA"
+            try:
+                Geq = float(args.Geq)
+            except ValueError:
+                print("Setting Geq to NA..."); Geq = "NA"
+            #Geq = float(args.Geq) if isinstance(args.Geq, (float, int)) else "NA"
+        if args.Veq:
+            try:
+                Veq = float(args.Veq)
+            except ValueError:
+                print("Setting Veq to NA..."); Veq = "NA"
+            #Veq = float(args.Veq) if isinstance(args.Veq, (float, int)) else "NA"
         if args.L:
             L = args.L; L = [int(l) for l in L]
         if args.indx_vals_t:
-            indx_vals_t = args.indx_vals_t
+            try:
+                indx_vals_t = int(args.indx_vals_t)
+            except ValueError:
+                print("Setting indx vals to -10..."); indx_vals_t = -10;
         if args.dt:
-            dt = args.dt
+            try:
+                dt = float(args.dt)
+            except ValueError:
+                print("No valid value for dt provided. Terminating script..."); sys.exit(1)
 
         print("prefixes: " + str(prefixes))
         print("root_dir: " + root_dir)
         print("out_dir_noprefix: " + out_dir_noprefix)
         print("dP: " + str(dP))
         print("Geq: " + str(Geq))
+        print("Veq: " + str(Veq))
         print("L: " + str(L))
         print("indx_vals_t: " + str(indx_vals_t))
         print(f"dt: {dt}")
@@ -247,11 +269,16 @@ def main():
         #Subdirectories are of the form "PREFIX*_dP_{dP}_Geq_{val}"
         #Using regex and glob, create a sorted list of subdir (in ascending order of val (can be float or integer)) with prefix pre.
         
-        if(Geq == "NA"):
+        if (Geq == "NA" and Veq == "NA"):
             subdir = sorted(glob.glob(os.path.join(root_dir, pre + "_*_dP_" + str(dP))), 
                             key=lambda x: float(re.findall(r'[\d]*[.][\d]+', x)[0]) if re.findall(r'[\d]*[.][\d]+', x) else int(re.findall(r'[\d]+', x)[-1]))
         else:
-            subdir = sorted(glob.glob(os.path.join(root_dir, pre + "_*_dP_" + str(dP) + "_Geq_" + str(Geq))), 
+
+            if(Geq != "NA"):
+                subdir = sorted(glob.glob(os.path.join(root_dir, pre + "_*_dP_" + str(dP) + "_Geq_" + str(Geq))), 
+                        key=lambda x: float(re.findall(r'[\d]*[.][\d]+', x)[0]) if re.findall(r'[\d]*[.][\d]+', x) else int(re.findall(r'[\d]+', x)[-1]))
+            elif (Veq != "NA"):
+                subdir = sorted(glob.glob(os.path.join(root_dir, pre + "_*_dP_" + str(dP) + "_Veq_" + str(Veq))), 
                         key=lambda x: float(re.findall(r'[\d]*[.][\d]+', x)[0]) if re.findall(r'[\d]*[.][\d]+', x) else int(re.findall(r'[\d]+', x)[-1]))
         
         subdir_test = [os.path.basename(s) for s in subdir]
@@ -318,7 +345,11 @@ def main():
                                 
                 for a in a_vals:
                     a = int(a) if float(a).is_integer() else a
-                    savedir = "L_" + str(g) + "_a_" + str(a) + "/dP_" + str(dP) + "/Geq_" + str(Geq) + "/TimeSeries/"
+                    savedir = "L_" + str(g) + "_a_" + str(a) + "/dP_" + str(dP) + "/Geq_"# + str(Geq) + "/TimeSeries/"
+                    if Geq == "NA" and Veq != "NA":
+                        savedir += str(Veq) + "/TimeSeries/"
+                    else:
+                        savedir += str(Geq) + "/TimeSeries/"
                     outdir = out_dir + savedir
                     # Recursively create outdir (and parent directories) if it doesn't exist.
                     Path(outdir).mkdir(parents=True, exist_ok=True)
