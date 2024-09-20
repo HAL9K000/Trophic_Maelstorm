@@ -17,7 +17,7 @@ from glow_up import *
 # Show the first FutureWarning that occurs in the script, then ignore all future FutureWarnings.
 warnings.simplefilter(action='once', category=FutureWarning)
 warnings.simplefilter(action='once', category=Warning)
-
+warnings.simplefilter(action='once', category=pan.errors.PerformanceWarning)
 '''
 This script reorganises the directory structure of the data files in the Rietkerk model.
 The original directory structure (filepaths) are as follows:
@@ -153,12 +153,14 @@ def set_prelims_inputs():
         if args.Geq:
             try:
                 Geq = float(args.Geq)
+                Geq = int(Geq) if Geq.is_integer() else Geq
             except ValueError:
                 print("Setting Geq to NA..."); Geq = "NA"
             #Geq = float(args.Geq) if isinstance(args.Geq, (float, int)) else "NA"
         if args.Veq:
             try:
                 Veq = float(args.Veq)
+                Veq = int(Veq) if Veq.is_integer() else Veq
             except ValueError:
                 print("Setting Veq to NA..."); Veq = "NA"
             #Veq = float(args.Veq) if isinstance(args.Veq, (float, int)) else "NA"

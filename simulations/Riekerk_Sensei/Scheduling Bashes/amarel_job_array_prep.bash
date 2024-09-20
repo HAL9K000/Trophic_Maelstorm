@@ -13,8 +13,8 @@
 # After reading the necessary parameters, the actual script will be read using a here document to the submission script $(job_name)_array.sh
 
 # Check if the number of arguments is at least 2
-if [ $# -lt 2 ]; then
-    echo "Usage: $0 <path/to/init_file.txt> <job_name> [Optional <n> <k>]"
+if [ $# -lt 3 ]; then
+    echo "Usage: $0 <path/to/init_file.txt> <job_name> <SPB> [Optional <n> <k>]"
     echo "Where: n is --cpus-per-task and k is the number of jobs in the array."
     exit 1
 fi
@@ -27,15 +27,15 @@ fi
 
 
 # Extract n and k from the arguments if they are provided
-if [ $# -ge 4 ]; then
-    k=$4
+if [ $# -ge 5 ]; then
+    k=$5
 else
     # Read k from the init file (number of lines in the file - 1)
     k=$(wc -l < $1)
 fi
 
-if [ $# -ge 3 ]; then
-    n=$3
+if [ $# -ge 4 ]; then
+    n=$4
 else
     # Read n as the maximum value of div (seventh column) in the init file
     n=$(awk 'NR>1 {print $7}' $1 | sort -nr | head -n 1)
@@ -50,7 +50,7 @@ echo "k = $k, n = $n"
 cat << EOF > ${2}_array.sh
 #!/bin/bash
 #SBATCH --job-name=${2}     
-#SBATCH --partition= p_deenr_1      
+#SBATCH --partition=p_deenr_1      
 #SBATCH --requeue  
 #SBATCH --priority=100
 #SBATCH --array=0-$((k))%5
@@ -80,7 +80,7 @@ echo \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9 \$p10
 cd ..
 
 # Use the variables p1, p2, p3, p4, p5, p6, p7, p8, p9 to compile the source files:
-g++ rietkerk_bjork_basic.cpp order_3stoc_test_rietkerk.cpp -fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
+g++ -DSPB=${3} rietkerk_bjork_basic.cpp order_${3}stoc_test_rietkerk.cpp -fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
 
 # Run the compiled program with the input parameters
 ./ama_${2}_\${SLURM_ARRAY_TASK_ID}.out \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9 \$p10 &> std_${2}_\${SLURM_ARRAY_TASK_ID}.txt

@@ -137,8 +137,8 @@ int main(int argc, char *argv[])
   else
   {
     cout << "Please enter the correct number of arguments.\n";
-    cout << "The correct number of arguments is 8.\n";
-    cout << "The arguments are as follows: dt, t_max, g, r, a_start, a_end, div, dP, PREFIX.\n";
+    cout << "The correct number of arguments is 10.\n";
+    cout << "The arguments are as follows: dt, t_max, g, r, a_start, a_end, div, dP, init_GP,  PREFIX.\n";
     exit(1);
   }
 
@@ -173,7 +173,7 @@ int main(int argc, char *argv[])
   cout << "Global parameters set, with dt/2.0 = " << dt2 << " and dx*dx = " << dx2 <<  " and 1/(dx*dx) = " << dx1_2 << "\n";
   //INITIAL CONDITIONS:
 
-  // Equations for MFT E Eqilibrium values  as functions of a (Rainfall).
+  // Equations for MFT Eqilibrium values  as functions of a (Rainfall).
 
   
 

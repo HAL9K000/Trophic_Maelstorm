@@ -60,8 +60,10 @@ namespace fs = std::filesystem;
 	#include "rietkerk_bjork_constants_3Sp.h"
 #elif SPB == 2
 	#include "rietkerk_bjork_constants_2Sp.h"
+#elif SPB == 1
+	#include "rietkerk_bjork_constants_1Sp.h"
 #else
-	#error "Number of species not supported. Pass valid compiler flag as -DSPB=2 or -DSPB=3"
+	#error "Number of species not supported. Pass valid compiler flag as  -DSPB=1/2/3"
 #endif
 
 
@@ -270,7 +272,7 @@ void first_order_critical_exp_delta(int div, double t_max, double a_start, doubl
 
 //------------------- Only Vegetation (+ Soil Water + Surface Water) -------------------//
 
-void f_2Dor(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, 
+void f_2Dor_OLD(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, 
 	double alpha, double d, double rW, double W0, double D[], double K[], double t, double dt, double dx1_2, double g);
 void RK4_Integrate_Stochastic(D2Vec_Double &Rho_dt, D2Vec_Double &Rho_tsar, D3Vec_Int &nR2,double a,double c,double gmax,double alpha,
 		double d, double rW, double W0, double D[], double K[],double t,double dt,double dx, int g);

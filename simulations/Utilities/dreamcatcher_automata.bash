@@ -123,6 +123,7 @@ while [[ $current_iter -lt $stop_iter ]]; do
                     continue
                 fi
                 echo "Renamed existing $outdir to ${outdir}_${timestamp}"
+                log_error "Renamed existing $outdir to ${outdir}_${timestamp}"
                 # Adding outdir to renamed_outdirs dictionary.
                 renamed_outdirs["${outdir}"]="${outdir}_${timestamp}"
             fi
@@ -169,6 +170,7 @@ while [[ $current_iter -lt $stop_iter ]]; do
                     continue
                 fi
                 echo "Renamed existing $outdir to ${outdir}_${timestamp}"
+                log_error "Renamed existing $outdir to ${outdir}_${timestamp}"
                 # Adding outdir to renamed_outdirs dictionary.
                 renamed_outdirs["${outdir}"]="${outdir}_${timestamp}"
             fi
@@ -201,6 +203,9 @@ while [[ $current_iter -lt $stop_iter ]]; do
         for key in "${!renamed_outdirs[@]}"; do
             echo "Renamed ${key} to ${renamed_outdirs[$key]}"
         done
+        # Then reset the renamed_outdirs and found_outdirs dictionaries for the next iteration
+        unset renamed_outdirs
+        unset found_outdirs
         echo "Waiting for $time_gap_hours hours before the next iteration...."
         sleep "$time_gap_seconds"
     fi

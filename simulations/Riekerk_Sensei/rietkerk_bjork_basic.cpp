@@ -1863,12 +1863,14 @@ void first_order_critical_exp_delta(int div, double t_max, double a_start, doubl
 
 // ALT INTEGRATION MACHINERY WHERE MIXING OF TIMESTEPS DUE TO LAPLACIAN MAY BE AN ISSUE.
 
+
 void f_2Dor(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, 
-	double alpha, double d, double rW, double W0, double D[], double K[], double t, double dt, double dx1_2, double g)
+	double alpha, double rW, double W0, double (&Dxd2)[Sp], double (&K)[3], double t, double dt, double g)
 {
 	//Vector function that updates an array containing (dP/dt, dW/dt, DO/dt) for each site in the lattice.
     //Based on the Rietkerk model for plant vegetation dynamics with the Dornic twist where linear and stoch term for vegetation are already taken care of.
-
+	// The following values are precomputed to reduce time complexity.
+	double cgmax = c*gmax; double K2W0 = K[2]*W0;
 	for(int i=0; i < g*g; i++)
 	{
         //Equations for the density of plants, soil water and surface water at each site.
@@ -1879,7 +1881,36 @@ void f_2Dor(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, doub
 		 *  Linear and stochastic terms taken care of by Dornic integration routine previously.
 		**/
 		
-        f[0][i] = c*gmax*Rho_M[1][i]*Rho_M[0][i]/(Rho_M[1][i] +K[1]);
+        f[0][i] = cgmax*Rho_M[1][i]*Rho_M[0][i]/(Rho_M[1][i] +K[1]);
+        //Equivalent to dW/dt = alpha*(P+K2*W)/(P+K2) - rW*W + D*(Laplacian of W)
+        f[1][i] = alpha*(Rho_M[0][i]+ K[2]*W0)/(Rho_M[0][i] +K[2])*Rho_M[2][i] -gmax*Rho_M[1][i]*Rho_M[0][i]/(Rho_M[1][i] +K[1]) - rW*Rho_M[1][i] 
+        + (Dxd2[1])*(Rho_M[1][nR2[i][0][0]]  + Rho_M[1][nR2[i][0][1]]  + Rho_M[1][nR2[i][1][0]]  + Rho_M[1][nR2[i][1][1]]  - 4*Rho_M[1][i]);
+        //Equivalent to dO/dt = a - alpha*(P+K*W)/(P+K)*O + D*(Laplacian of O)
+		f[2][i] = a - alpha*(Rho_M[0][i]+ K[2]*W0)/(Rho_M[0][i] +K[2])*Rho_M[2][i] + (Dxd2[2])*(Rho_M[2][nR2[i][0][0]]  + Rho_M[2][nR2[i][0][1]] 
+        + Rho_M[2][nR2[i][1][0]]  + Rho_M[2][nR2[i][1][1]]  - 4*Rho_M[2][i]);
+		
+	}
+
+}
+
+void f_2Dor_OLD(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, 
+	double alpha, double d, double rW, double W0, double D[], double K[], double t, double dt, double dx1_2, double g)
+{
+	//Vector function that updates an array containing (dP/dt, dW/dt, DO/dt) for each site in the lattice.
+    //Based on the Rietkerk model for plant vegetation dynamics with the Dornic twist where linear and stoch term for vegetation are already taken care of.
+	// The following values are precomputed to reduce time complexity.
+	double cgmax = c*gmax; double K2W0 = K[2]*W0;
+	for(int i=0; i < g*g; i++)
+	{
+        //Equations for the density of plants, soil water and surface water at each site.
+        //Note that the Laplacian is calculated using reflective boundary conditions.
+        //The Laplacian is calculated using the 5-point stencil method.
+        /**
+		 * NOTE!!!!!:  Equivalent to dP/dt = c*g_max*P*W/(W+K1)
+		 *  Linear and stochastic terms taken care of by Dornic integration routine previously.
+		**/
+		
+        f[0][i] = cgmax*Rho_M[1][i]*Rho_M[0][i]/(Rho_M[1][i] +K[1]);
         //Equivalent to dW/dt = alpha*(P+K2*W)/(P+K2) - rW*W + D*(Laplacian of W)
         f[1][i] = alpha*(Rho_M[0][i]+ K[2]*W0)/(Rho_M[0][i] +K[2])*Rho_M[2][i] -gmax*Rho_M[1][i]*Rho_M[0][i]/(Rho_M[1][i] +K[1]) - rW*Rho_M[1][i] 
         + (D[1]*dx1_2)*(Rho_M[1][nR2[i][0][0]]  + Rho_M[1][nR2[i][0][1]]  + Rho_M[1][nR2[i][1][0]]  + Rho_M[1][nR2[i][1][1]]  - 4*Rho_M[1][i]);
@@ -1887,6 +1918,59 @@ void f_2Dor(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, doub
 		f[2][i] = a - alpha*(Rho_M[0][i]+ K[2]*W0)/(Rho_M[0][i] +K[2])*Rho_M[2][i] + (D[2]*dx1_2)*(Rho_M[2][nR2[i][0][0]]  + Rho_M[2][nR2[i][0][1]] 
         + Rho_M[2][nR2[i][1][0]]  + Rho_M[2][nR2[i][1][1]]  - 4*Rho_M[2][i]);
 		
+	}
+
+}
+
+void RK4_Integrate_Stochastic_1Sp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D2Vec_Double &K1, D2Vec_Double &K2,  D2Vec_Double &K3, D2Vec_Double &K4, 
+	D3Vec_Int &nR2, double a, double c, double gmax, double alpha, double rW, double W0, double (&Dxd2)[Sp], double (&K)[3], double t,double dt,double dx, int g)
+{
+	
+	/** // OLD DECLARATIONS of K1, K2, K3, K4 and Rho_M. Skipped as declaration and assignment is done in rietkerk_Dornic_2D_MultiSp
+	 * and doing it here takes O(n^2) time each time this function is called.
+	*/
+
+	// RECALL: Dxd2[s] = D[s]/dx2
+	f_2Dor(K1, Rho_t, nR2, a, c, gmax, alpha, rW, W0, Dxd2, K, t, dt,  g); //K1 updated.
+
+	for(int s= 0; s <Sp; s++)
+	{
+		for(int i=0; i < g*g; i++)
+			Rho_tsar[s][i] = Rho_t[s][i] + (dt2)*K1[s][i];
+	}
+
+	f_2Dor(K2, Rho_tsar, nR2, a, c, gmax, alpha, rW, W0, Dxd2, K, t + dt2, dt,  g); //K2 updated.
+
+	for(int s= 0; s <Sp; s++)
+	{
+		for(int i=0; i < g*g; i++)
+			Rho_tsar[s][i] = Rho_t[s][i] + (dt2)*K2[s][i];
+	}
+	f_2Dor(K3, Rho_tsar, nR2, a, c, gmax, alpha, rW, W0, Dxd2, K, t + dt2, dt, g); //K3 updated.
+	for(int s= 0; s <Sp; s++)
+	{
+		for(int i=0; i < g*g; i++)
+			Rho_tsar[s][i] = Rho_t[s][i] + (dt)*K3[s][i];
+	}
+	f_2Dor(K4, Rho_tsar, nR2, a, c, gmax, alpha, rW, W0, Dxd2, K, t + dt, dt, g); //K4 updated.
+    
+	for(int s= 0; s <Sp; s++)
+	{
+		for(int i=0; i < g*g; i++)
+		{
+			Rho_t[s][i]+= (dt6)*( K1[s][i] + 2.0*K2[s][i] + 2.0*K3[s][i] + K4[s][i]);
+
+			if( Rho_t[s][i] < 0 || isfinite(Rho_t[s][i]) == false || isnan(Rho_t[s][i]) == true)
+			{
+				std::ofstream errout; //Save Error Logs
+				std::string thr = "ErrLog_" + std::to_string(omp_get_thread_num()) + ".txt";
+				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+        		m6 << "RK4 WAS KO'ED WITH:\t" << Rho_t[s][i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
+				<< " at time:\t:" << t << " For Species:\t:" << s << " with K1[s][i]:   " << K1[s][i] << "\t, K2[s][i]:\t" << K2[s][i] 
+				<< "\t, K3[s][i]:\t" << K3[s][i] << "\t, K4[s][i]:\t" << K4[s][i] << "\t AND Rho(t-dt)" << Rho_tsar[s][i] << endl; //cout << m6.str();
+				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+			}
+		}
 	}
 
 }
@@ -1902,7 +1986,7 @@ void RK4_Integrate_Stochastic(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D3Vec
     D2Vec_Double K3(Sp, vector<double> (g*g, 0.0)); D2Vec_Double K4(Sp, vector<double> (g*g, 0.0));
     D2Vec_Double Rho_M(Sp, vector<double> (g*g, 0.0));
 
-	f_2Dor(K1, Rho_tsar, nR2, a, c, gmax, alpha, d, rW, W0, D, K, t, dt, dx1_2, g); //K1 updated.
+	f_2Dor_OLD(K1, Rho_tsar, nR2, a, c, gmax, alpha, d, rW, W0, D, K, t, dt, dx1_2, g); //K1 updated.
 
 	for(int i=0; i < g*g; i++)
 	{
@@ -1910,20 +1994,20 @@ void RK4_Integrate_Stochastic(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D3Vec
 			Rho_M[s][i] = Rho_tsar[s][i] + (dt2)*K1[s][i];
 	}
 
-	f_2Dor(K2, Rho_M, nR2, a, c, gmax, alpha, d, rW, W0, D, K, t + dt2, dt, dx1_2, g); //K2 updated.
+	f_2Dor_OLD(K2, Rho_M, nR2, a, c, gmax, alpha, d, rW, W0, D, K, t + dt2, dt, dx1_2, g); //K2 updated.
 
 	for(int i=0; i < g*g; i++)
 	{
 		for(int s= 0; s <Sp; s++)
 			Rho_M[s][i] = Rho_tsar[s][i] + (dt2)*K2[s][i];
 	}
-	f_2Dor(K3, Rho_M, nR2, a, c, gmax, alpha, d, rW, W0, D, K, t + dt2, dt, dx1_2, g); //K3 updated.
+	f_2Dor_OLD(K3, Rho_M, nR2, a, c, gmax, alpha, d, rW, W0, D, K, t + dt2, dt, dx1_2, g); //K3 updated.
 	for(int i=0; i < g*g; i++)
 	{
 		for(int s= 0; s <Sp; s++)
 			Rho_M[s][i] = Rho_tsar[s][i] + (dt)*K3[s][i];
 	}
-	f_2Dor(K4, Rho_M, nR2, a, c, gmax, alpha, d, rW, W0, D, K, t + dt, dt, dx1_2, g); //K4 updated.
+	f_2Dor_OLD(K4, Rho_M, nR2, a, c, gmax, alpha, d, rW, W0, D, K, t + dt, dt, dx1_2, g); //K4 updated.
     
 	for(int i=0; i < g*g; i++)
 	{
@@ -4280,8 +4364,12 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		//init_randbistableframe(Rho_dt, g*g, a, a_c,  perc, chigh, clow); // Returns a frame with random speckles of high and low density.
 
 		// MFT PERTURBATION BASED FRAME INITIALISATION
+		#if SPB == 3
 		// NOTE: clow[] is used to store the fractional change from MFT steady state for some species, corresponds to c_spread[] in init_exprtk_randbiMFTframe(...).
 		init_exprtk_randbiMFTframe(Rho_dt, g*g, a, a_c, dP, perc, clow); // Returns a frame with random speckles of high and low density.
+		#else
+			init_exprtk_randbiMFTframe_Improved(Rho_dt, g*g, a, a_c, dP, perc, clow); // Returns a frame with random speckles of high and low density.
+		#endif
 
 
 		/** // GAUSSIAN FRAME INITIALISATION  
@@ -4465,16 +4553,20 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(5) << a; dimitri << dP;
 					rini << j; Dm << setprecision(4) << D[2]; geq << setprecision(5) << Gstar;// cgm << c*gmax; sig0 << sigma[0]; 
 
-					string parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str() + "/TimeSeries";
+					string parendir= "";
+					if(Gstar != -1)
+						parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str() + "/TimeSeries";
+					else
+						parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/TimeSeries";
 
 					//double ran_jid = (unif(rng)*1000.0)/1000.0; jID << ran_jid; // Random number between 0 and 1.
 					
 					string filenamePattern = replicate_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
 					"_D2_"+ Dm.str() + "_R_";
 
-					string prelimheader = " a , r, L, t , <<W(x; t)>_x>_r, <<O(x; t)>_x>_r,  <<P(x; t)>_x>_r, Var[<P(x; t)>_x]_r, # Surviving Runs P(x; t),"
+					/** string prelimheader = " a , r, L, t , <<W(x; t)>_x>_r, <<O(x; t)>_x>_r,  <<P(x; t)>_x>_r, Var[<P(x; t)>_x]_r, # Surviving Runs P(x; t),"
 					" # Active Sites P(x; t), <<G(x; t)>_x>_r, Var[<G(x; t)>_x]_r, # Surviving Runs G(x; t), # Active Sites G(x; t)," 
-					"<<Pr(x; t)>_x>_r, Var[<Pr(x; t)>_x]_r, # Surviving Runs Pr(x; t), # Active Sites Pr(x; t), \n";
+					"<<Pr(x; t)>_x>_r, Var[<Pr(x; t)>_x]_r, # Surviving Runs Pr(x; t), # Active Sites Pr(x; t), \n"; **/
 
 					save_prelimframe(rho_rep_avg_var_temp, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
 					
@@ -4567,7 +4659,9 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			} // End of Vegetation Integration
 			
 			// Book-keeping for determining gamma_i for higher order species. Calculating Rho averages per species at each time step.
-			for(int s=0; s < Sp -2; s++)
+			// Compute ONLY IF SPB > 1
+			#if SPB > 1
+			for(int s=0; s < SpB; s++)
 			{
 				vector <double> temp= {DRho[s].begin(),DRho[s].end()}; //Rho_dt for species '0'
 				Rhox_avg[s] = mean_of_vector(temp, g*g); //Finds spatial average of densities at given t.
@@ -4575,10 +4669,12 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			}
 			vector <double> temp_veg= {DRho[0].begin(),DRho[0].end()}; //Rho_dt for species '0'
 			double rhox_num_veg = occupied_sites_of_vector(temp_veg, g*g); //Finds number of occupied sites at given t.
-			vector<double>().swap(temp_veg); //Flush temp out of memory. 
+			vector<double>().swap(temp_veg); //Flush temp out of memory.
 			double nR_fac = 1 - rhox_num_veg/(g*g); //Factor to reduce the number of neighbours for gamma_i estimation
 			if (nR_fac < 0.35)
 			{	nR_fac = 0.35; }
+			#endif
+
 			#if SPB == 3
 				calc_gamma_3Sp_NonRefugia(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, nR_fac, r_max_effective, g);
 			#elif SPB == 2
@@ -4806,6 +4902,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				RK4_Integrate_Stochastic_MultiSp(Rho_dt, Rho_tsar, K1, K2, K3, K4, nR2, a, c, gmax, alpha, rW, W0, diff_coefficient, K, A,H,E, t, dt, dx, g);
 			#elif SPB == 2
 				RK4_Integrate_Stochastic_2Sp(Rho_dt, Rho_tsar, K1, K2, K3, K4, nR2, a, c, gmax, alpha, rW, W0, diff_coefficient, K, A,H,E, t, dt, dx, g);
+			#elif SPB == 1
+				RK4_Integrate_Stochastic_1Sp(Rho_dt, Rho_tsar, K1, K2, K3, K4, nR2, a, c, gmax, alpha, rW, W0, diff_coefficient, K, t, dt, dx, g);
 			#endif
 			//RK4_Integrate_Stochastic_MultiSp(Rho_dt, Rho_tsar, K1, K2, K3, K4, nR2, a, c, gmax, alpha, rW, W0, diff_coefficient, K, A,H,E, t, dt, dx, g);
 			
@@ -4899,7 +4997,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			<< " THE SIZE OF RHO_M: " << tot_iter << "\n"; cout << m7.str();
 			for(int i =0; i< tot_iter; i++)
 			{	
-				for(int s =0; s< Sp-2; s++)
+				for(int s =0; s< SpB; s++)
 				{
 					rho_rep_avg_var[i][4*s+ 3] = Rho_M[i][2*s + 1]; // Avg density of frame at given time point i.
 					rho_rep_avg_var[i][4*s+ 4] = 0.0; // Variance in avg frame density.
@@ -4933,17 +5031,16 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
   			L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << setprecision(5) << a; dimitri << dP;
   			rini << j; Dm << setprecision(4) << D[2]; cgm << c*gmax; sig0 << sigma[0]; geq << setprecision(5) << Gstar;
 
-			string parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
+			string parendir ="";
+			if(Gstar != -1)
+				parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
+			else
+				parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
 
 			double ran_jid = (unif(rng)*1000.0)/1000.0; jID << ran_jid; // Random number between 0 and 1.
 			
 			string filenamePattern = prelim_prefix + jID.str() +"_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
 			"_D2_"+ Dm.str() + "_R_";
-
-			string prelimheader = " a , r, L, t , <<W(x; t)>_x>_r, <<O(x; t)>_x>_r,  <<P(x; t)>_x>_r, Var[<P(x; t)>_x]_r, # Surviving Runs P(x; t),"
-			" # Active Sites P(x; t), <<G(x; t)>_x>_r, Var[<G(x; t)>_x]_r, # Surviving Runs G(x; t), # Active Sites G(x; t)," 
-			"<<Pr(x; t)>_x>_r, Var[<Pr(x; t)>_x]_r, # Surviving Runs Pr(x; t), # Active Sites Pr(x; t), \n";
-
 
 			save_prelimframe(rho_rep_avg_var, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, true);
 		}
@@ -5069,7 +5166,7 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 		 * Namely CExpRho_a is structured as:
 		 * | 	a		|    t 		|     <<Rho1(t)>>x,r			|    Var[<Rho1(t)>x],r    |
 		**/
-		rietkerk_Dornic_2D_MultiSp(CExpRho_a, t_measure, t_max, a_space[i], c, gmax, alpha, rW, W0, D, v, K , sigma, a_start, a_end, a_c, A,H,E,M, pR, ch, clo, dt, dx, dP, r, g);
+		rietkerk_Dornic_2D_MultiSp(CExpRho_a, t_measure, t_max, a_space[i], c, gmax, alpha, rW, W0, D, v, K , sigma, a_start, a_end, a_c, A,H,E,M, pR, ch, clo, dt, dx, dP, r, g, Gstar);
 		//RK4_Wrapper_2D(CExpRho_a, t_measure, t_max, a_space[i], c, gmax, alpha, d, rW, W0, D, K , a_start, a_end, dt, dx, dP, r, g);
 		//expanded_percolationDornic_2D(CExpRho_a, t_measure, Rho_0,  t_max, a_space[i], b, c, D, sigma, dt, dx, r, g);
         //crtexp_DP_Basic(grid_size, comp_data, p_space[i], r_init, length);
@@ -5136,8 +5233,7 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 
 	// Output =  | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |
 
-	string header = " a , r, L, t , <<W(x; t)>_x>_r, <<O(x; t)>_x>_r,  <<Rho0(x; t)>_x>_r, Var[<Rho0(t)>_x]_r, # Surviving Runs Rho0, # Active Sites Rho0,"
-	" <<Rho1(x; t)>_x>_r, Var[<Rho1(t)>_x]_r, # Surviving Runs Rho1, # Active Sites Rho1, <<Rho2(x; t)>_x>_r, Var[<Rho2(t)>_x]_r, # Surviving Runs Rho2, # Active Sites Rho2";
+	string header = prelimheader;
 	output_1stdp << header << "\n";
 	cout << "The vector elements are: "<< endl;
   	cout << header << "\n";

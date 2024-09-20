@@ -2032,8 +2032,8 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 					//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
 					
 					stringstream L, tm ,d3, p1, rini, gm, a1, a2, Dm0, Dm1, Dm2, alph, w0t, aij, hij, dix, dimitri, sig0, sig1, geq, veq;
-
-  					L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; dix << setprecision(2) << dx;
+					double a_scaled = 1000.0*a; //Scale a by 1000 for filename.
+  					L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(5) << a_scaled; dix << setprecision(2) << dx;
   					rini << j; Dm0 << D[0]*pow(10.0, 7.0); Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2]; 
 					a1 << a_st; a2  << a_end; sig0 << sigma[0]; sig1 << sigma[1]; dimitri  << dP;
 					geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
@@ -2106,11 +2106,11 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 					D2Vec_Double rho_rep_avg_var_temp(index+1, vector<double> (Sp4_1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
 					//std::copy(rho_rep_avg_var.begin(), rho_rep_avg_var.begin() + index, rho_rep_avg_var_temp.begin());
 					var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index+1, 0);
-
+					double a_scaled = 1000.0*a; //Scale a by 1000 for filename.
 					//Finally save to file.
 					stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, geq, veq, jID; // cgm, sig0;
 					a1 << a_st; a2 << a_end;
-					L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(5) << a; dimitri << dP;
+					L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(5) << a_scaled; dimitri << dP;
 					rini << j; Dm << setprecision(4) << D[2]; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;// cgm << c*gmax; sig0 << sigma[0]; 
 
 					string parendir = "";
@@ -2564,9 +2564,9 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 		if((j+1)%2 == 1 || (j+1)%2 == 0)
 		{	//Start logging at every multiple of 2
 			stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, rini_prev, Dm, sig0, geq, veq, jID;
-			
+			double a_scaled = a*1000.0; //Scaled by 1000 for filename.
 			a1 << a_st; a2 << a_end;
-  			L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << setprecision(5) << a; dimitri << dP;
+  			L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << setprecision(5) << a_scaled; dimitri << dP;
   			rini << j; Dm << setprecision(4) << D[2]; sig0 << sigma[0]; geq << setprecision(5) << Gstar, veq << setprecision(5) << Vstar;
 
 			string parendir = "";

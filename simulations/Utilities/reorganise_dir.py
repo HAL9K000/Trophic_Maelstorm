@@ -17,6 +17,7 @@ from glow_up import *
 
 # Show the first FutureWarning that occurs in the script, then ignore all future FutureWarnings.
 warnings.simplefilter(action='once', category=FutureWarning)
+warnings.simplefilter(action='once', category=pan.errors.PerformanceWarning)
 
 
 '''
@@ -141,11 +142,17 @@ def set_frames_input():
         if args.Geq:
             try:
                 Geq = float(args.Geq)
+                # Next, check if Geq is an integer or a float. If it is an integer, convert it to an integer.
+                if Geq.is_integer():
+                    Geq = int(Geq)
             except ValueError:
                 print("Setting Geq to NA..."); Geq = "NA"
         if args.Veq:
             try:
                 Veq = float(args.Veq)
+                # Next, check if Veq is an integer or a float. If it is an integer, convert it to an integer.
+                if Veq.is_integer():
+                    Veq = int(Veq)
             except ValueError:
                 print("Setting Veq to NA..."); Veq = "NA"
         if args.L:

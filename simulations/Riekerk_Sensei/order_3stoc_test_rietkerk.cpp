@@ -157,8 +157,8 @@ int main(int argc, char *argv[])
   else
   {
     cout << "Please enter the correct number of arguments.\n";
-    cout << "The correct number of arguments is 8.\n";
-    cout << "The arguments are as follows: dt, t_max, g, r, a_start, a_end, div, dP, PREFIX.\n";
+    cout << "The correct number of arguments is 10.\n";
+    cout << "The arguments are as follows: dt, t_max, g, r, a_start, a_end, div, dP, init_GP, PREFIX.\n";
     exit(1);
   }
 

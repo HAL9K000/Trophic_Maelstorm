@@ -39,7 +39,8 @@ def find_timerange(files, a, indx, min_t = None, max_t = None):
     # First, extract all T values from files that have a_val = a. (t-values can be float or integer).
     T_vals = [re.findall(r'T_[\d]*[.][\d]+' , f)[0] if re.findall(r'T_[\d]*[.][\d]+' , f) 
               else re.findall(r'T_[\d]+' , f)[0] for f in files 
-              if re.findall(r'a_[\d]*[.][\d]+' , f)[0] == "a_" + str(a) or re.findall(r'a_[\d]+' , f)[0] == "a_" + str(a)]
+              if (re.findall(r'a_[\d]*[.][\d]+' , f) and  re.findall(r'a_[\d]*[.][\d]+' , f)[0] == "a_" + str(a) )
+              or (re.findall(r'a_[\d]+' , f) and  re.findall(r'a_[\d]+' , f)[0] == "a_" + str(a) )]
     # Remove T_ from T_vals and sort them in ascending order.
     T_vals = sorted([float(re.findall(r'[\d]*[.][\d]+', t)[0]) 
                      if re.findall(r'[\d]*[.][\d]+', t) 
