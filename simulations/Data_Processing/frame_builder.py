@@ -47,11 +47,11 @@ from matplotlib.collections import LineCollection
 
 
 # User inputs.
-SPB = 2; # Number of species in the model
+SPB = 1; # Number of species in the model
 #in_dir = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_CORDDM/"
 #out_dir = "../../Images/3Sp/StdParam_20_100_CORDDM_MFT/"
-in_dir = f"../Data/Remote/DP/Reorg_Frames/{SPB}Sp/DPParam_20_MFT/"
-out_dir = f"../../Images/{SPB}Sp/DPParam_20_MFT/"
+in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/StdParam_MFT/"
+out_dir = f"../../Images/{SPB}Sp/StdParam_MFT/"
 Path(out_dir).mkdir(parents=True, exist_ok=True)
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 
@@ -1344,6 +1344,268 @@ def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], 
         # End of TS loop
     # End of Pre loop
 
+''' # Summary Description of multiplot_PRELIMS_CompareEQ(...)
+
+This function essentially creates combined plots of multiple dataframes generated and saved to csv files by the 
+analyse_PRELIMS_EQdata(...) function. NOTE: The analyse_PRELIMS_EQdata(...) function saves the data in the following format:
+Savedir = out_dir + f"{Pre}/PhaseDiagrams/" where {Pre} is the Prefix of the data.
+Filename = f"DEBUG_{savefilename}_L_{g}_dP_{dP}_Geq_{Geq}.csv"
+where {savefilename} is the filename of the mean data file, and {g}, {dP}, {Geq} are the values of the parameters L, dP, Geq respectively.
+The data is a Multi-Index Pandas file saved in the format:
+Prefix, a, R, Tmax, Twin_min, Twin_max, AVG[{var}]_ALL, ..., VAR[{var}]_ALL, ...,  
+    AVG[{var}]_SURV, ..., VAR[{var}]_SURV, ..., R_SURV[{var}], ..., t, {var} ...
+where {var} are the species names provided in the var_labels list in the analyse_PRELIMS_EQdata(...) function.
+
+Prefix, a, R, Tmax, Twin_min, Twin_max are the indices of the data, where R = -1 for the mean values.
+
+Given the data saved in this format, the multiplot_PRELIMS_CompareEQ(...) function creates combined plots of the data for each species, 
+doing so in a similar fashion to the analyse_PRELIMS_EQdata(...) function, but for multiple {Pre}, {g}, {dP} OR {Geq} values.
+
+multiplot_PRELIMS_CompareEQ(...) takes the following arguments:
+indir: The input directory where the data is saved.
+out_dir: The output directory where the plots will be saved.
+compare_list: A dictionary of the form {"Prefix": [Pre_string_vals], "g": [g_vals], "Prefix": [dP_vals], "Prefix": [Geq_vals]} 
+where the values are lists of the parameters Pre, g, dP, Geq respectively.
+meanfilename: The filename of the mean data file, which is used to load the data. 
+If provided as "guess", the function will attempt to guess the filename based on comparisons to matching files in the directory as 
+DEBUG_*_{compare_list.keys()}_{compare_list.values()}.csv. for each key, value pair in compare_list (other than "Prefix").
+
+var_labels: A list of the species names in the data, which are used to create the plots.
+
+It will then create distinct combined plots of the data for each compare_list key, iterating over the values in the compare_list values.
+Plots will be generated in an identical manner to the analyse_PRELIMS_EQdata(...) function.
+
+It will do so by reading the DEBUG_*_{compare_list.keys()}_*.csv files in the indir directory, for each key in compare_list.keys().
+It will read these as Pandas Multi-Index DataFrames, and then concatenate them to create a combined DataFrame for each key,
+wuth a new Multi-Index level for the key. It will then create plots of the data in the same manner as the analyse_PRELIMS_EQdata(...) function,
+iterating over the values in the compare_list values for each key.
+
+For each key, the combined plot will be saved to the out_dir directory in the format:
+f"COMPARE_{compare_list.keys()}_MeanSTD_{key}_amin_{Avals_list[0]}_amax_{Avals_list[-1]}_Twin_{Twin_min}_{Twin_max}.png"
+
+'''
+
+def get_combined_df(combined_data, indir, compare_key, compare_vals, prefixes, init_meanfilename = "guess",
+                                 var_labels= [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"]):
+
+    # Try to read the data from the matching file in the indir directory.
+    # If the file does not exist, skip to the next value in the compare_vals list.
+    # If there are multiple files that match the pattern, provide an error message and skip to the next value.
+    
+    meanfilename = init_meanfilename # Dummy variable to store the meanfilename for each iteration.
+    if compare_key == "Prefix":
+        for Pre in compare_vals:
+            if  init_meanfilename == "guess":
+                meanfilename = f"DEBUG_*.csv"
+            meanfilename = meanfilename.format(Pre=Pre, val=val)
+            try:
+                files = glob.glob(indir.format(Pre=Pre) + meanfilename)
+            except FileNotFoundError:
+                print(f"File {indir.format(Pre=Pre) + meanfilename} not found. Skipping...")
+                continue
+
+            if len(files) > 1:
+                    print(f"Multiple files found for {indir.format(Pre=Pre) + meanfilename}. Skipping...")
+                    continue
+            try:
+                print(f"Reading file {files[0]}... with meanfilename {meanfilename}")
+                data = pan.read_csv(files[0], index_col = [0, 1, 2, 3, 4, 5])
+                # The data is a Multi-Index with the following index levels: Prefix, a, R, Twin_min, Twin_max, Tmax
+            except FileNotFoundError:
+                    print(f"File {indir.format(Pre=Pre)+ meanfilename} not found. Skipping...")
+                    continue
+            except pan.errors.ParserError:
+                    print(f"Error reading file {indir.format(Pre=Pre) + meanfilename}. Skipping...")
+                    continue
+            data[compare_key] = val
+            data.set_index(compare_key, append = True, inplace = True) # Add the compare_key as a new index level.
+
+            combined_data = pan.concat([combined_data, data], axis = 0)
+    else:
+        for val in compare_vals:
+            for Pre in prefixes:
+                if init_meanfilename == "guess":
+                    meanfilename = f"DEBUG_*{compare_key}_{val}_*csv"
+                meanfilename = meanfilename.format(Pre=Pre, val=val)
+
+                print(f"Working on {compare_key} comparison with value {val} for {Pre}...")
+                print(f"Looking for file {indir.format(Pre=Pre) + meanfilename}...")
+                try:
+                    files = glob.glob(indir.format(Pre=Pre) + meanfilename)
+                    #print(files)
+                except FileNotFoundError:
+                    print(f"File {indir.format(Pre=Pre) + meanfilename} not found. Skipping...")
+                    continue
+                if len(files) > 1:
+                    print(f"Multiple files found for {indir.format(Pre=Pre) + meanfilename}. Skipping...")
+                    continue
+                try:
+                    print(f"Reading file {files[0]}... with meanfilename {meanfilename}")
+                    data = pan.read_csv(files[0], index_col = [0, 1, 2, 3, 4, 5])
+                    # The data is a Multi-Index with the following index levels: Prefix, a, R, Twin_min, Twin_max, Tmax
+                except FileNotFoundError:
+                    print(f"File {indir.format(Pre=Pre)+ meanfilename} not found. Skipping...")
+                    continue
+                except pan.errors.ParserError:
+                    print(f"Error reading file {indir.format(Pre=Pre) + meanfilename}. Skipping...")
+                    continue
+                # The data is a Multi-Index with the following index levels: Prefix, a, R, Twin_min, Twin_max, Tmax
+                # First, add the compare_key as a new Multi-Index level.
+                data[compare_key] = val
+                data.set_index(compare_key, append = True, inplace = True) # Add the compare_key as a new index level.
+
+                print(f"Data for {compare_key} comparison with value {val} for {Pre}:")
+                print(data.head())
+                print(data.tail())
+                print(data.columns)
+
+                combined_data = pan.concat([combined_data, data], axis = 0)
+                print(f'Length of combined_data: {len(combined_data)}')
+
+
+    return combined_data
+
+def multiplot_PRELIMS_CompareEQ(indir, out_dir, compare_list, prefixes =[], meanfilename = "guess",
+                                 var_labels= [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"]):
+    
+    colours = [hex_list[i][i-6] for i in range(len(hex_list))]# for j in range(0, len(hex_list[i]), 2)]
+    
+    # Get the list of keys and values from the compare_list dictionary.
+    keys = list(compare_list.keys())
+    # Iterate over each key in the compare_list dictionary, creating combined plots of the data for each key.
+    # If "Prefix" is a key and prefixes is empty, set the prefixes list to the values for the key.
+    meanfilename_init = meanfilename
+
+    access_dir = indir + "{Pre}/PhaseDiagrams/"
+
+    if "Prefix" in keys and len(prefixes) == 0:
+        prefixes = compare_list["Prefix"]
+
+    if "Prefix" not in keys and len(prefixes) ==0:
+        print("Error: No Prefix values provided in compare_list or prefixes list. Please provide a list of Prefix values.")
+        return
+
+    for compare_key in keys:
+        # Get the values for the key from the compare_list dictionary.
+        compare_vals = compare_list[compare_key]
+        # If the key is "Prefix", set the prefixes list to the compare_vals list.
+        if len(compare_vals) == 0:
+            print(f"No values provided for {compare_key}. Skipping...")
+            continue
+        # Create a combined DataFrame for the key, iterating over the values in the compare_vals list.
+        combined_data = pan.DataFrame()
+        # Get the combined DataFrame for the key.
+        combined_data = get_combined_df(combined_data, access_dir, compare_key, compare_vals, prefixes, meanfilename, var_labels)
+        # Verify that the combined data is not empty.
+        if combined_data.empty:
+            print(f"No data found for {compare_key} comparison with values {compare_vals}. Skipping...")
+            continue
+
+        # If there are multiple unique values for the "Twin_min" and "Twin_max" index levels, throw an error and skip to the next key.
+        if len(combined_data.index.get_level_values('Twin_min').unique()) > 1 or len(combined_data.index.get_level_values('Twin_max').unique()) > 1:
+            print(f"Multiple inconsistent values detected for Twin_min or Twin_max {compare_key} comparison with values {compare_vals}. Skipping...")
+            continue
+
+        # Show the combined data.
+        print(f"Combined data for {compare_key} comparison with values {compare_vals}:")
+        print(combined_data.head())
+        print(combined_data.tail())
+        print(combined_data.columns)
+        print(combined_data.index)  
+
+        ''' NOTE: The combined data is a Multi-Index DataFrame with the following index levels:
+        Prefix, a, R, Twin_min, Twin_max, Tmax, {compare_key}  
+        where R = -1 for the mean values.''' 
+
+        
+        
+        # Next, create plots of the data for each species, iterating over the values in the compare_vals list as hues.
+        # The plots will be saved to the out_dir directory.
+        # compare_vals are stored in the {compare_key} index level of the combined data.
+        # If "Prefix" column has multiple unique values, create a combined plot of the data for each species, with Prefix and ({compare_key} if applicable) as distinct hues.
+        # If "Prefix" column has only one unique value, create a combined plot of the data for each species, with {compare_key} as the hue.
+
+        savedir = access_dir.format(Pre = prefixes[0]) + f"CombinedPhaseDiagrams/"
+        if compare_key == "Prefix":
+            savedir = out_dir + f"CombinedPhaseDiagrams/"
+        Path(savedir).mkdir(parents=True, exist_ok=True)
+
+        # Save the combined data to a csv file.
+        combined_data.to_csv(savedir + f"Combined_{compare_key}_MeanSTD_{compare_vals}.csv")
+        
+        # Get the unique values for the Prefix index level.
+        Prefix_vals = combined_data.index.get_level_values('Prefix').unique().to_list()
+        # Get the unique values for the {compare_key} index level.
+        compare_vals = combined_data.index.get_level_values(compare_key).unique().to_list()
+        # Get the unique values for the a index level.
+        Avals_list = combined_data.index.get_level_values('a').unique().to_list()
+
+        TSvals_list = sorted(combined_data.index.get_level_values('Tmax').unique().to_list())
+
+        for TS in TSvals_list:
+            fig, axs = plt.subplots(1, len(var_labels), figsize = (6.5*len(var_labels), 6))
+            
+            for val in compare_vals:
+                Tavg_TSval = combined_data.loc[(slice(None), slice(None), slice(None), slice(None), slice(None), TS, val), :]
+                for s in range(len(var_labels)):
+                    # First plot scatter plots of Surviving and All replicates for each species.
+                    ax = axs[s] if len(var_labels) > 1 else axs
+                    # RECALL, _SURV and _ALL columns are given by multi_index for R = -1.
+                    Tavg_TSval_all = Tavg_TSval.loc[(slice(None), slice(None), -1, slice(None), slice(None), TS, slice(None)), :]
+                    # Plotting mean of surviving replicates ( with _SURV in the name)
+                    for Pre in prefixes:
+                        print(f"Plotting data for {Pre} for {compare_key} = {val} at T = {TS}")
+                        if val in Prefix_vals:
+                            # Represents case where compare_key is "Prefix", h
+                            Pre = val
+                        Tavg_TSPreval_all = Tavg_TSval_all.loc[( Pre, slice(None), slice(None), slice(None), slice(None), TS, val), :]
+                        ax.scatter(Tavg_TSPreval_all.index.get_level_values('a'), Tavg_TSPreval_all["AVG[" + var_labels[s] + "]_SURV"], label = r"$\mu_{{surv}}(\rho_{%g})$" %(s) + f" {compare_key} = {val}", 
+                                   color = colours[s*len(compare_vals) + compare_vals.index(val)], s = 15, alpha = 0.9, marker = 's')
+                        
+                        # This is given by the ratio of the "R_SURV[{var}]" column to the maximum value of R ( which is max value of R for the Prefix, a, Twindow, TS).
+                        # Infill variance for surviving replicates
+                        err = 2*np.sqrt(Tavg_TSPreval_all["VAR[" + var_labels[s] + "]_SURV"])
+                        ax.fill_between(Tavg_TSPreval_all.index.get_level_values('a'), Tavg_TSPreval_all["AVG[" + var_labels[s] + "]_SURV"] - err,
+                                Tavg_TSPreval_all["AVG[" + var_labels[s] + "]_SURV"] + err, color = colours[s*len(compare_vals) + compare_vals.index(val)], alpha = 0.25)
+            
+                        # Plotting mean of all replicates ( with _ALL in the name)
+                        ax.scatter(Tavg_TSPreval_all.index.get_level_values('a'), Tavg_TSPreval_all["AVG[" + var_labels[s] + "]_ALL"], label = r"$\mu_{all}(\rho_{%g})$" %(s) + f" {compare_key} = {val}", 
+                                   color = colours[s*len(compare_vals) + compare_vals.index(val)], s = 15, alpha = 0.75, marker = 'D', facecolor = 'none')
+
+                        # Plotting mean of individual replicates (ignoring R = -1 entries)
+                        for R in Tavg_TSval.index.get_level_values('R').unique():
+                            if R == -1: 
+                                continue # Skip R = -1 entries (which represent the mean values)
+                            Tavg_TSPreval_R = Tavg_TSval.loc[( Pre, slice(None), R, slice(None), slice(None), TS, val), :]
+                            ax.scatter(Tavg_TSPreval_R.index.get_level_values('a'), Tavg_TSPreval_R[var_labels[s]], color ="grey", s = 15, alpha = 0.35)
+                        # End of R loop
+                    # End of Pre loop
+                    ax.set_title(r" $ \langle \langle \rho_{%g}(x, t) \rangle_{x} \rangle_{t} $" % (s))
+                    ax.set_xlabel(r'R $(mm/hr)$')
+                    ax.set_ylabel(r" $ \langle \langle \rho_{%g}(x, t) \rangle_{x} \rangle_{t} $" % (s))
+                    ax.legend()
+                # End of s loop 
+            # End of val loop
+            Twin_min = Tavg_TSval_all.index.get_level_values("Twin_min").min(); Twin_max = Tavg_TSval_all.index.get_level_values("Twin_max").max()
+            fig.suptitle(r"$\mu$ and $\sigma$ of" + f" Species For Various {compare_key} B/W {Twin_min} -- {Twin_max}")
+            plt.savefig(savedir + f"COMPARE_{compare_key}_MeanSTD_amin_{Avals_list[0]}_amax_{Avals_list[-1]}_Twin_{Twin_min}_{Twin_max}.png")
+
+            plt.show()
+            plt.close()
+        # End of TS loop
+    # End of compare_key loop
+
+
+
+
+                
+
+
+
+
+
+
+
             
 ''' # Summary Description of recursive_copydir(...)
 This function recursively copies files from the source directory to the destination directory.
@@ -1384,10 +1646,10 @@ recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filety
 T_vals=[]
 #T_vals= [158489, 173780, 190546, 208930, 229087, 251189, 275423, 301995, 331131, 363078]
 #prefixes = ["DIC-DDM1-NREF-0.5LI", "DIC-DDM5-NREF-0.5LI", "DIC-DDM10-NREF-0.5LI", "DIC-DDM5-NREF-1.1HI"]
-prefixes = ["DiC-B6-MFTEQ"]# "DiC-B6-MFTEQ"]#,"DiC-S7LI", "DiC-0.1LI"]
+prefixes = ["DiC-STD"]# "DiC-B6-MFTEQ"]#,"DiC-S7LI", "DiC-0.1LI"]
 #prefixes = ["COR-DDM5-NREF-0.5HI", "COR-DDM10-NREF-0.5HI", "COR-DDM1-NREF-0.5HI"]
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
-TS_vals = [69183.1] #91201] #[229087] #[208930]  #[190546]; #[109648];
+TS_vals = [91201] #69183.1] # #[229087] #[208930]  #[190546]; #[109648];
 #a_vals = [0.04, 0.041, 0.042, 0.046, 0.048]; 
 #T_vals = [208930]
 
@@ -1426,12 +1688,15 @@ if SPB == 3:
     # If Tavg_win_index[0] < 0 and Tavg_win_index[1] <= 0, then average over last Tavg_win_index[0] + Tmax to Tavg_win_index[1] + Tmax values of T.
     # If Tavg_win_index[1] >= Tavg_win_index[0] >= 0, then average over last Tavg_win_index[0] to Tavg_win_index[1] values of T.
 elif SPB == 2:
-    variable_labels = [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r"]; Tavg_win_index = [50000, 100000] #[150000, 240000]
+    variable_labels = [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r"]; Tavg_win_index = [150000, 240000] #[50000, 100000] #
 elif SPB == 1:
     variable_labels = ["<<P(x; t)>_x>_r"]; Tavg_win_index = [65000, 100000]
-analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels)
-analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = Tavg_win_index, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels)
+#analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels)
+#analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = Tavg_win_index, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels)
 
 
 #analyse_FRAME_POTdata(in_dir, out_dir, prefixes, a_vals, T_vals, find_minima= True, filename = "Pot_Well.csv", 
 #                          minimafilename = "LOCAL_MINIMA.csv", var_labels= [ "P(x; t)" , "G(x; t)", "Pr(x; t)"])
+
+compare_list = {"Prefix": [], "g": [], "dP": [100, 10000], "Geq": []}
+multiplot_PRELIMS_CompareEQ(out_dir, out_dir, compare_list, prefixes = prefixes, meanfilename = "guess", var_labels= variable_labels)

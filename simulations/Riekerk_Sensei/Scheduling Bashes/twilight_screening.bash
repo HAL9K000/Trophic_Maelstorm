@@ -50,8 +50,12 @@ start_screen(){
         exit 1
     fi
     read -r p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 <<< $(sed -n "$((i+2))p" $1)
-    #Remove trailing whitespaces and new lines from p9
-    p10=$(echo $p10 | tr -d '[:space:]')
+    #Remove trailing whitespaces and new lines from p9 if SpB is 1 else remove trailing whitespaces and new lines from p10
+    if [ $spb -eq 1 ]; then
+        p9=$(echo $p9 | tr -d '[:space:]')
+    else
+        p10=$(echo $p10 | tr -d '[:space:]')
+    fi
     if ! screen -list | grep -q "${screen_names[$screen_index]}"; then
         # Start a new screen session and run the job
         screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; g++-14 -DSPB=${spb} rietkerk_bjork_basic.cpp order_${spb}stoc_test_rietkerk.cpp -fopenmp -o ${screen_names[$screen_index]}_${p10}.out -std=c++23; ./${screen_names[$screen_index]}_${p10}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 &> stderr_${screen_names[$screen_index]}.txt; cd $curr_dir"

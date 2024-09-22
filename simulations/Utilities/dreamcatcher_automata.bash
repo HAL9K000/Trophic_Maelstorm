@@ -31,6 +31,11 @@ log_error() {
     echo "$(date +'%Y-%m-%d %H:%M:%S') ERROR: $1" >> error_log.txt
 }
 
+# Function to log updates
+log_update() {
+    echo "$(date +'%Y-%m-%d %H:%M:%S') UPDATE: $1" >> error_log.txt
+}
+
 # Function to compress the output directory using 7z
 compress_dir() {
     local outdir="$1"
@@ -60,6 +65,11 @@ execute_additional_commands() {
     while IFS= read -r command || [[ -n "$command" ]]; do
         echo "Executing command: $command"
 
+        #Remove trailing whitespaces and new lines from command
+        command=$(echo "$command" | sed 's/[[:space:]]*$//')
+
+        log_update "Executing command: $command"
+
         # Check if the command requires additional input (e.g., password/key)
         if [[ "$command" =~ ^(rsync|ssh) ]]; then
             echo "Command might require additional input..."
@@ -69,8 +79,10 @@ execute_additional_commands() {
                 log_error "No additional input found for command: $command"
                 continue
             }
-
+            #Remove trailing whitespaces and new lines from additional_input
+            additional_input=$(echo "$additional_input" | sed 's/[[:space:]]*$//')
             echo "Providing additional input: $additional_input"
+            log_update "Providing additional input: $additional_input"
 
             # Use `echo` to simulate entering the input into the command
             echo "$additional_input" | eval "$command"
@@ -89,6 +101,7 @@ while [[ $current_iter -lt $stop_iter ]]; do
     # Read the params.txt file line by line
     declare -A renamed_outdirs  # Associative array to track renamed outdirs in this iteration
     declare -A found_outdirs    # Associative array to track all found outdirs in this iteration
+    declare -A created_outdirs  # Associative array to track all created outdirs in this iteration
 
     # Execute additional commands at the start of the outer loop (if the fourth argument is provided)
     if [[ -n "$commands_file" ]]; then
@@ -113,8 +126,9 @@ while [[ $current_iter -lt $stop_iter ]]; do
 
         # Check if outdir exists and has non-zero size
         if [[ -d "$outdir" && $(du -sb "$outdir" | awk '{print $1}') -gt 0 ]]; then
-            if [[ -z "${renamed_outdirs[$outdir]}" ]]; then
-                #Only rename outdir once in this iteration (i.e, iff not already renamed in this iteration and it exists)
+            if [[ -z "${renamed_outdirs[$outdir]}" && -z "${created_outdirs[$outdir]}" ]]; then
+                #Only rename outdir once in this iteration 
+                #(i.e, iff not already renamed in this iteration and it exists and has not been created in this iteration)
                 # If so, rename the directory with the timestamp
                 timestamp=$(date +'%H%M')
                 mv "$outdir" "${outdir}_${timestamp}"
@@ -123,11 +137,21 @@ while [[ $current_iter -lt $stop_iter ]]; do
                     continue
                 fi
                 echo "Renamed existing $outdir to ${outdir}_${timestamp}"
-                log_error "Renamed existing $outdir to ${outdir}_${timestamp}"
+                log_update "Renamed existing $outdir to ${outdir}_${timestamp}"
                 # Adding outdir to renamed_outdirs dictionary.
                 renamed_outdirs["${outdir}"]="${outdir}_${timestamp}"
             fi
-                
+        else
+            # If outdir does not exist, create it
+            mkdir -p "$outdir"
+            if [[ $? -ne 0 ]]; then
+                log_error "Failed to create $outdir"
+                continue
+            fi
+            echo "Created $outdir"
+            log_update "Created $outdir"
+            # Adding outdir to created_outdirs dictionary.
+            created_outdirs["$outdir"]=1    
         fi
 
         # Run the Python script
@@ -160,7 +184,7 @@ while [[ $current_iter -lt $stop_iter ]]; do
 
         # Check if outdir exists and has non-zero size
         if [[ -d "$outdir" && $(du -sb "$outdir" | awk '{print $1}') -gt 0 ]]; then
-            if [[ -z "${renamed_outdirs[$outdir]}" ]]; then
+            if [[ -z "${renamed_outdirs[$outdir]}"  && -z "${created_outdirs[$outdir]}" ]]; then
                 #Only rename outdir once in this iteration (i.e, iff not already renamed in this iteration and it exists)
                 # If so, rename the directory with the timestamp
                 timestamp=$(date +'%H%M')
@@ -170,11 +194,21 @@ while [[ $current_iter -lt $stop_iter ]]; do
                     continue
                 fi
                 echo "Renamed existing $outdir to ${outdir}_${timestamp}"
-                log_error "Renamed existing $outdir to ${outdir}_${timestamp}"
+                log_update "Renamed existing $outdir to ${outdir}_${timestamp}"
                 # Adding outdir to renamed_outdirs dictionary.
                 renamed_outdirs["${outdir}"]="${outdir}_${timestamp}"
             fi
-                
+                else
+            # If outdir does not exist, create it
+            mkdir -p "$outdir"
+            if [[ $? -ne 0 ]]; then
+                log_error "Failed to create $outdir"
+                continue
+            fi
+            echo "Created $outdir"
+            log_update "Created $outdir"
+            # Adding outdir to created_outdirs dictionary.
+            created_outdirs["$outdir"]=1    
         fi
 
         # Run the Python script

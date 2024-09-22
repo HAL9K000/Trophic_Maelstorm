@@ -1332,12 +1332,30 @@ void save_frame(D2Vec_Double &Rho_t, const string &parendir, const string &filen
 
 // ------------------------------------- Stochastic Integration Machinery ------------------------------------- //
 
+void f_DP_Dor_1Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double b, double c, double t, double dt, double g)
+{
+	//Vector function that updates an array containing ( dP/dt) for each site in the lattice.
+    //Based on the DP model for plant vegetation dynamics with the Dornic twist where linear and stoch term for vegetation (and grazer) are already taken care of.
+	
+	for(int i=0; i < g*g; i++)
+	{
+        /** Equations for the density of plants (P)
+        * Note that the Laplacian is calculated using reflective boundary conditions.**/
+
+		// RECALL: Dxd2[s] = D[s]/dx2
+		/** NOTE!!!!!:  Equivalent to dV/dt = -b*V^2
+		 *  Linear and stochastic terms taken care of by Dornic integration routine previously.
+		**/
+        f[0][i] = -b*Rho_M[0][i]*Rho_M[0][i];
+	}
+}
+
 
 //------------------- Vegetation + Grazer -------------------//
 
 
 void f_DP_Dor_2Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double b, double c, 
-	double (&Dxd2)[Sp], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double dx1_2, double g)
+	double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double g)
 {
 	//Vector function that updates an array containing ( dP/dt, dG/dt) for each site in the lattice.
     //Based on the DP model for plant vegetation dynamics with the Dornic twist where linear and stoch term for vegetation (and grazer) are already taken care of.
@@ -1501,6 +1519,8 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 		f_DP_Dor_3Sp(K1, Rho_t, nR2, b, c, Dxd2, A, H, E, t, dt, dx1_2, g); //K1 updated, For 3 Species.
 	#elif SPB == 2
 		f_DP_Dor_2Sp(K1, Rho_t, nR2, b, c, Dxd2, A, H, E, t, dt, dx1_2, g); //K1 updated, For 2 Species.
+	#elif SPB == 1
+		f_DP_Dor_1Sp(K1, Rho_t, nR2, b, c,  t, dt, g); //K1 updated, For 1 Species.
 	#else
 		cerr << "Error: Species number not supported. Exiting." << endl; exit(1);
 	#endif
@@ -1515,6 +1535,8 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 		f_DP_Dor_3Sp(K2, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt2, dt, dx1_2, g); //K2 updated.
 	#elif SPB == 2
 		f_DP_Dor_2Sp(K2, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt2, dt, dx1_2, g); //K2 updated.
+	#elif SPB == 1
+		f_DP_Dor_1Sp(K2, Rho_tsar, nR2, b, c, t + dt2, dt, g); //K2 updated, For 1 Species.
 	#endif
 
 	for(int s= 0; s <Sp; s++)
@@ -1527,6 +1549,8 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 		f_DP_Dor_3Sp(K3, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt2, dt, dx1_2, g); //K3 updated.
 	#elif SPB == 2
 		f_DP_Dor_2Sp(K3, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt2, dt, dx1_2, g); //K3 updated.
+	#elif SPB == 1
+		f_DP_Dor_1Sp(K3, Rho_tsar, nR2, b, c, t + dt2, dt, g); //K3 updated, For 1 Species.
 	#endif
 
 	for(int s= 0; s <Sp; s++)
@@ -1538,6 +1562,8 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 		f_DP_Dor_3Sp(K4, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt, dt, dx1_2, g); //K4 updated.
 	#elif SPB == 2
 		f_DP_Dor_2Sp(K4, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt, dt, dx1_2, g); //K4 updated.
+	#elif SPB == 1
+		f_DP_Dor_1Sp(K4, Rho_tsar, nR2, b, c, t + dt, dt, g); //K4 updated, For 1 Species.
     #endif
 
 	for(int s= 0; s <Sp; s++)
@@ -2220,6 +2246,8 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 			} // End of Vegetation Integration
 			
 			// Book-keeping for determining gamma_i for higher order species. Calculating Rho averages per species at each time step.
+			// Compute ONLY IF SPB > 1
+			#if SPB > 1
 			for(int s=0; s < SpB; s++)
 			{
 				vector <double> temp= {DRho[s].begin(),DRho[s].end()}; //Rho_dt for species '0'
@@ -2232,6 +2260,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 			double nR_fac = 1 - rhox_num_veg/(g*g); //Factor to reduce the number of neighbours for gamma_i estimation
 			if (nR_fac < 0.35)
 			{	nR_fac = 0.35; }
+			#endif
 
 			#if SPB == 2
 				calc_gamma_2Sp_NonRefugia(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, nR_fac, r_max_effective, g);
@@ -2444,7 +2473,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 			
 			// NOTE: diff_coefficient[s] = D[s]/(dx*dx)
 			// Finally RK4 integration of the remaining terms.
-
+			
 			RK4_Integrate_Stochastic_MultiSp(Rho_dt, Rho_tsar, K1, K2, K3, K4, nR2, a, c, diff_coefficient, A,H,E, t, dt, dx, g);
 			
 			if(counter%50000 == 0)

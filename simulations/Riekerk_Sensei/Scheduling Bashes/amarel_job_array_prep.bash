@@ -73,6 +73,13 @@ CPUS_PER_TASK=\$p7
 #Strip whitespaces and newlines from p10
 p10=\$(echo \$p10 | tr -d '[:space:]')
 
+#Remove trailing whitespaces and new lines from p9 if SpB is 1 else remove trailing whitespaces and new lines from p10
+if [ $3 -eq 1 ]; then
+    p9=\$(echo \$p9 | tr -d '[:space:]')
+else
+    p10=\$(echo \$p10 | tr -d '[:space:]')
+fi
+
 echo \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9 \$p10
 # Dynamically set the number of CPUs per task
 

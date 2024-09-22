@@ -52,6 +52,8 @@ namespace fs = std::filesystem;
 	#include "MultiSPDP_constants_3Sp.h"
 #elif SPB == 2
 	#include "MultiSPDP_constants_2Sp.h"
+#elif SPB == 1
+	#include "MultiSPDP_constants_1Sp.h"
 #else
 	#error "Number of species not supported. Pass valid compiler flag as -DSPB=2 or -DSPB=3"
 #endif
@@ -250,18 +252,11 @@ void save_prelimframe(D2Vec_Double &Rho_t, const string &parendir, const string 
 void save_frame(D2Vec_Double &Rho_t, const string &parendir, const string &filenamePattern, double a, double a_st, double a_end, 
 		double t, double dt, double dx, double dP, int r, int g, string header ="", bool overwrite = false);
 
-//------------------- Only Vegetation (+ Soil Water + Surface Water) -------------------//
+//------------------- Only Vegetation -------------------//
 
-void f_2Dor(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, 
-	double alpha, double d, double rW, double W0, double D[], double K[], double t, double dt, double dx1_2, double g);
-void RK4_Integrate_Stochastic(D2Vec_Double &Rho_dt, D2Vec_Double &Rho_tsar, D3Vec_Int &nR2,double a,double c,double gmax,double alpha,
-		double d, double rW, double W0, double D[], double K[],double t,double dt,double dx, int g);
-void rietkerk_Dornic_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double c, double gmax, double alpha, double d, 
-	  double rW, double W0, double D[], double K[], double sigma[], double a_st, double a_end,  double dt, double dx, double dP, int r, int g);
-void first_order_critical_exp_delta_stochastic(int div, double t_max, double a_start, double a_end,  double c, double gmax, double alpha,
-	double d, double rW, double W0,  double D[], double K[], double sigma[], double dt, double dx, double dP, int r,  int g);
+void f_DP_Dor_1Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double b, double c, double t, double dt, double g);
 
-//------------------- Vegetation + Grazer (+ Soil Water + Surface Water) -------------------//
+//------------------- Vegetation + Grazer-------------------//
 
 void calc_gamma_2Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringSites, D2Vec_Double &Rho_t, D2Vec_Double &gamma,  
 	double (&Rho_avg)[Sp], vector <std::pair<double, int>>& rfrac, double nVeg_frac, int r_max, int L);
@@ -269,7 +264,7 @@ void f_DP_Dor_2Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double b
 	double (&Dxd2)[Sp], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double dx1_2, double g);
 
 
-//------------------- Vegetation + Grazer + Predator (+ Soil Water + Surface Water) -------------------//
+//------------------- Vegetation + Grazer + Predator -------------------//
 
 
 //Calculates gamma for 3 Sp Rietkerk model (details in PDF, 
