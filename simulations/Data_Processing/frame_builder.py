@@ -47,15 +47,16 @@ from matplotlib.collections import LineCollection
 
 
 # User inputs.
-SPB = 1; # Number of species in the model
-#in_dir = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_CORDDM/"
-#out_dir = "../../Images/3Sp/StdParam_20_100_CORDDM_MFT/"
-in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/StdParam_MFT/"
-out_dir = f"../../Images/{SPB}Sp/StdParam_MFT/"
+SPB = 2; # Number of species in the model
+#in_dir = f"../Data/Remote/DP/Reorg_Frames/{SPB}Sp/DPParam_20_MFT/" # FOR DP
+#out_dir = f"../../Images/{SPB}Sp/DPParam_20_MFT/" # FOR DP
+
+in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/StdParam_20_MFT/"
+out_dir = f"../../Images/{SPB}Sp/StdParam_20_MFT/"
 Path(out_dir).mkdir(parents=True, exist_ok=True)
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 
-g = 128;  dP = 1; Geq = 7.4774; R_max= -1;
+g = 128;  dP = 10000; Geq = 7.4774; R_max= -1;
 T_vals =[]; TS_vals =[];
 a_vals = []    
 
@@ -72,6 +73,13 @@ hex_list= [['#D8F3DC', '#B7E4C7', '#95D5B2', '#74C69D', '#57CC99', '#38A3A5', '#
 
 float_list = [0, 0.025, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 1]
 vmax =[500, 35, 40]
+
+def set_figsize(SPB):
+    #Sets the figure size based on the number of species in the model.
+    if SPB == 1:
+        return (8, 6)
+    else:
+        return (8 + 6*(SPB-1), 6)
 
 def hex_to_rgb(value):
     '''
@@ -323,7 +331,7 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, plt_gamma= F
 
                 # Extracting the data columns
                 data = data.iloc[:, 2:]
-                fig, axs = plt.subplots(1, SPB, figsize = (20, 6))
+                fig, axs = plt.subplots(1, SPB, figsize = set_figsize(SPB))
                 ''' # Individual plots as opposed to combined ones.
                 for s in range(SPB):
                     data_Sp = np.array(data.iloc[:, s]).reshape(g, g)
@@ -337,7 +345,7 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, plt_gamma= F
                     plt.close()
                 '''
                 # Creating combinbed subplots
-                fig, axs = plt.subplots(1, SPB, figsize = (20, 6))
+                fig, axs = plt.subplots(1, SPB, figsize = set_figsize(SPB))
                 for s in range(SPB):
                     ax = axs[s] if SPB > 1 else axs
                     data_Sp = np.array(data.iloc[:, s]).reshape(g, g)
@@ -783,7 +791,7 @@ def analyse_FRAME_timeseriesData(indir, out_dir, prefixes=[], a_vals=[], T_vals 
             a = int(a) if float(a).is_integer() else a
             savepngdir = out_dir + f"{Pre}/TimeSeries/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{Tmax}/"
             Path(savepngdir).mkdir(parents=True, exist_ok=True)
-            fig, axs = plt.subplots(1, SPB, figsize = (20, 6))
+            fig, axs = plt.subplots(1, SPB, figsize = set_figsize(SPB))
             for s in range(SPB):
                 data_A = data.loc[(slice(None), a, slice(None)), :]
                 # Plotting for a fixed a value, species and Prefix for all T values.
@@ -837,7 +845,7 @@ def analyse_FRAME_timeseriesData(indir, out_dir, prefixes=[], a_vals=[], T_vals 
             print(f"No column with _R_0 found in the data. Not plotting individual replicate data for multiple prefixes.")
             R0_index = None
         for a in a_vals:
-            fig, axs = plt.subplots(1, SPB, figsize = (20, 6))
+            fig, axs = plt.subplots(1, SPB, figsize = set_figsize(SPB))
             for s in range(SPB):
                 data_A = combined_data.loc[(slice(None), a, slice(None)), :]
                 ax = axs[s]
@@ -921,7 +929,7 @@ def analyse_FRAME_POTdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], fi
             for T in T_vals:
                 savepngdir = out_dir + f"{Pre}/Pot_Well/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/"
                 Path(savepngdir).mkdir(parents=True, exist_ok=True)
-                fig, axs = plt.subplots(1, len(var_labels), figsize = (20, 6))
+                fig, axs = plt.subplots(1, len(var_labels), figsize = set_figsize(len(var_labels)))
                 for s in range(len(var_labels)):
                     data_A = data.loc[(slice(None), a, T, slice(None)), :]
                     # Plotting for a fixed a value, species and Prefix for all R values.
@@ -1032,7 +1040,7 @@ def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseri
             for TS in tseries_vals:
                 savepngdir = out_dir + f"{Pre}/TimeSeries/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{TS}/"
                 Path(savepngdir).mkdir(parents=True, exist_ok=True)
-                fig, axs = plt.subplots(1, len(var_labels), figsize = (20, 6))
+                fig, axs = plt.subplots(1, len(var_labels), figsize = set_figsize(len(var_labels)))
                 for s in range(len(var_labels)):
                     data_A_TS = data.loc[(slice(None), a, slice(None), TS), :]
                     # Plotting for a fixed a value, Tmax value species and Prefix for all R and t values.
@@ -1057,6 +1065,7 @@ def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseri
                     # End of R loop
                     #Set y-axis as log scale.
                     ax.set_yscale('log')
+                    ax.set_xscale('log')
                     ax.set_title(r"$\langle \rho_{%g}(t) \rangle_{x}$ vs $t$" %(s)  + f" at a = {a}")
                     ax.set_xlabel(r'Time $(d)$')
                     ax.set_ylabel(r'$\langle \rho_{%g}(t) \rangle_{x}$' % (s))
@@ -1149,7 +1158,7 @@ def analyse_FRAME_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tav
         Tavg.to_csv(savedir + f"DEBUG_Twin_{Twin_min}_{Twin_max}_dP_{dP}_Geq_{Geq}.csv")
 
         # Use Tavg to create plots of a vs. the mean of the data for each species, with STD as infill.
-        fig, axs = plt.subplots(1, SPB, figsize = (20, 6))
+        fig, axs = plt.subplots(1, SPB, figsize = set_figsize(SPB))
         for s in range(SPB):
             ax = axs[s] if SPB > 1 else axs
             ax.scatter(Tavg.index.get_level_values('a'), Tavg.iloc[:, 3*s], label = r"$\mu_{%g}$" %(s), color = colours[s], s = 15, alpha = 0.75)
@@ -1174,7 +1183,7 @@ def analyse_FRAME_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tav
         for T in T_vals:
             T = int(T) if float(T).is_integer() else T
             data_T = data.loc[(slice(None), slice(None), T), :]
-            fig, axs = plt.subplots(1, SPB, figsize = (20, 6))
+            fig, axs = plt.subplots(1, SPB, figsize = set_figsize(SPB))
             for s in range(SPB):
                 ax = axs[s] if SPB > 1 else axs
                 ax.scatter(data_T.index.get_level_values('a'), data_T.iloc[:, 3*s], label = r"$\rho_{%g}$" %(s), color = colours[s], s = 15, alpha = 0.75)
@@ -1200,7 +1209,7 @@ def analyse_FRAME_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tav
         for T in T_vals:
             T = int(T) if float(T).is_integer() else T
             combined_data_T = combined_data.loc[(slice(None), slice(None), T), :]
-            fig, axs = plt.subplots(1, SPB, figsize = (20, 6))
+            fig, axs = plt.subplots(1, SPB, figsize = set_figsize(SPB))
             for s in range(SPB):
                 ax = axs[s] if SPB > 1 else axs
                 sea.lineplot(data = combined_data_T, x = 'a', y = combined_data_T.iloc[:, 3*s], hue = 'Prefix', ax = ax)
@@ -1295,7 +1304,7 @@ def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], 
         Tavg.to_csv(savedir + f"DEBUG_{savefilename}_Twin_{Twin_min}_{Twin_max}_dP_{dP}_Geq_{Geq}.csv")
 
         # Use Tavg to create plots of a vs. the mean of the data for each species, with STD as infill.
-        fig, axs = plt.subplots(1, len(var_labels), figsize = (20, 6))
+        fig, axs = plt.subplots(1, len(var_labels), figsize = set_figsize(len(var_labels)))
         for TS in TSvals_list:
             Tavg_TS = Tavg.loc[(slice(None), slice(None), slice(None), slice(None), slice(None), TS), :]
             for s in range(len(var_labels)):
@@ -1543,7 +1552,7 @@ def multiplot_PRELIMS_CompareEQ(indir, out_dir, compare_list, prefixes =[], mean
         TSvals_list = sorted(combined_data.index.get_level_values('Tmax').unique().to_list())
 
         for TS in TSvals_list:
-            fig, axs = plt.subplots(1, len(var_labels), figsize = (6.5*len(var_labels), 6))
+            fig, axs = plt.subplots(1, len(var_labels), figsize = set_figsize(len(var_labels)))
             
             for val in compare_vals:
                 Tavg_TSval = combined_data.loc[(slice(None), slice(None), slice(None), slice(None), slice(None), TS, val), :]
@@ -1577,12 +1586,14 @@ def multiplot_PRELIMS_CompareEQ(indir, out_dir, compare_list, prefixes =[], mean
                             if R == -1: 
                                 continue # Skip R = -1 entries (which represent the mean values)
                             Tavg_TSPreval_R = Tavg_TSval.loc[( Pre, slice(None), R, slice(None), slice(None), TS, val), :]
-                            ax.scatter(Tavg_TSPreval_R.index.get_level_values('a'), Tavg_TSPreval_R[var_labels[s]], color ="grey", s = 15, alpha = 0.35)
+                            ax.scatter(Tavg_TSPreval_R.index.get_level_values('a'), Tavg_TSPreval_R[var_labels[s]], color ="grey", s = 15, alpha = 0.2)
                         # End of R loop
                     # End of Pre loop
                     ax.set_title(r" $ \langle \langle \rho_{%g}(x, t) \rangle_{x} \rangle_{t} $" % (s))
                     ax.set_xlabel(r'R $(mm/hr)$')
                     ax.set_ylabel(r" $ \langle \langle \rho_{%g}(x, t) \rangle_{x} \rangle_{t} $" % (s))
+                    # Set lower limit of y-axis to 0.
+                    ax.set_ylim(bottom = -200)
                     ax.legend()
                 # End of s loop 
             # End of val loop
@@ -1642,18 +1653,28 @@ def recursive_copydir(src, dst, include_filetypes = ["*.txt"],
 
 #
 recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filetypes =["*.png", "*.jpg", "*.jpeg", "*.mp4"], symlinks=False)
-#a_vals = [0.003, 0.006, 0.009 ] #, 0.057 , 0.06] #0.051, 0.053, 0.055]; 
-T_vals=[]
+#a_vals = [0.032, 0.05] #, 0.057 , 0.06] #0.051, 0.053, 0.055]; 
+#T_vals=[91201]
 #T_vals= [158489, 173780, 190546, 208930, 229087, 251189, 275423, 301995, 331131, 363078]
 #prefixes = ["DIC-DDM1-NREF-0.5LI", "DIC-DDM5-NREF-0.5LI", "DIC-DDM10-NREF-0.5LI", "DIC-DDM5-NREF-1.1HI"]
-prefixes = ["DiC-STD"]# "DiC-B6-MFTEQ"]#,"DiC-S7LI", "DiC-0.1LI"]
+prefixes = ["DiC-S7LI"] #"DiC-B6-UNTY" #"DiC-B6-MFTEQ"]#"DiC-STD"]#,"DiC-S7LI", "DiC-0.1LI"]
 #prefixes = ["COR-DDM5-NREF-0.5HI", "COR-DDM10-NREF-0.5HI", "COR-DDM1-NREF-0.5HI"]
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
-TS_vals = [91201] #69183.1] # #[229087] #[208930]  #[190546]; #[109648];
-#a_vals = [0.04, 0.041, 0.042, 0.046, 0.048]; 
-#T_vals = [208930]
+TS_vals = [229087] #69183.1] # #[229087] #[208930] #91201]  #[190546]; #[109648];
+a_vals = [0.034, 0.048, 0.054]; 
+T_vals = [0, 91201, 190546, 208930, 229087]
 
-'''
+print("Note the following set values:")
+print(f"Prefixes: {prefixes}")
+print(f"TS_vals: {TS_vals}")
+print(f"T_vals: {T_vals}")
+print(f"a_vals: {a_vals}")
+print(f"SPB: {SPB}, g: {g}, dP: {dP}, Geq: {Geq}, maxR: {R_max}")
+print(f"in_dir: {in_dir} \nout_dir: {out_dir}")
+input("Press F to pay respects...")
+print("\n\n__________________________________________________________________________________________\n\n")
+
+#'''
 for Pre in prefixes:
     frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= 0, plt_gamma= False, delpng = False)
     print(f"Done with making frames for {Pre}")
@@ -1683,14 +1704,14 @@ for Pre in prefixes:
 #analyse_timeseriesData(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "MEAN_REPLICATES.txt")
 if SPB == 3:
     variable_labels = [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"]
-    Tavg_win_index = [150000, 240000] 
+    Tavg_win_index = [150000, 240000]
     # Window for averaging over last Tavg_win_index values of T (if negative, then average over last |Tavg_win_index| values of T)
     # If Tavg_win_index[0] < 0 and Tavg_win_index[1] <= 0, then average over last Tavg_win_index[0] + Tmax to Tavg_win_index[1] + Tmax values of T.
     # If Tavg_win_index[1] >= Tavg_win_index[0] >= 0, then average over last Tavg_win_index[0] to Tavg_win_index[1] values of T.
 elif SPB == 2:
     variable_labels = [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r"]; Tavg_win_index = [150000, 240000] #[50000, 100000] #
 elif SPB == 1:
-    variable_labels = ["<<P(x; t)>_x>_r"]; Tavg_win_index = [65000, 100000]
+    variable_labels = ["<<P(x; t)>_x>_r"]; Tavg_win_index = [150000, 240000] #[65000, 100000]
 #analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels)
 #analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = Tavg_win_index, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels)
 
@@ -1698,5 +1719,5 @@ elif SPB == 1:
 #analyse_FRAME_POTdata(in_dir, out_dir, prefixes, a_vals, T_vals, find_minima= True, filename = "Pot_Well.csv", 
 #                          minimafilename = "LOCAL_MINIMA.csv", var_labels= [ "P(x; t)" , "G(x; t)", "Pr(x; t)"])
 
-compare_list = {"Prefix": [], "g": [], "dP": [100, 10000], "Geq": []}
-multiplot_PRELIMS_CompareEQ(out_dir, out_dir, compare_list, prefixes = prefixes, meanfilename = "guess", var_labels= variable_labels)
+#compare_list = {"Prefix": [], "g": [], "dP": [100, 10000], "Geq": []}
+#multiplot_PRELIMS_CompareEQ(out_dir, out_dir, compare_list, prefixes = prefixes, meanfilename = "guess", var_labels= variable_labels)

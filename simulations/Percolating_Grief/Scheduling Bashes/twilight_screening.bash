@@ -11,7 +11,8 @@
 # If the screen session is not running, the script will start a new screen session and run the job.
 # If the screen session is running, the script will skip to the next screen session name in the array.
 
-screen_names=("casablanca" "tangiers" "tunis" "fes" "maghreb" "marrakesh" "rabat" "algiers" "medea" "gibraltar" "dakar")
+screen_names=("hongkong" "tokyo" "kyoto" "manilla" "osaka" "busan" "edo" "macao" "taipei" "shanghai" "nagoya" "hanoi" "shenzhen" "seoul")
+
 
 # Check if the number of arguments is at least 1
 if [ $# -lt 2 ]; then
@@ -58,7 +59,7 @@ start_screen(){
     fi
     if ! screen -list | grep -q "${screen_names[$screen_index]}"; then
         # Start a new screen session and run the job
-        screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; g++-12 -DSPB=${spb} multiSPDP.cpp order_${spb}stocDP.cpp -fopenmp -o ${screen_names[$screen_index]}_${p10}.out -std=c++23; ./${screen_names[$screen_index]}_${p10}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 &> stderr_${screen_names[$screen_index]}.txt; cd $curr_dir"
+        screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; g++-14 -DSPB=${spb} multiSPDP.cpp order_${spb}stocDP.cpp -fopenmp -o ${screen_names[$screen_index]}_${p10}.out -std=c++23; ./${screen_names[$screen_index]}_${p10}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 &> stderr_${screen_names[$screen_index]}.txt; cd $curr_dir"
         screen_index=$((screen_index+1))
     else
         #echo "Screen session ${screen_names[$screen_index]} is already running. Using the next screen name."

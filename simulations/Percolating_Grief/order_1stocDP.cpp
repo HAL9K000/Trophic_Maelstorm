@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
   cout << "pi = " << PI  << endl;
 
   cout << "Diffusion Constants For Species:\n";
-  cout << "D0 = " << setprecision(16) << D[0] << "\t D1 = " << D[1] <<  endl;
+  cout << "D0 = " << setprecision(16) << D[0] << endl;
 
   cout << "This is a 1Sp (One) Stochastic DP Model Script WITHOUT DDM\n";
   cout << "Header Species Check: " << std::to_string(SpB) << "\n";
@@ -129,7 +129,7 @@ int main(int argc, char *argv[])
     a_end = atof(argv[6]);
     div = atoi(argv[7]);
     dP = atof(argv[8]);
-    preFIX = argv[10];
+    preFIX = argv[9];
   }
   // If there are otherwise an arbitrary number of arguements, terminate the program.
   else
@@ -170,7 +170,7 @@ int main(int argc, char *argv[])
   double mV = 1/b; // Vegetation only equilibrium density as a function of a. (Veq = a/b =mV*a)
 
   string MFT_PreV = std::to_string(0.0);
-  string MFT_V = std::to_string(mV) + " * a";
+  string MFT_V = std::to_string(0.0);
   
 
   MFT_Vec_CoexExpr.assign({MFT_PreV, MFT_V});

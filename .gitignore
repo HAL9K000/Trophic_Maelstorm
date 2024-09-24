@@ -3,6 +3,8 @@
 figures/
 **/Data/
 simulations/NSLE_Mage/
+simulations/Deprecated/
+simulations/Riekerk_Sensei/Deprecated_Assets/
 # simulations/*/
 *.zip
 *.tar.gz
