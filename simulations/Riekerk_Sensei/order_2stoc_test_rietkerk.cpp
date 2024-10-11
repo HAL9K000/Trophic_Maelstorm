@@ -50,7 +50,9 @@ int main(int argc, char *argv[])
   p0istar = (c/d)*(R - rW*p0jstar);
   p0mstar = (R/alpha)*(p0istar + K[2] )/(p0istar + K[2]*W0);
   */
- double aij, hij, ej, m;
+  double aij, hij, ej, m, m_scale, aij_scale;
+  m_scale = 1.0; aij_scale = 1.0; 
+  // Attack rate, Handling time, Efficiency of consumption, Mortality rate, scaling factor for mortality rate.
   aij = 3.6*pow(10.0, -6.08)*pow(20.0, -0.37); // in km^2/(hr kg)
   hij = 1; // Handling time in hrs
   ej =0.45; m = 0.061609*pow(20.0, -0.25)/8760.0; // Mortality rate in hr^{-1}
@@ -60,17 +62,17 @@ int main(int argc, char *argv[])
                       {aij, 0.0}};  // Attack rate matrix []. No canabilism, symmetric effects. 
   double M[SpB] = {d, m};     // Mortality Rate of Species. (in hr^{-1})
   double E[SpB] ={1.0, ej}; //Efficiency of consumption.
-  //double D[Sp] ={d0, d1}; //Diffusion coefficients for species. (in km^2/hr)
   double pR[Sp] ={0.0, 1.04285/2.0}; //Perception rate of species (in km)
 
   double Vstar = m/((ej -m*hij)*aij); //Steady state for grazer.
+  double Wstar_veg = d*K[1]/(c*gmax - d); //Steady state for vegetation.
 
   double init_frac_graz = 1.0; //Initial fraction of grazers in the high state.
 
   cout << "Presets are as follows:\n";
   cout << "For the vegetation:\n";
   cout << "c = " << c << "\t gmax = " << gmax << "\t d = " << d << "\t alpha = " << alpha << "\t W0 = " << W0 << "\t rW = " << rW << endl;
-  cout << "\nMFT biomass density of Vegetation = " << Vstar << " kg/km^2\n" << endl;
+  cout << "\nBase MFT biomass density of Vegetation = " << Vstar << " kg/km^2\n" << endl;
   cout << "For the grazer:\n";
   cout << "aij = " << aij << "\t hij = " << hij << "\t ej = " << ej << "\t m = " << m << endl;
   cout << "\n System-level details:\n";
@@ -114,13 +116,19 @@ int main(int argc, char *argv[])
     cout << "Enter fractional deviation from MFT for initial conditions of Grazer and Predator above R_c (1e-5 is a good choice): ";
     cin >> init_frac_graz;
 
+    //cout << "Enter scaling factor for grazer nat. mortality (mj) which has a base value " << m << " \t:";
+    //cin >> m_scale;
+
+    cout << "Enter scaling factor for grazer attacking rate (aij) which has a base value " << aij << " \t:";
+    cin >> aij_scale;
+
     cout << "Enter Prefix (common choices include 'DiC-REF', 'DDM-DiC-BURNIN', 'nDiC' etc.) If not provided, default value: " 
         + prefix + " will be used: ";
     cin >> preFIX;
 
   }
   // If the user has entered the correct number of arguments, then the arguments are read from the command line.
-  else if(argc == 11)
+  else if(argc == 12)
   {
     dt = atof(argv[1]);
     t_max = atof(argv[2]);
@@ -131,7 +139,8 @@ int main(int argc, char *argv[])
     div = atoi(argv[7]);
     dP = atof(argv[8]);
     init_frac_graz = atof(argv[9]);
-    preFIX = argv[10];
+    aij_scale = atof(argv[10]);
+    preFIX = argv[11];
   }
   // If there are otherwise an arbitrary number of arguements, terminate the program.
   else
@@ -170,20 +179,60 @@ int main(int argc, char *argv[])
   cout << "Save directory for final data: " << stat_prefix << "\n";
 
   set_global_system_params(dt, dx); //Set the global parameters for the simulation.
-  cout << "Global parameters set, with dt/2.0 = " << dt2 << " and dx*dx = " << dx2 <<  " and 1/(dx*dx) = " << dx1_2 << "\n";
-  //INITIAL CONDITIONS:
 
+  // Setting m to the scaled value, and assosciated parameters (M[] and MFT expressions) to the scaled value.
+  //m = m_scale*m; M[1] = m; // Mortality Rate of Species. (in hr^{-1)
+  aij = aij_scale*aij; A[0][1] = aij; A[1][0] = aij; // Attack rate matrix []. No canabilism, symmetric effects.
+  Vstar = m/((ej -m*hij)*aij); //Steady state for grazer.
+  cout << "Global parameters set, with dt/2.0 = " << dt2 << " and dx*dx = " << dx2 <<  " and 1/(dx*dx) = " << dx1_2 << "\n";
+  //cout << "Scaled grazer nat. mortality (mj) = " << M[1] << "\n";
+  cout << "Scaled grazer attacking rate (aij) = " << A[0][1] << " " << A[1][0] << "\n";
+  cout << "Base MFT biomass density of Vegetation (V*) = " << Vstar << " kg/km^2\n" << endl;
+  
+  //INITIAL CONDITIONS:
   // Equations for MFT Eqilibrium values  as functions of a (Rainfall).
 
   
 
-  double mG = 6.76550102e+08; double cG =  2.81895876e+07;
+  
+  ///** CORRECT MFT INITIALISATIONS
+  //double mG = (6.76550102e+08)/m_scale; double cG =  (2.81895876e+07)/m_scale; 
+  //double mW_Prev = w; double cW_Prev = 0.0;
+  double mW = 1/rW; double cW = 0.0;
+  double mW_Prev = 1/rW; double cW_Prev  = 0.0;
+  double A_G = 7332.541; double b_G = -15.5375; // DEFAULTS when aij_scale = m_scale = e_scale = 1
+
+  if (m_scale == 1.0)
+  {
+    if(aij_scale == 1.0)
+    { A_G = 7332.541; b_G = -15.5375; }
+    else if(aij_scale == 10)
+    { A_G = 645.346; b_G = -18.94669; }
+    else if(aij_scale == 25)
+    { A_G = 240; b_G = -20.7705;      }
+    else
+    { std::cerr << "Scaling factor for aij not supported. Please use 1, 10, or 25." << endl; exit(1); }
+  }
+  else
+  { std::cerr << "Scaling factor for mortality rate not supported. Please use 1." << endl; exit(1); }
+  double mO = (Vstar + K[2] )/((Vstar + K[2]*W0)*alpha); double cO = 0.0; // O* = R*(V* + K2)/[(V* + K2*W0)*alpha]
+  double mO_Prev = 1/(alpha*W0); double cO_Prev = 0.0; 
+  string MFT_V = std::to_string(Vstar); 
+  string MFT_V_Prev = std::to_string(0);
+  string MFT_G = std::to_string(A_G) + " * ( 1 - exp( " + std::to_string(b_G) + " * ( a - " + std::to_string(a_c) + " )) )";
+  string MFT_G_Prev = std::to_string(0);
+  string MFT_W = std::to_string(mW) + " * a - " + std::to_string(cW);
+  string MFT_W_Prev = std::to_string(Wstar_veg);
+  string MFT_O = std::to_string(mO) + " * a";
+  string MFT_O_Prev = std::to_string(mO_Prev) + " * a";
+  
+  /** MFT INITIALISATIONS (OLD)
+  double mG = (6.76550102e+08)/m_scale; double cG =  (2.81895876e+07)/m_scale;
   double mW = 60; double cW = 2.50;
   double mW_Prev = 1/rW; double cW_Prev = 0.0;
   double mO = (Vstar + K[2] )/((Vstar + K[2]*W0)*alpha); double cO = 0.0; // O* = R*(V* + K2)/[(V* + K2*W0)*alpha]
   double mO_Prev = 1/(alpha*W0); double cO_Prev = 0.0; 
   //double mO = 596.37; double cO = 0.0;
-
   string MFT_V = std::to_string(Vstar); string MFT_V_Prev = std::to_string(0);
   string MFT_G = std::to_string(mG) + " * a + " + std::to_string(cG);
   string MFT_G_Prev = std::to_string(0);
@@ -191,10 +240,18 @@ int main(int argc, char *argv[])
   string MFT_W_Prev = std::to_string(mW_Prev) + " * a";
   string MFT_O = std::to_string(mO) + " * a";
   string MFT_O_Prev = std::to_string(mO_Prev) + " * a";
+  //*/
+
+  // NOTE: The following clow is used for analytic MFT based initial conditions.
+  #if defined(INIT) && INIT == 0
+    double scaling_factor[2*Sp] = {Vstar, dP/dP, 1, 1,  1, init_frac_graz, 1, 1};
+    // USED FOR HOMOGENEOUS MFT BASED INITIAL CONDITIONS.
+  #else
+    double scaling_factor[2*Sp] = {5, dP/dP, 1, 1,  5, init_frac_graz, 1, 1};
+    // USED FOR PERIODIC MFT BASED INITIAL CONDITIONS.
+  #endif
 
   MFT_Vec_CoexExpr.assign({MFT_V_Prev, MFT_G_Prev, MFT_W_Prev, MFT_O_Prev, MFT_V, MFT_G, MFT_W, MFT_O});
-  // NOTE: The following clow is used for analytic MFT based initial conditions.
-  double scaling_factor[2*Sp] = {0, dP/dP, 1, 1,  5, init_frac_graz, 1, 1};
   double chigh[2*Sp]; 
 
   //NOTE: The following scaling_factor is used for Gaussian initial conditions for testing and is NOT MEANT FOR PRODUCTION RUNS.

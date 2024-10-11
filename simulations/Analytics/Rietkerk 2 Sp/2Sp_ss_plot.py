@@ -16,17 +16,25 @@ dx= 0.1 ; dt = 0.1; #From Bonachela et al 2015 (in km)
 d0 = 0.00025/24.0; d1=0.0298; d2 = 0.00025/24.0; d3= 0.025/24.0; #From Bonachela et al 2015 (in km^2/hr)
 k0= 0; k1 = 5; k2 =5000;
 
-# Parmeters for grazer (Pawar & Co)
+m_scaling = 1; # Scaling factor for mortality rate of grazer (mj) in kg/hr
+aij_scaling = 1; # Scaling factor for aij in km^2/hr
+e_scaling = 1; # Scaling factor for ej in hr^{-1}
+init_g_scaling = 1e-7*m_scaling; # Scaling factor for initial grazer density in kg/m^2
+
+#''' Parmeters for grazer (Pawar & Co)
+
 mG = 20.0; # Mass of producer in kg
-aij = 3.6*pow(10.0, -6.08)*pow(mG, -0.37); # in km^2/(hr kg)
+aij = aij_scaling*3.6*pow(10.0, -6.08)*pow(mG, -0.37); # in km^2/(hr kg)
 hij = 1; #Handling time in hrs
-ej =0.45; mj = 0.061609*pow(mG, -0.25)/8760.0; # Mortality rate in hr^{-1}
-
-# Parameters for grazer (Kefi and Brose)
-#Assuming mass of producer (mi) = 1 kg, mass of grazer (mj) = 10 kg
-#ej = 0.45; mj = 0.314*pow(10, -0.25); y =8; B0 =0.5
-#aij = (mj*y)/B0; hij = 1/(mj*y);
-
+ej =e_scaling*0.45; mj = m_scaling*0.061609*pow(mG, -0.25)/8760.0; # Mortality rate in hr^{-1}
+#'''
+''' Parameters for grazer (Kefi and Brose 2008)
+#Assuming mass of producer (mi) = 1 kg, mass of grazer (mj) = 20 kg
+mG = 20.0; # Mass of producer in kg
+ej = 0.45; mj = 0.138*pow(mG, -0.25); y =10; B0 =0.5 #y =8; B0 =0.5
+aij = (mj*y)/B0; hij = 1/(mj*y);
+ej =e_scaling*ej; mj = m_scaling*mj; aij= aij_scaling*aij; # Mortality rate in hr^{-1}
+#'''
 print("Parameters:\t")
 print("c = %g, gmax = %g, d = %g, alpha = %g, W0 = %g, rW = %g" %(c, gmax, d, alpha, W0, rW))
 print("cgmax = %g, d = %g" %(c*gmax, d))
@@ -49,6 +57,8 @@ R_trans = d*rW*k1/kappa;
 omega= rW*k1 + gmax*Vstar_coex;
 R_plus_min = 2*rW*k1 + omega + 2*rW*k1*math.sqrt(1 +omega/(rW*k1));
 R_minus_min = 2*rW*k1 + omega - 2*rW*k1*math.sqrt(1 +omega/(rW*k1));
+
+epsilon = 1e-6; # Small value to check for equality to zero.
 
 
 def sci_notation(num, decimal_digits=1, precision=None, exponent=None):
@@ -146,8 +156,10 @@ def Wstar_coex(R):
     V = Vegstar_coex(R)
     b = R  - gmax*V -rW*k1; #b.astype(complex);
     riyal = b/(2*rW); #riyal.astype(complex);
-    Wstar_plus = riyal + np.emath.sqrt(b**2 - 4*rW*k1*R)/(2*rW)
-    Wstar_minus = riyal - np.emath.sqrt(b**2 - 4*rW*k1*R)/(2*rW)
+    #Wstar_plus = riyal + np.emath.sqrt(b**2 - 4*rW*k1*R)/(2*rW)
+    Wstar_plus = riyal + np.emath.sqrt(b**2 + 4*rW*k1*R)/(2*rW)
+    #Wstar_minus = riyal - np.emath.sqrt(b**2 - 4*rW*k1*R)/(2*rW)
+    Wstar_minus = riyal - np.emath.sqrt(b**2 + 4*rW*k1*R)/(2*rW)
     return Wstar_plus, Wstar_minus
 
 def Gstar_coex(R, Wstar_plus, Wstar_minus):
@@ -155,6 +167,21 @@ def Gstar_coex(R, Wstar_plus, Wstar_minus):
     common= (ej*c/mj)*R - (ej*d/mj)*V; common.astype(complex);
     Gstar_plus = common- (ej*rW*c/mj)*Wstar_plus
     Gstar_minus = common - (ej*rW*c/mj)*Wstar_minus
+    return Gstar_plus, Gstar_minus
+
+def Wstar_init_coex(R):
+    V = Vegstar_coex(R)
+    b = R  - gmax*V -rW*k1; #b.astype(complex);
+    riyal = b/(2*rW); #riyal.astype(complex);
+    #Wstar_plus = riyal + np.emath.sqrt(b**2 - 4*rW*k1*R)/(2*rW)
+    #Wstar_init = riyal #+ np.emath.sqrt(b**2 + 4*rW*k1*R)/(2*rW)
+    return riyal
+
+def Gstar_init_coex(R, Wstar_plus, Wstar_minus, init_scaling_G = init_g_scaling):
+    V = Vegstar_coex(R)
+    common= (ej*c/mj)*R - (ej*d/mj)*V; common.astype(complex);
+    Gstar_plus = init_scaling_G*(common- (ej*rW*c/mj)*Wstar_plus)
+    Gstar_minus = init_scaling_G*(common - (ej*rW*c/mj)*Wstar_minus)
     return Gstar_plus, Gstar_minus
 
 def eigenval_check(R, Vstar, Wstar, Ostar, Gstar):
@@ -212,14 +239,14 @@ def eigenval_check(R, Vstar, Wstar, Ostar, Gstar):
     # Check the stability of the equilibria.
     # If the real part of the eigenvalues are negative, the equilibria are stable.
     # Return a boolean array of the same length as R, where True indicates stability and False indicates instability.
-    return np.all(eigvals.real < 0, axis=1), eigvals
+    return np.all(eigvals.real <= 0, axis=1), eigvals
 
 
 
 
 v =1;
 # Define the range of R values to be plotted.
-R = np.linspace(0, 0.3, 1000)
+R = np.linspace(0.0, 0.2, 16000)
 #R = np.array([0.1, 0.15, 0.2, 0.25])
 
 
@@ -313,10 +340,15 @@ def ss_plot():
         axes.text( R_minus_min - xmax/50.0, ymax/5.0, '$R^{-}_{min}$', rotation=90, color='tomato')
         axes.text(R_trans - xmax/50.0, ymax/10.0, '$R_{c}$', rotation=90, color='grey')
 
+        if(i == j == 1):
+            # For the last subplot, switch to log scale for y-axis.
+            axes.set_yscale('log')
+            
+
     plt.tight_layout()
     figure = plt.gcf() # get current figure
     figure.set_size_inches(15, 10)
-    plt.savefig('2Sp_ss_plot Rst --- %g Rend --- %g.png' %(R[0], R[-1]), dpi=1000)
+    plt.savefig('aij_m_scalings/NEW ALLO 2Sp_ss_plot M -- %g AIJ -- %g E -- %g.png' %(m_scaling,  aij_scaling, e_scaling), dpi=1000)
     plt.show()
     plt.close()
 
@@ -340,6 +372,9 @@ def stable_ss_plot():
     Veq_coex = Vegstar_coex(R); Oeq_coex = Ostar_coex(R)
     Wstar_plus, Wstar_minus = Wstar_coex(R)
     Gstar_plus, Gstar_minus = Gstar_coex(R, Wstar_plus, Wstar_minus)
+
+    Wstar_init = Wstar_init_coex(R)
+    Gstar_init_plus, Gstar_init_minus = Gstar_init_coex(R, Wstar_init, Wstar_init, init_g_scaling)
 
     # Check the stability of the equilibria using the eigenvalue check function.
     # If the real part of the eigenvalues are negative, the equilibria are stable.
@@ -384,36 +419,41 @@ def stable_ss_plot():
     print("Number of complex values in Wstar_minus: ", np.sum(mask2)) # Both are the same.
     print("Number of complex values in Wstar_plus[mask1]: ", len(Wstar_minus[mask2]))
     print("Number of complex values in R_complex_range: ", len(R_complex_range))
-    print("The range of R values where Wstar_plus is complex: ", R_complex_range[0], R_complex_range[-1])
+    if len(R_complex_range) > 0:
+        print("The range of R values where Wstar_plus is complex: ", R_complex_range[0], R_complex_range[-1])
 
     # Fit a linear function to the real part of Wstar_plus where it is complex.
     # We will use this to find the minimum value of R where the real part of Wstar_plus is positive.
 
     # Fit a linear function to the real part of Wstar_plus where it is complex.
-    popt_plus_Wst, pcov_plus_Wst = opt.curve_fit(linear, R_complex_range, np.real(Wstar_plus[mask1]))
+    #popt_plus_Wst, pcov_plus_Wst = opt.curve_fit(linear, R_complex_range, np.real(Wstar_plus[mask1]))
+    popt_plus_Wst, pcov_plus_Wst = opt.curve_fit(linear, R[checkstable_coex_plus], np.real(Wstar_plus[checkstable_coex_plus]))
     # Find the minimum value of R where the real part of Wstar_plus is positive (calling this R_trans_plus).
-    R_trans_plus = (popt_plus_Wst[1])/popt_plus_Wst[0]
+    #R_trans_plus = (popt_plus_Wst[1])/popt_plus_Wst[0]
     # Also find this value using just Wstar_plus and R values without fitting a linear function.
     # This will be used to check the accuracy of the linear fit.
 
     #This is the minimum value of R where the real part of Wstar_plus is positive.
     # Do this by finding the first value of R where the real part of Wstar_plus is positive.
 
-    Wstar_complex_plus_realvals = np.real(Wstar_plus[mask1])
+    #Wstar_complex_plus_realvals = np.real(Wstar_plus[mask1])
     # Smallest positive value in Wstar_complex_plus_realvals
-    Wstar_complex_plus_minpos = Wstar_complex_plus_realvals[Wstar_complex_plus_realvals > 0].min()
+    #Wstar_complex_plus_minpos = Wstar_complex_plus_realvals[Wstar_complex_plus_realvals > 0].min()
     # Find the index of this value in Wstar_plus[mask1] and use this to find the corresponding value of R.
-    index = np.where(Wstar_complex_plus_realvals == Wstar_complex_plus_minpos)[0][0]
-    R_trans_plus_check = R_complex_range[index]
+    #index = np.where(Wstar_complex_plus_realvals == Wstar_complex_plus_minpos)[0][0]
+    #R_trans_plus_check = R_complex_range[index]
 
     # Now fit a linear function to the real part of Gstar_plus where it is complex.
     print("Number of complex values in Gstar_plus: ", np.sum(mask1))
     print("Number of complex values in Gstar_minus: ", np.sum(mask2)) # Both are the same.
     print("Number of complex values in R_complex_range: ", len(R_complex_range))
-    print("The range of R values where Gstar_plus is complex: ", R_complex_range[0], R_complex_range[-1])
+    if len(R_complex_range) > 0:
+        print("The range of R values where Gstar_plus is complex: ", R_complex_range[0], R_complex_range[-1])
 
     # Fit a linear function to the real part of Gstar_plus where it is complex.
-    popt_plus_Gst, pcov_plus_Gst = opt.curve_fit(linear, R_complex_range, np.real(Gstar_plus[mask1]))
+    #popt_plus_Gst, pcov_plus_Gst = opt.curve_fit(linear, R_complex_range, np.real(Gstar_plus[mask1]))
+    popt_plus_Gst, pcov_plus_Gst = opt.curve_fit(saturating_exponential, R[checkstable_coex_plus], np.real(Gstar_plus[checkstable_coex_plus]), 
+                                                 p0=[pow(10, 4), 5, R_trans], bounds=([0, -np.inf, R_trans  -epsilon], [pow(10, 6), np.inf, R_trans +epsilon]))
     # Linear function fit for Ostar_coex
     popt_plus_Ost, pcov_plus_Ost = opt.curve_fit(linear, R, Ostar_coex(R))
 
@@ -421,7 +461,7 @@ def stable_ss_plot():
     print("Linear fit parameters for Gstar_plus: ", popt_plus_Gst)
     print("Linear fit parameters for Ostar_coex: ", popt_plus_Ost)
 
-    print(" R_c_plus = %g, R_c_plus_check = %g, R_c = %g" %(R_trans_plus, R_trans_plus_check, R_trans ))
+    #print(" R_c_plus = %g, R_c_plus_check = %g, R_c = %g" %(R_trans_plus, R_trans_plus_check, R_trans ))
 
 
 
@@ -445,14 +485,26 @@ def stable_ss_plot():
     ax[0,1].plot(R[checkstable_coex_plus], Wstar_plus[checkstable_coex_plus], label='$W^*_\mathrm{Coexist+}$', alpha=0.75)
     ax[0,1].plot(R[checkstable_coex_minus], Wstar_minus[checkstable_coex_minus], label='$W^*_\mathrm{Coexist-}$', alpha=0.75)
 
+    # Add initial values of Wstar and Gstar for coexistence equilibria.
+    ax[0,1].plot(R[checkstable_coex_plus], Wstar_init[checkstable_coex_plus], label='$W^*_\mathrm{Init+}$', alpha=0.75)
+
     ax[1,1].plot(R[checkstable_coex_plus], Gstar_plus[checkstable_coex_plus], label='$G^*_\mathrm{Coexist+}$', alpha=0.75)
     ax[1,1].plot(R[checkstable_coex_minus], Gstar_minus[checkstable_coex_minus], label='$G^*_\mathrm{Coexist-}$', alpha=0.75)
 
-    ax[0,0].set_ylim(-100, 100); ax[0,0].set_title('Locally Stable $V^*$ vs R'); ax[0,1].set_title('Locally Stable $W^*$ vs R')
-    ax[1,0].set_ylim(-20, 200); ax[1,0].set_title('Locally Stable $O^*$ vs R'); ax[1,1].set_title('Locally Stable $G^*$ vs R')
+    # Add initial values of Gstar for coexistence equilibria.
+    ax[1,1].plot(R[checkstable_coex_plus], Gstar_init_plus[checkstable_coex_plus], label='$G^*_\mathrm{Init+}$', alpha=0.75)
+
+
+    ax[0,0].set_ylim(-100, 100); ax[0,0].set_title('Locally Stable $V^*$ vs R'); 
+    ax[0,1].set_title('Locally Stable $W^*$ vs R')
+    ax[1,0].set_ylim(-20, 200); ax[1,0].set_title('Locally Stable $O^*$ vs R'); 
+    # Set y-axis to log scale for Gstar, Also set maximum ylim for Gstar to 1e5. 
+    ax[1,1].set_yscale('log'); 
+    ax[1,1].set_ylim(top=1e4); 
+    ax[1,1].set_title('Locally Stable $G^*$ vs R')
 
     # Set title for overall plot
-    fig.suptitle('Stable Equilibria for Rietkerk + Grazer Model, Allometric Parameters', fontsize=16)
+    fig.suptitle(r'Stable Equilibria for Rietkerk + Grazer Model, ALLO Parameters, $m$, $a_{ij}$ , $e_j = %g ,  %g, %g$' %(m_scaling, aij_scaling, e_scaling), fontsize=16)
     
     # Finally add three dashed horizontal lines to show values of R_plus_min, R_minus_min and R_c ON ALL SUBPLOTS with appropriate axes.text labels (rotated 90)
 
@@ -475,8 +527,8 @@ def stable_ss_plot():
 
     plt.tight_layout()
     figure = plt.gcf() # get current figure
-    figure.set_size_inches(15, 10)
-    plt.savefig('STANDARD Stable_ALLO_2Sp_ss_plot Rst --- %g Rend --- %g.png' %(R[0], R[-1]), dpi=1000)
+    figure.set_size_inches(15, 10) #aij_m_scalings/
+    plt.savefig('aij_m_scalings/NEW Stable_ALLO_2Sp_ss_plot M -- %g AIJ -- %g E -- %g.png' %(m_scaling,  aij_scaling, e_scaling), dpi=1000)
     plt.show()
     plt.close()
 
@@ -485,11 +537,14 @@ def stable_ss_plot():
     sea.set(style='whitegrid')
     sea.set_palette('husl')
     ax[0].plot(R[checkstable_coex_plus], Wstar_plus[checkstable_coex_plus], label='$W^*_\mathrm{Coexist+}$', alpha=0.75)
-    ax[0].plot(R_complex_range, linear(R_complex_range, *popt_plus_Wst), label= r"$W^* = %g\times R + %g$" %(popt_plus_Wst[0], popt_plus_Wst[1]), alpha=0.75)
+    #ax[0].plot(R_complex_range, linear(R_complex_range, *popt_plus_Wst), label= r"$W^* = %g\times R + %g$" %(popt_plus_Wst[0], popt_plus_Wst[1]), alpha=0.75)
+    ax[0].plot(R[checkstable_coex_plus], linear(R[checkstable_coex_plus], *popt_plus_Wst), label= r"$W^* = %g\times R + %g$" %(popt_plus_Wst[0], popt_plus_Wst[1]), alpha=0.5)
     ax[0].set_title('Locally Stable $W^*$ vs R')
     
     ax[1].plot(R[checkstable_coex_plus], Gstar_plus[checkstable_coex_plus], label='$G^*_\mathrm{Coexist+}$', alpha=0.75)
-    ax[1].plot(R_complex_range, linear(R_complex_range, *popt_plus_Gst), label= r"$G^* = %g\times R + %g$" %(popt_plus_Gst[0], popt_plus_Gst[1]), alpha=0.75)
+    #ax[1].plot(R_complex_range, linear(R_complex_range, *popt_plus_Gst), label= r"$G^* = %g\times R + %g$" %(popt_plus_Gst[0], popt_plus_Gst[1]), alpha=0.75)
+    ax[1].plot(R[checkstable_coex_plus], saturating_exponential(R[checkstable_coex_plus], *popt_plus_Gst), 
+               label= r"$G^* = $" +sci_notation(popt_plus_Gst[0], 5, 5, 5)+ r"$(1 - e^{-%g(R - %g)})$" %(popt_plus_Gst[1], popt_plus_Gst[2]), alpha=0.5)
     ax[1].set_title('Locally Stable $G^*$ vs R')
 
     ax[2].plot(R, Ostar_coex(R), label='$O^*_\mathrm{Coexist}$', alpha=0.75)
@@ -509,7 +564,7 @@ def stable_ss_plot():
     plt.tight_layout()
     figure = plt.gcf() # get current figure
     figure.set_size_inches(15, 10)
-    plt.savefig('STANDARD LinearFit_Stable_ALLO_2Sp_ss_plot Rst --- %g Rend --- %g.png' %(R[0], R[-1]), dpi=1000)
+    plt.savefig('aij_m_scalings/NEW Fit_Stable_ALLO_2Sp_ss_plot M -- %g AIJ -- %g E -- %g.png' %(m_scaling,  aij_scaling, e_scaling), dpi=1000)
     plt.show()
     plt.close()
 
@@ -521,8 +576,9 @@ def stable_ss_plot():
 
 
 
+#
+ss_plot()
 stable_ss_plot()
-#ss_plot()
 
 '''
 print("Testing the functions...")

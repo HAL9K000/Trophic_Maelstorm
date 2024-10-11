@@ -48,15 +48,16 @@ from matplotlib.collections import LineCollection
 
 # User inputs.
 SPB = 2; # Number of species in the model
-#in_dir = f"../Data/Remote/DP/Reorg_Frames/{SPB}Sp/DPParam_20_MFT/" # FOR DP
-#out_dir = f"../../Images/{SPB}Sp/DPParam_20_MFT/" # FOR DP
+#in_dir = f"../Data/Remote/DP/Reorg_Frames/{SPB}Sp/DPParam_MFT/" # FOR DP
+#out_dir = f"../../Images/{SPB}Sp/DPParam_MFT/" # FOR DP
 
-in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/StdParam_20_MFT/"
-out_dir = f"../../Images/{SPB}Sp/StdParam_20_MFT/"
+in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/MSCALE_20_MFT/"
+out_dir = f"../../Images/{SPB}Sp/MSCALE_20_MFT/"
 Path(out_dir).mkdir(parents=True, exist_ok=True)
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 
-g = 128;  dP = 10000; Geq = 7.4774; R_max= -1;
+g = 128;  dP = 10000; Geq = 748.29; R_max= -1;
+#g = 128;  dP = 1; Geq = 0; R_max= -1;
 T_vals =[]; TS_vals =[];
 a_vals = []    
 
@@ -1653,16 +1654,17 @@ def recursive_copydir(src, dst, include_filetypes = ["*.txt"],
 
 #
 recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filetypes =["*.png", "*.jpg", "*.jpeg", "*.mp4"], symlinks=False)
-#a_vals = [0.032, 0.05] #, 0.057 , 0.06] #0.051, 0.053, 0.055]; 
-#T_vals=[91201]
+#a_vals = [0.026, 0.034, 0.0415, 0.042, 0.052] #, 0.057 , 0.06] #0.051, 0.053, 0.055]; 
+#T_vals=[0, 63095.7, 69183.1, 75857.7, 83176.3, 91201, 99999.9]
 #T_vals= [158489, 173780, 190546, 208930, 229087, 251189, 275423, 301995, 331131, 363078]
 #prefixes = ["DIC-DDM1-NREF-0.5LI", "DIC-DDM5-NREF-0.5LI", "DIC-DDM10-NREF-0.5LI", "DIC-DDM5-NREF-1.1HI"]
-prefixes = ["DiC-S7LI"] #"DiC-B6-UNTY" #"DiC-B6-MFTEQ"]#"DiC-STD"]#,"DiC-S7LI", "DiC-0.1LI"]
+prefixes = ["DIC-S5M100LI"]    #"DIC-S10M3LI"]    #"DIC-S8M1LI"] #"DiC-B6-UNITY"] #"DiC-B6-UNTY" 
+#"DiC-B6-MFTEQ"]#"DiC-STD"]#,"DiC-S7LI", "DiC-0.1LI"]
 #prefixes = ["COR-DDM5-NREF-0.5HI", "COR-DDM10-NREF-0.5HI", "COR-DDM1-NREF-0.5HI"]
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
-TS_vals = [229087] #69183.1] # #[229087] #[208930] #91201]  #[190546]; #[109648];
-a_vals = [0.034, 0.048, 0.054]; 
-T_vals = [0, 91201, 190546, 208930, 229087]
+TS_vals = [190546] #57544] #69183.1] # #[229087] #[208930] #91201]  #[190546]; #[109648];
+#a_vals = []#0.034, 0.048, 0.054]; 
+#T_vals = []#0, 91201, 190546, 208930, 229087]
 
 print("Note the following set values:")
 print(f"Prefixes: {prefixes}")
@@ -1674,7 +1676,7 @@ print(f"in_dir: {in_dir} \nout_dir: {out_dir}")
 input("Press F to pay respects...")
 print("\n\n__________________________________________________________________________________________\n\n")
 
-#'''
+'''
 for Pre in prefixes:
     frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= 0, plt_gamma= False, delpng = False)
     print(f"Done with making frames for {Pre}")
@@ -1704,16 +1706,16 @@ for Pre in prefixes:
 #analyse_timeseriesData(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "MEAN_REPLICATES.txt")
 if SPB == 3:
     variable_labels = [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"]
-    Tavg_win_index = [150000, 240000]
+    Tavg_win_index = [100000, 240000]
     # Window for averaging over last Tavg_win_index values of T (if negative, then average over last |Tavg_win_index| values of T)
     # If Tavg_win_index[0] < 0 and Tavg_win_index[1] <= 0, then average over last Tavg_win_index[0] + Tmax to Tavg_win_index[1] + Tmax values of T.
     # If Tavg_win_index[1] >= Tavg_win_index[0] >= 0, then average over last Tavg_win_index[0] to Tavg_win_index[1] values of T.
 elif SPB == 2:
-    variable_labels = [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r"]; Tavg_win_index = [150000, 240000] #[50000, 100000] #
+    variable_labels = [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r","<<W(x; t)>_x>_r" , "<<O(x; t)>_x>_r"]; Tavg_win_index = [150000, 200000]#[150000, 240000] #[50000, 100000] #
 elif SPB == 1:
-    variable_labels = ["<<P(x; t)>_x>_r"]; Tavg_win_index = [150000, 240000] #[65000, 100000]
-#analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels)
-#analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = Tavg_win_index, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels)
+    variable_labels = ["<<P(x; t)>_x>_r"]; Tavg_win_index = [65000, 100000] #[65000, 100000]
+analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels)
+analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = Tavg_win_index, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels)
 
 
 #analyse_FRAME_POTdata(in_dir, out_dir, prefixes, a_vals, T_vals, find_minima= True, filename = "Pot_Well.csv", 

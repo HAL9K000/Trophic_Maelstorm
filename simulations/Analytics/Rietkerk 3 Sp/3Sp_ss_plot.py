@@ -9,23 +9,31 @@ import scipy.optimize as opt
 
 
 # Define global variables.
+epsilon = 1e-4; # Tolerance for checking if a number is close to zero.
 
 c = 10000; gmax = 0.05*pow(10, -3.0)/24.0; d = 0.25/24.0; alpha =0.2/24.0; W0 = 0.2; rW = 0.2/24.0; # From Bonachela et al 2015
 dx= 0.1 ; dt = 0.1; #From Bonachela et al 2015 (in km)
 d0 = 0.00025/24.0; d1=0.0298; d2 = 0.00025/24.0; d3= 0.025/24.0; #From Bonachela et al 2015 (in km^2/hr)
 k0= 0; k1 = 5; k2 =5000;
 
+# Scaling factors for the grazer parameters.
+mj_scaling = 1; aij_scaling = 10; ej_scaling = 1;
+init_g_scaling = 1e-7*mj_scaling; # Scaling factor for initial grazer density in kg/m^2
+
+# Scaling factors for the predator parameters.
+mm_scaling = 1; ajm_scaling = 1; em_scaling = 1;
+init_p_scaling = 1e-7*mm_scaling; # Scaling factor for initial predator density in kg/m^2
 
 # Parmeters for grazer (Pawar & Co)
 mG = 20.0; # Mass of producer in kg
 mP = 100.0; # Mass of predator in kg
-aij = 3.6*pow(10.0, -6.08)*pow(mG, -0.37); # in km^2/(hr kg)
+aij = aij_scaling*3.6*pow(10.0, -6.08)*pow(mG, -0.37); # in km^2/(hr kg)
 hij = 1; #Handling time in hrs
-ej =0.45; mj = 0.061609*pow(mG, -0.25)/8760.0; # Mortality rate in hr^{-1}
+ej =ej_scaling*0.45; mj = mj_scaling*0.061609*pow(mG, -0.25)/8760.0; # Mortality rate in hr^{-1}
 # Parmeters for predator (Pawar & Co)
-ajm = 3.6*pow(10.0, -6.08)*pow(mP, -0.37); # in km^2/(hr kg)
+ajm = ajm_scaling*3.6*pow(10.0, -6.08)*pow(mP, -0.37); # in km^2/(hr kg)
 hjm = 1; #Handling time in hrs
-em =0.85; mm = 0.061609*pow(mP, -0.25)/8760.0; # Mortality rate in hr^{-1}
+em =em_scaling*0.85; mm = mm_scaling*0.061609*pow(mP, -0.25)/8760.0; # Mortality rate in hr^{-1}
 
 
 ''' # Parameters for grazer (Kefi and Brose)
@@ -93,6 +101,9 @@ Some of the functions can return imaginary values for certain values of R, in wh
 # Define functional forms of the equilibrium values of the variables as functions of R for scipy.optimize.root to find the roots.
 def saturating_exponential(x, A, b,c):
     return A*(1 - np.exp(-b*(x-c)))
+
+def decaying_exponential(x, A, b, c, D):
+    return A*np.exp(-b*(x-c)) + D
 
 def linear(x, m, c):
     return m*x + c
@@ -164,8 +175,8 @@ def Wstar_graz(R):
     V = Vegstar_graz(R)
     b = R  - gmax*V -rW*k1; #b.astype(complex);
     riyal = b/(2*rW); #riyal.astype(complex);
-    Wstar_plus = riyal + np.emath.sqrt(b**2 - 4*rW*k1*R)/(2*rW)
-    Wstar_minus = riyal - np.emath.sqrt(b**2 - 4*rW*k1*R)/(2*rW)
+    Wstar_plus = riyal + np.emath.sqrt(b**2 + 4*rW*k1*R)/(2*rW)
+    Wstar_minus = riyal - np.emath.sqrt(b**2 + 4*rW*k1*R)/(2*rW)
     return Wstar_plus, Wstar_minus
 
 def Gstar_graz(R, Wstar_plus, Wstar_minus):
@@ -278,8 +289,13 @@ def eigenval_check(R, Vstar, Wstar, Ostar, Gstar, Pstar):
     return np.all(eigvals.real < 0, axis=1), eigvals
 
 try:
-    R_Vcoex = pan.read_csv(f'Allo_{mG:g}_{mP:g}_0_0.3_1000_Trial_Analytical_solutions.csv')#, converters={'Soln2': lambda s: complex(s.replace('*I', 'j')),
-                                                                            #             'Soln3': lambda s: complex(s.replace('*I', 'j'))})
+    R_Vcoex = pan.read_csv(f'Allo_a_{aij_scaling:g}_{ajm_scaling:g}_m_{mj_scaling:g}_{mm_scaling:g}_e_{ej_scaling:g}_{em_scaling:g}_{mG:g}_{mP:g}_0_0.3_3000_Trial_Analytical_soln.csv', 
+                           converters={'Soln2': lambda s: complex(s.replace('*I', 'j')),
+                                       'Soln3': lambda s: complex(s.replace('*I', 'j'))})
+    
+    '''R_Vcoex = pan.read_csv(f'Allo_{mG:g}_{mP:g}_0_0.3_1000_Trial_Analytical_solutions.csv', 
+                           converters={'Soln2': lambda s: complex(s.replace('*I', 'j')),
+                                       'Soln3': lambda s: complex(s.replace('*I', 'j'))})'''
     R = np.array(R_Vcoex['R']).astype(float)
     print(R)
     # Convert columns to numpy arrays, converting to float if string.
@@ -317,7 +333,8 @@ def ss_plot():
     fig, ax = plt.subplots(2, 3, figsize=(16, 8), sharex=True)
     sea.set(style='whitegrid')
     sea.set_palette('husl')
-    fig.suptitle('Steady state solutions for R, Kefi et al. 2012')
+    fig.suptitle(r'SS Soln for R, Allo $m_j, m_m = %g ,  %g $  $a_{ij}, a_{jm} = %g ,  %g $ $ e_j, e_m = %g ,  %g$' 
+                 %(mj_scaling, mm_scaling, aij_scaling, ajm_scaling, ej_scaling, em_scaling))
 
     #Extinction Equilibria
     ax[0, 0].plot(R, Vstar_noveg(R), label='$V^*_\mathrm{Ext}$', color='cornflowerblue')
@@ -453,7 +470,8 @@ def ss_plot():
     plt.tight_layout()
     figure = plt.gcf() # get current figure
     figure.set_size_inches(16, 10)
-    plt.savefig('3Sp_ss_plot KEFI Rst --- %g Rend --- %g.png' %(R[0], R[-1]), dpi=1000)
+    plt.savefig('aij_m_scalings/SS PLOT ALLO A --- %g %g M --- %g %g E --- %g %g.png' 
+                %(aij_scaling, ajm_scaling, mj_scaling, mm_scaling, ej_scaling, em_scaling), dpi=1000)
     plt.show()
     plt.close()
 
@@ -589,7 +607,8 @@ def stable_ss_plot():
     ax[1,1].set_title('Locally Stable $P^*$ vs R')
 
     # Set title for overall plot
-    fig.suptitle('Stable Equilibria for Rietkerk + Grazer + Predator Model, Allometric Parameters, $m_G = %g kg, m_P = %g kg$' %(mG, mP), fontsize=16)
+    fig.suptitle(r'Stable Equilibria for Rietkerk 3Sp Model, Allometric, $m_G = %g kg, m_P = %g kg$; $m_j, m_m = %g ,  %g $;  $a_{ij}, a_{jm} = %g ,  %g $; $ e_j, e_m = %g ,  %g$' 
+                 %(mG, mP, mj_scaling, mm_scaling, aij_scaling, ajm_scaling, ej_scaling, em_scaling))
     
     # Finally add three dashed horizontal lines to show values of R_plus_min, R_minus_min and R_c ON ALL SUBPLOTS with appropriate axes.text labels (rotated 90)
 
@@ -622,7 +641,8 @@ def stable_ss_plot():
     plt.tight_layout()
     figure = plt.gcf() # get current figure
     figure.set_size_inches(15, 10)
-    plt.savefig('STANDARD Stable_ALLO_3Sp_ss_plot mG --- %g mP --- %g Rst --- %g Rend --- %g.png' %(mG, mP, R[0], R[-1]), dpi=1000)
+    plt.savefig('aij_m_scalings/STABLE ALLO_3Sp_ss_plot mG -- %g mP -- %g A --- %g %g M --- %g %g E --- %g %g.png' 
+                %(mG, mP, aij_scaling, ajm_scaling, mj_scaling, mm_scaling, ej_scaling, em_scaling), dpi=1000)
     plt.show()
     plt.close()
 
@@ -677,16 +697,25 @@ def find_functional_forms_ss():
     print("Number of true values in checkstable_coex3: ", np.sum(checkstable_coex3))
     print("Number of true values in checkstable_coex: ", np.sum(checkstable_coex))
 
+    # Splice checkstable_coex3 for indices where corresponding R values are > R_trans.
+    upper_R_trans_checkstable_coex3 = np.logical_and(checkstable_coex3, Peq_coex_3 > 0)
+    # Splice checkstable_coex3 for indices where corresponding R values are > R_minus_min
+    upper_R_minus_min_checkstable_coex3 = np.logical_and(checkstable_coex3, R > 2*R_minus_min)
+
 
     checkstable_coex = np.logical_or(checkstable_coex1, checkstable_coex2, checkstable_coex3)
     # Coexistence 3 Eq for Vstar has a linear form. 
     popt_coex3_Vst, pcov_coex3_Vst = opt.curve_fit(linear, R[checkstable_coex3], Vstarcoex_3[checkstable_coex3])
     # Coexistence 3 Eq for Wstar has a linear form.
-    popt_coex3_Wst, pcov_coex3_Wst = opt.curve_fit(linear, R[checkstable_coex3], Weq_coex_3[checkstable_coex3], p0= [-3.36, 5.18], bounds=([-np.inf, 5.18], [-3.3, 5.2]))
+    popt_coex3_Wst, pcov_coex3_Wst = opt.curve_fit(linear, R[checkstable_coex3], Weq_coex_3[checkstable_coex3], p0= [-3.36, 5.18])#, bounds=([-np.inf, 5.18], [-3.3, 5.2]))
+    # Coexistence 3 Eq for Wstar has a decaying exponential form.
+    #popt_coex3_Wst, pcov_coex3_Wst = opt.curve_fit(decaying_exponential, R[upper_R_minus_min_checkstable_coex3], Weq_coex_3[upper_R_minus_min_checkstable_coex3], 
+    #                                               p0=[5, 0.1, R_minus_min, 1])#, bounds=( [ 0, 0, 0, 0], [np.inf, np.inf, np.inf, 1]))
     # Coexistence 1 for Ostar has a linear form.
     popt_coex3_Ost, pcov_coex3_Ost = opt.curve_fit(linear, R[checkstable_coex1], Oeq_coex_3[checkstable_coex1])
     # Coexistence 3 for Predator has a saturating exponential form, with guess values for A ~ 10^5.5, 
-    popt_coex3_Pst, pcov_coex3_Pst = opt.curve_fit(saturating_exponential, R[checkstable_coex3], Peq_coex_3[checkstable_coex3], p0=[pow(10, 5.5), 0.1, R_trans])
+    popt_coex3_Pst, pcov_coex3_Pst = opt.curve_fit(saturating_exponential, R[upper_R_trans_checkstable_coex3], Peq_coex_3[upper_R_trans_checkstable_coex3], 
+                                                   p0=[pow(10, 5.5), 0.1, R_trans], bounds=( [ 1000, 0, R_trans - epsilon], [pow(10, 6.5), 50, R_trans + epsilon]))
 
     print("Coexistence 3 Eq for Vstar: ", popt_coex3_Vst)
     print("Coexistence 3 Eq for Wstar: ", popt_coex3_Wst)
@@ -705,6 +734,7 @@ def find_functional_forms_ss():
 
     ax[0,1].plot(R[checkstable_coex3], Weq_coex_3[checkstable_coex3], label='$W^*_\mathrm{Coexist3}$', alpha=0.75)
     ax[0,1].plot(R[checkstable_coex3], linear(R[checkstable_coex3], *popt_coex3_Wst), label=r"$W^* = %g\times R + %g$" %(popt_coex3_Wst[0], popt_coex3_Wst[1]), alpha=0.75)
+    #ax[0,1].plot(R[checkstable_coex3], decaying_exponential(R[checkstable_coex3], *popt_coex3_Wst), label=r"$W^* = %g + %g e^{-%g(R - %g)}$" %(popt_coex3_Wst[3], popt_coex3_Wst[0], popt_coex3_Wst[1], popt_coex3_Wst[2]), alpha=0.75)
     ax[0,1].set_title('$W^*$ vs R')
     ax[0,1].set_ylabel('$W^*$')
 
@@ -743,10 +773,11 @@ def find_functional_forms_ss():
     figure = plt.gcf() # get current figure
 
     # Set title for overall plot
-    fig.suptitle('Functional Forms of Stable Equilibria for Rietkerk + Grazer + Predator Model, Allometric Parameters, $m_G = %g kg, m_P = %g kg$' %(mG, mP), fontsize=16)
+    fig.suptitle(r'Functional Forms of Stable Eq for Rietkerk 3Sp Model, Allometric, $m_G = %g kg, m_P = %g kg$; $m_j, m_m = %g ,  %g $;  $a_{ij}, a_{jm} = %g ,  %g $; $ e_j, e_m = %g ,  %g$' 
+                 %(mG, mP, mj_scaling, mm_scaling, aij_scaling, ajm_scaling, ej_scaling, em_scaling))
     #plt.tight_layout()
 
-    plt.savefig(f'STANDARD Functional_Forms_ALLO_3Sp_ss_plot mG --- {mG:g} mP --- {mP:g} Rst --- {R[0]:g} Rend --- {R[-1]:g}.png', dpi=1000)
+    plt.savefig(f'aij_m_scalings/STANDARD Functional_Forms_ALLO_3Sp_ss_plot mG --- {mG:g} mP --- {mP:g} A --- {aij_scaling:g} {ajm_scaling:g} M --- {mj_scaling:g} {mm_scaling:g} E --- {ej_scaling:g} {em_scaling:g}.png', dpi=600)
     plt.show()
     plt.close()
 
@@ -764,9 +795,8 @@ def find_functional_forms_ss():
 
 
 
-
-#stable_ss_plot()
-#ss_plot()
+ss_plot()
+stable_ss_plot()
 find_functional_forms_ss()
 
 

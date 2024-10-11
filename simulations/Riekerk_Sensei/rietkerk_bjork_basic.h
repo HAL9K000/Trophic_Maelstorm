@@ -56,6 +56,10 @@ namespace fs = std::filesystem;
 	#define SPB 3 //Number of biota species in the system (default value used if NOT defined).
 #endif
 
+#ifndef INIT
+	#define INIT 1 //Initial condition for the system (1 = Random Heterogenous Speckles, 0 = Homogeneous, 2 = Burn-in)
+#endif
+
 #if SPB == 3
 	#include "rietkerk_bjork_constants_3Sp.h"
 #elif SPB == 2
@@ -93,6 +97,7 @@ inline string prefix = "DiC-NREF-LI";
 inline string frame_folder = "../Data/Rietkerk/Frames/Stochastic/"+ std::to_string(SpB) +"Sp/" + prefix + "_"; //Folder to store frames.
 inline string prelim_folder = "../Data/Rietkerk/Prelims/Stochastic/"+ std::to_string(SpB) +"Sp/"+ prefix +"_"; //Folder to store preliminary data.
 inline const string frame_prefix = "/FRAME_P_c_DP_G_"; //Prefix for frame files.
+//inline const string errorframe_prefix = "/ERROR_"; //Prefix for frame files.
 inline const string gamma_prefix = "/GAMMA_G_"; //Prefix for gamma files.
 inline const string prelim_prefix = "/PRELIM_AGGRAND_P_c_ID_"; //Prefix for preliminary data files.
 inline const string replicate_prefix = "/PRELIM_TSERIES_P_c_DP_G_"; //Prefix for replicate time-series data files.
@@ -206,8 +211,9 @@ void init_fullframe(D2Vec_Double &array, int Sp, int size);
 
 void init_randbistableframe(D2Vec_Double &array, int size, double R, double R_c, double perc,  double c_high[], double c_low[]);
 // NOTE: The following function REQUIRES the exprtk library to be included in the project.
-void init_exprtk_randbiMFTframe_Improved(D2Vec_Double &array, int size, double R, double R_c, double dP, double perc,  double c_spread[]);
+void init_exprtk_homogenousMFTframe(D2Vec_Double &array, int size, double R, double R_c, double c_spread[]);
 void init_exprtk_randbiMFTframe(D2Vec_Double &array, int size, double R, double R_c, double dP, double perc,  double c_spread[]);
+void init_exprtk_randbiMFTframe_OLD(D2Vec_Double &array, int size, double R, double R_c, double dP, double perc,  double c_spread[]);
 
 
 void init_csvconstframe(D2Vec_Double &array, D2Vec_Double &const_ind_val, const std::string& filename, const vector<int> &columns, int size);

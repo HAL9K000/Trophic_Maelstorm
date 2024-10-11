@@ -53,6 +53,8 @@ int main(int argc, char *argv[])
   p0mstar = (R/alpha)*(p0istar + K[2] )/(p0istar + K[2]*W0);
   */
   double aij, hij, ej, mj; double ajm, hjm, em, mm; // Parameters for the grazer and predator.
+  double mj_scale, aij_scale, mm_scale, ajm_scale;
+  mj_scale = 1.0; aij_scale = 1.0; mm_scale = 1.0; ajm_scale = 1.0;
   
   aij = 3.6*pow(10.0, -6.08)*pow(20.0, -0.37); // in km^2/(hr kg)
   hij = 1; // Handling time in hrs
@@ -134,13 +136,19 @@ int main(int argc, char *argv[])
     cout << "Enter fractional deviation from MFT for initial conditions of Grazer and Predator above R_c (0.5-1.2 is a good choice): ";
     cin >> init_frac_grazpred;
 
+    cout << "Enter scaling factor for grazer attacking rate (aij) which has a base value " << aij << " \t:";
+    cin >> aij_scale;
+
+    cout << "Enter scaling factor for predator attacking rate (ajm) which has a base value " << ajm << " \t:";
+    cin >> ajm_scale;
+
     cout << "Enter Prefix (common choices include 'DiC-REF', 'DDM-DiC-BURNIN', 'nDiC' etc.) If not provided, default value: " 
         + prefix + " will be used: ";
     cin >> preFIX;
 
   }
   // If the user has entered the correct number of arguments, then the arguments are read from the command line.
-  else if(argc == 11)
+  else if(argc == 13)
   {
     dt = atof(argv[1]);
     t_max = atof(argv[2]);
@@ -151,13 +159,15 @@ int main(int argc, char *argv[])
     div = atoi(argv[7]);
     dP = atof(argv[8]);
     init_frac_grazpred = atof(argv[9]);
-    preFIX = argv[10];
+    aij_scale = atof(argv[10]);
+    ajm_scale = atof(argv[11]);
+    preFIX = argv[12];
   }
   // If there are otherwise an arbitrary number of arguements, terminate the program.
   else
   {
     cout << "Please enter the correct number of arguments.\n";
-    cout << "The correct number of arguments is 10.\n";
+    cout << "The correct number of arguments is 13.\n";
     cout << "The arguments are as follows: dt, t_max, g, r, a_start, a_end, div, dP, init_GP, PREFIX.\n";
     exit(1);
   }
@@ -197,12 +207,119 @@ int main(int argc, char *argv[])
 
   set_global_system_params(dt, dx); //Set the global parameters for the simulation.
   cout << "Global parameters set, with dt/2.0 = " << dt2 << " and dx*dx = " << dx2 <<  " and 1/(dx*dx) = " << dx1_2 << "\n";
-  //INITIAL CONDITIONS:
-
-  // Equations for MFT E Eqilibrium values  as functions of a (Rainfall).
-
+  
+  aij = aij_scale*aij; A[0][1] = aij; A[1][0] = aij; // Attack rate matrix []. No canabilism, symmetric effects.
+  ajm = ajm_scale*ajm; A[1][2] = ajm; A[2][1] = ajm; // Attack rate matrix []. No canabilism, symmetric effects.
+  Gstar = mm/((em -mm*hjm)*ajm); //Steady state for grazer.
+  double Vstar_veg = mj/((ej -mj*hij)*aij); //Steady state for vegetation (Veg) IFF there is NO predator.
+  //Gstar = mm/((em -mm*hjm)*ajm); //Steady state for grazer.
   
 
+  ///** CORRECT MFT INITIALISATIONS
+  double mV = 960000.0; double cV = -40000.0; // GOOD APPROXIMATION FOR GENERAL RANGE OF A AND M VALUES CONSIDERED HERE.
+  double mV_Prev = 0.0; double cV_Prev = 0.0;
+  double mW = -3.90344309; double cW = 5.18; 
+  double A_W = 0; double b_W = 0; 
+  // NOTE: If these values are ! = 0, then the MFT for W is not a simple linear function, but a decaying exponential.
+  // of the form: mW = A_W + b_W*exp(mW*(a - cW))) [mW < 0]
+  double mW_Prev = 1/rW; double cW_Prev  = 0.0; 
+  double mO = 120.0; double cO = 0.0; // GOOD APPROXIMATION FOR GENERAL RANGE OF A AND M VALUES CONSIDERED HERE.
+  double mO_Prev = 1/(alpha*W0); double cO_Prev = 0.0; 
+  double  A_Pr = 4.49723728e+05; double b_Pr = -1.73381257; 
+  // DEFAULTS when aij_scale = mj_scale = ej_scale = mm_scale = ajm_scale = = em_scale = 1
+  double A_G = 7332.541; double b_G = -15.5375; // DEFAULTS when aij_scale = mj_scale = ej_scale = 1
+
+  double mG_Prev = 0.0; double cG_Prev = 0.0;
+  double mPr_Prev = 0.0; double cPr_Prev = 0.0;
+  if( mj_scale == 1.0)
+  {
+    if(aij_scale == 1.0)
+    { A_G = 7332.541; b_G = -15.5375; }
+    else if(aij_scale == 10)
+    { A_G = 645.346; b_G = -18.94669; }
+    else if(aij_scale == 25)
+    { A_G = 240; b_G = -20.7705;      }
+    else
+    { std::cerr << "Scaling factor for aij not supported. Please use 1, 10, or 25." << endl; exit(1); }
+
+    if(mm_scale == 1.0)
+    {
+      if(aij_scale == 1.0)
+      { 
+        if (ajm_scale == 1.0)
+        { A_Pr = 4.49723728e+05; b_Pr = -1.73381257; mW = -3.90344309; cW = 5.18;  }
+        else if(ajm_scale == 10.0)
+        { A_Pr = 4.55158720e+04; b_Pr = -1.70802424; mW = -0.374252;  cW = 5.01475; }
+        else if(ajm_scale == 25.0)
+        { A_Pr = 2.93592196e+05; b_Pr = -0.0911713457; mW = -0.149703;  cW = 5.0059; }
+        else
+        { std::cerr << "Scaling factor for ajm not supported. Please use 1, 10, or 25." << endl; exit(1); }
+      }
+      else if(aij_scale == 25.0)
+      {
+        if(ajm_scale == 1.0)
+        { A_Pr = 6.8933839e+05; b_Pr = -20.0807587; A_W = 1; b_W = 8.59213; mW = -32.0623;  cW = 0.0243051;}
+        else if(ajm_scale == 10.0)
+        { A_Pr = 6.8798713e+04; b_Pr = -20.4693606; A_W = 4.65526; b_W = 14.9438; mW = -55.1092;  cW = -0.0286443; }
+        else if(ajm_scale == 25.0)
+        { A_Pr = 2.75159916e+04; b_Pr = -20.4953090; A_W = 4.86169; b_W = 12.9258; mW = -53.9559;  cW = 0.044096; }
+        else
+        { std::cerr << "Scaling factor for ajm not supported. Please use 1, 10, or 25." << endl; exit(1); }
+      }
+      else if (aij_scale == 10.0)
+      {
+        if(ajm_scale == 1.0)
+        { A_Pr = 6.11008374e+05; b_Pr = -10.8608332; mW = -16.3029;  cW = 5.64117; }
+        else if(ajm_scale == 10.0)
+        { A_Pr = 6.0987417e+04; b_Pr = -10.9556230; A_W = 4.6581; b_W = 13.2612; mW = -11.889; cW = 0.263293; }
+        else if(ajm_scale == 25.0)
+        { A_Pr = 2.4392e+04; b_Pr = -10.9619; A_W = 4.8; b_W = 13.2612; mW = -11.889;  cW = 0.263293; }
+        else
+        { std::cerr << "Scaling factor for ajm not supported. Please use 1, 10, or 25." << endl; exit(1); }
+      }
+      else
+      { std::cerr << "Scaling factor for aij not supported. Please use 1, 10, or 25." << endl; exit(1); }
+    }
+  else
+  { std::cerr << "Scaling factor for mm not supported. Please use 1." << endl; exit(1); }
+  }
+  else
+  { std::cerr << "Scaling factor for mortality rate not supported. Please use 1." << endl; exit(1); }
+  
+  string MFT_V = std::to_string(mV) + " * a + " + std::to_string(cV);
+  string MFT_V_Prev = std::to_string(mV_Prev) + " * a + " + std::to_string(cV_Prev);
+  string MFT_G = std::to_string(Gstar);
+  // string MFT_G = std::to_string(A_G) + " * ( 1 - exp( " + std::to_string(b_G) + " * ( a - " + std::to_string(a_c) + " )) )";
+  string MFT_G_Prev = std::to_string(0);
+  string MFT_Pr = std::to_string(A_Pr) + " * ( 1 - exp( " + std::to_string(b_Pr) + " * ( a - " + std::to_string(a_c) + " )) )";
+  string MFT_Pr_Prev = std::to_string(0);
+  string MFT_W;
+  if(A_W == 0)
+   MFT_W = std::to_string(mW) + " * a + " + std::to_string(cW);
+  else
+   MFT_W = std::to_string(A_W) + " + " + std::to_string(b_W) + 
+   " * exp( " + std::to_string(mW) + " * ( a - " + std::to_string(cW) + " ))";
+  string MFT_W_Prev = std::to_string(mW_Prev) + " * a";
+  string MFT_O = std::to_string(mO) + " * a + " + std::to_string(cO);
+  string MFT_O_Prev = std::to_string(mO_Prev) + " * a";
+
+  MFT_Vec_CoexExpr.assign({ MFT_V_Prev, MFT_G_Prev, MFT_Pr_Prev, MFT_W_Prev, MFT_O_Prev, MFT_V, MFT_G, MFT_Pr, MFT_W, MFT_O});
+  // NOTE: The following clow is used for analytic MFT based initial conditions.
+  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 1, 1, 5, init_frac_grazpred, init_frac_grazpred, 1, 1};
+  // NOTE: The following scaling_factor is used for analytic MFT based initial conditions.
+  #if defined(INIT) && INIT == 0
+    double scaling_factor[2*Sp] = {10, dP/dP, dP/(10.0*dP), 1,  1, 1, init_frac_grazpred, init_frac_grazpred, 1, 1};
+    // USED FOR HOMOGENEOUS MFT BASED INITIAL CONDITIONS.
+  #else
+    double scaling_factor[2*Sp] = {0, dP/dP, dP/(10.0*dP), 1, 1, 5, init_frac_grazpred, init_frac_grazpred, 1, 1};
+    // USED FOR PERIODIC MFT BASED INITIAL CONDITIONS.
+  #endif
+
+  //*/
+  
+  /**  (OLD) INITIAL CONDITIONS:
+
+  // Equations for MFT E Eqilibrium values  as functions of a (Rainfall).
   double mV = 959665.516757; double cV = -40023.67526037;
   double mW = -3.90344309; double cW = 5.18;
   double mO = 120.4744181; double cO = 0.58243061;
@@ -213,10 +330,13 @@ int main(int argc, char *argv[])
   string MFT_Pr = std::to_string(A_Pr) + " * ( 1 - exp( " + std::to_string(b_Pr) + " * ( a - " + std::to_string(a_c) + " )) )";
   string MFT_W = std::to_string(mW) + " * a + " + std::to_string(cW);
   string MFT_O = std::to_string(mO) + " * a + " + std::to_string(cO);
+  //*/
 
+  /** IMP: OLD Expressions and cspread[] for ORIGINAL init_exprtk_randbiMFTframe() 
   MFT_Vec_CoexExpr.assign({MFT_V, MFT_G, MFT_Pr, MFT_W, MFT_O});
   // NOTE: The following clow is used for analytic MFT based initial conditions. 
-  double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 1, 1, 5, init_frac_grazpred, init_frac_grazpred, 1, 1};
+  double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 1, 1, 5, init_frac_grazpred, init_frac_grazpred, 1, 1}; 
+  //*/
 
   // LE ORIGINAL (NORMAL CLOSE TO MFT)
   //double clow[2*Sp] = {0, dP/50000.0, dP/500000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};
@@ -335,15 +455,7 @@ int main(int argc, char *argv[])
 	}
   */
  
-  first_order_critical_exp_delta_stochastic_3Sp(div, t_max, a_start, a_end, a_c, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR, chigh, clow, dt, dx, dP, r, g, Gstar);
-  
-  //Finally recursively delete all the contents of the Temp folder.
-  #ifdef _WIN32
-  string command = "rmdir /s /q " + prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Geq_" + geq.str() +"/Temp";
-  #else
-  string command = "rm -r " + prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Geq_" + geq.str() +"/Temp";
-  #endif
-  system(command.c_str());
+  first_order_critical_exp_delta_stochastic_3Sp(div, t_max, a_start, a_end, a_c, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR, chigh, scaling_factor, dt, dx, dP, r, g, Gstar);
 
   return 0;
 }
