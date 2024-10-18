@@ -16,6 +16,7 @@ screen_names=(
     "osaka" "busan" "edo" "macao" 
     "taipei" "shanghai" "nagoya" "hanoi" 
     "shenzhen" "seoul" "incheon" "okinawa"
+    "kobe" "sapporo" "fukuoka" "sendai"
     "casablanca" "tangiers" "tunis" "fes" 
     "maghreb" "marrakesh" "rabat" "algiers" 
     "medea" "gibraltar" "dakar" "atlas" 

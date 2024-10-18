@@ -89,11 +89,14 @@ inline double dx2 /** = dx*dx*/; inline double dx1_2 /** = 1.0/(dx*dx)*/; inline
 inline double K_P; /** Carrying capacity of predator */
 inline double K_P1; /** Inverse of carrying capacity of predator */
 
+inline double input_T=0; /** Time for input data */
+
 // Rietkerk Model Parameters, set in set_global_user_Rietkerk_params() function.
 //inline double cgmax /** = c*gmax */; inline double K2W0 /**= K[2]*W0 */;inline double A01H01 /** = A[0][1]*H[0][1] */;inline double A12H12 /**= A[1][2]*H[1][2] **/;
 
 // Strings that are used for I/O operations and file naming in the simulations.
 inline string prefix = "DiC-NREF-LI";
+inline string csv_prefix = "DiC-UA125A2-UNI";
 inline string frame_folder = "../Data/Rietkerk/Frames/Stochastic/"+ std::to_string(SpB) +"Sp/" + prefix + "_"; //Folder to store frames.
 inline string prelim_folder = "../Data/Rietkerk/Prelims/Stochastic/"+ std::to_string(SpB) +"Sp/"+ prefix +"_"; //Folder to store preliminary data.
 inline const string frame_prefix = "/FRAME_P_c_DP_G_"; //Prefix for frame files.
@@ -102,7 +105,10 @@ inline const string gamma_prefix = "/GAMMA_G_"; //Prefix for gamma files.
 inline const string prelim_prefix = "/PRELIM_AGGRAND_P_c_ID_"; //Prefix for preliminary data files.
 inline const string replicate_prefix = "/PRELIM_TSERIES_P_c_DP_G_"; //Prefix for replicate time-series data files.
 //inline const string frame_header = "a_c,  x,  P(x; t), G(x; t), Pr(x; t), W(x; t), O(x; t) \n"; //Header for frame files.
+inline const string input_prefix = "/FRAME_T_"; //Prefix for input files.
 inline string stat_prefix = "../Data/Rietkerk/Stochastic/"+ std::to_string(SpB) +"Sp/1stCC_Rietkerk_" + prefix + "_P_c_G_";
+
+inline string input_folder = "../Data/Rietkerk/Input/"+ std::to_string(SpB) +"Sp/"+ prefix +"/"; //Folder to store input data.
 
 // Strings that are used for the Expertk library to parse mathematical expressions.
 // These represent MFT-versions of the species Coexistance equilibria wrt to the order parameter (Rainfall, given by a).
@@ -200,6 +206,7 @@ void increase_stack_limit(long long stack_size);
 bool maxis(int a, int b);
 void add_three(int a, int b, int c); //Test function.
 void set_Prefix(string& user_prefix);
+void set_input_Prefix(string& user_inputprefix, double user_input_T = -1);
 void set_global_system_params(double dt, double dx);
 void set_global_predator_params(double Km);
 
@@ -213,6 +220,8 @@ void init_randbistableframe(D2Vec_Double &array, int size, double R, double R_c,
 // NOTE: The following function REQUIRES the exprtk library to be included in the project.
 void init_exprtk_homogenousMFTframe(D2Vec_Double &array, int size, double R, double R_c, double c_spread[]);
 void init_exprtk_randbiMFTframe(D2Vec_Double &array, int size, double R, double R_c, double dP, double perc,  double c_spread[]);
+void init_exprtk_readCSVcolumns_frame(D2Vec_Double &array, vector<int> &const_index, const string &parendir, const string &filenamePattern, 
+					const std::vector<std::string> &read_cols, double a, double a_c,  int L, int r, double c_spread[]);
 void init_exprtk_randbiMFTframe_OLD(D2Vec_Double &array, int size, double R, double R_c, double dP, double perc,  double c_spread[]);
 
 
@@ -248,7 +257,7 @@ std::vector<double> logarithm10_time_bins(double t_max, double dt);
 //----------------------------- Misc. Supporting Add-ons -------------------------------------------------
 
 void recursive_dir_create(const string& path_to_dir);
-int findMaxRepNo(string& parendir, const string& filenamePattern);
+int findMaxRepNo(const string& parendir, const string& filenamePattern);
 int theborderwall(D2Vec_Double &Rho_t, int g);
 void determine_neighbours_R2( int g, int S, D3Vec_Int &neighbours_R2);
 void determine_neighbours_Sq4(int g, D3Vec_Int &neighbours_Sq4);

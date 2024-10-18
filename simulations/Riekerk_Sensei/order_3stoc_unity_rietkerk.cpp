@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
   //double D[Sp] ={d0, d1}; //Diffusion coefficients for species. (in km^2/hr)
   double pR[Sp] ={0.0, 1.04285/2.0, 1.25536/2.0}; //Perception radius of species (in km)
 
-  double init_frac_grazpred = 1.0; //Initial fraction of grazers and predators in the high state.
+  double init_frac_pred = 1.0; //Initial fraction of grazers and predators in the high state.
   
   cout << "Presets are as follows:\n";
   cout << "For the vegetation:\n";
@@ -95,8 +95,7 @@ int main(int argc, char *argv[])
   cout << "Diffusion Constants For Species:\n";
   cout << "D0 = " << setprecision(16) << D[0] << "\t D1 = " << D[1] << "\t D2 = " << setprecision(16) << D[2] << "\t D3 = " << setprecision(16) << D[3] << endl;
 
-  cout << "This is a 3Sp (Three) Stochastic Rietkerk Model Script WITHOUT DDM\n";
-  cout << "Header Species Check: " << std::to_string(SpB) << "\n";
+  cout << "This is a 3Sp (Three) Stochastic Rietkerk Model Script WITHOUT DDM AND UNIT INITIALISATION OF CONSUMERS\n";
 
   cout << "\n============================================================\n";
 
@@ -134,8 +133,8 @@ int main(int argc, char *argv[])
     cout << "Enter kick for high state: ";
     cin >> dP;
 
-    cout << "Enter fractional deviation from MFT for initial conditions of Grazer and Predator above R_c (0.5-1.2 is a good choice): ";
-    cin >> init_frac_grazpred;
+    cout << "Enter fractional deviation from 0.1 for initial conditions of Predator above R_c (0.5-1.2 is a good choice): ";
+    cin >> init_frac_pred;
 
     cout << "Enter scaling factor for grazer attacking rate (aij) which has a base value " << aij << " \t:";
     cin >> aij_scale;
@@ -159,7 +158,7 @@ int main(int argc, char *argv[])
     a_end = atof(argv[6]);
     div = atoi(argv[7]);
     dP = atof(argv[8]);
-    init_frac_grazpred = atof(argv[9]);
+    init_frac_pred = atof(argv[9]);
     aij_scale = atof(argv[10]);
     ajm_scale = atof(argv[11]);
     preFIX = argv[12];
@@ -211,7 +210,7 @@ int main(int argc, char *argv[])
   
   aij = aij_scale*aij; A[0][1] = aij; A[1][0] = aij; // Attack rate matrix []. No canabilism, symmetric effects.
   ajm = ajm_scale*ajm; A[1][2] = ajm; A[2][1] = ajm; // Attack rate matrix []. No canabilism, symmetric effects.
-  Gstar = mm/((em -mm*hjm)*ajm); //Steady state for grazer.
+  Gstar = 0; //mm/((em -mm*hjm)*ajm); //Steady state for grazer.
   double Vstar_veg = mj/((ej -mj*hij)*aij); //Steady state for vegetation (Veg) IFF there is NO predator.
   //Gstar = mm/((em -mm*hjm)*ajm); //Steady state for grazer.
   
@@ -295,10 +294,10 @@ int main(int argc, char *argv[])
   
   string MFT_V = std::to_string(mV) + " * a + " + std::to_string(cV);
   string MFT_V_Prev = std::to_string(mV_Prev) + " * a + " + std::to_string(cV_Prev);
-  string MFT_G = std::to_string(Gstar);
+  string MFT_G = std::to_string(0);
   // string MFT_G = std::to_string(A_G) + " * ( 1 - exp( " + std::to_string(b_G) + " * ( a - " + std::to_string(a_c) + " )) )";
   string MFT_G_Prev = std::to_string(0);
-  string MFT_Pr = std::to_string(A_Pr) + " * ( 1 - exp( " + std::to_string(b_Pr) + " * ( a - " + std::to_string(a_c) + " )) )";
+  string MFT_Pr = std::to_string(0);
   string MFT_Pr_Prev = std::to_string(0);
   string MFT_W;
   if(A_W == 0)
@@ -312,13 +311,13 @@ int main(int argc, char *argv[])
 
   MFT_Vec_CoexExpr.assign({ MFT_V_Prev, MFT_G_Prev, MFT_Pr_Prev, MFT_W_Prev, MFT_O_Prev, MFT_V, MFT_G, MFT_Pr, MFT_W, MFT_O});
   // NOTE: The following clow is used for analytic MFT based initial conditions.
-  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 1, 1, 5, init_frac_grazpred, init_frac_grazpred, 1, 1};
+  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 1, 1, 5, init_frac_pred, init_frac_pred, 1, 1};
   // NOTE: The following scaling_factor is used for analytic MFT based initial conditions.
   #if defined(INIT) && INIT == 0
-    double scaling_factor[2*Sp] = {10, dP/dP, dP/(10.0*dP), 1,  1, 1, init_frac_grazpred, init_frac_grazpred, 1, 1};
+    double scaling_factor[2*Sp] = {10, dP/dP, dP/(10.0*dP), 1,  1, 1, 1, 0.1*init_frac_pred, 1, 1};
     // USED FOR HOMOGENEOUS MFT BASED INITIAL CONDITIONS.
   #else
-    double scaling_factor[2*Sp] = {0, dP/dP, dP/(10.0*dP), 1, 1, 5, init_frac_grazpred, init_frac_grazpred, 1, 1};
+    double scaling_factor[2*Sp] = {0, 0*dP/dP, dP/(10.0*dP), 1, 1, 5, 0*1, 0.1*init_frac_pred, 1, 1};
     // USED FOR PERIODIC MFT BASED INITIAL CONDITIONS.
   #endif
 
@@ -342,7 +341,7 @@ int main(int argc, char *argv[])
   /** IMP: OLD Expressions and cspread[] for ORIGINAL init_exprtk_randbiMFTframe() 
   MFT_Vec_CoexExpr.assign({MFT_V, MFT_G, MFT_Pr, MFT_W, MFT_O});
   // NOTE: The following clow is used for analytic MFT based initial conditions. 
-  double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 1, 1, 5, init_frac_grazpred, init_frac_grazpred, 1, 1}; 
+  double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 1, 1, 5, init_frac_pred, init_frac_pred, 1, 1}; 
   //*/
 
   // LE ORIGINAL (NORMAL CLOSE TO MFT)

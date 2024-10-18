@@ -17,11 +17,11 @@ d0 = 0.00025/24.0; d1=0.0298; d2 = 0.00025/24.0; d3= 0.025/24.0; #From Bonachela
 k0= 0; k1 = 5; k2 =5000;
 
 # Scaling factors for the grazer parameters.
-mj_scaling = 1; aij_scaling = 10; ej_scaling = 1;
+mj_scaling = 1; aij_scaling = 25; ej_scaling = 1;
 init_g_scaling = 1e-7*mj_scaling; # Scaling factor for initial grazer density in kg/m^2
 
 # Scaling factors for the predator parameters.
-mm_scaling = 1; ajm_scaling = 1; em_scaling = 1;
+mm_scaling = 1; ajm_scaling = 150; em_scaling = 1;
 init_p_scaling = 1e-7*mm_scaling; # Scaling factor for initial predator density in kg/m^2
 
 # Parmeters for grazer (Pawar & Co)
@@ -700,17 +700,17 @@ def find_functional_forms_ss():
     # Splice checkstable_coex3 for indices where corresponding R values are > R_trans.
     upper_R_trans_checkstable_coex3 = np.logical_and(checkstable_coex3, Peq_coex_3 > 0)
     # Splice checkstable_coex3 for indices where corresponding R values are > R_minus_min
-    upper_R_minus_min_checkstable_coex3 = np.logical_and(checkstable_coex3, R > 2*R_minus_min)
+    upper_R_minus_min_checkstable_coex3 = np.logical_and(checkstable_coex3, R > R_minus_min)
 
 
     checkstable_coex = np.logical_or(checkstable_coex1, checkstable_coex2, checkstable_coex3)
     # Coexistence 3 Eq for Vstar has a linear form. 
     popt_coex3_Vst, pcov_coex3_Vst = opt.curve_fit(linear, R[checkstable_coex3], Vstarcoex_3[checkstable_coex3])
     # Coexistence 3 Eq for Wstar has a linear form.
-    popt_coex3_Wst, pcov_coex3_Wst = opt.curve_fit(linear, R[checkstable_coex3], Weq_coex_3[checkstable_coex3], p0= [-3.36, 5.18])#, bounds=([-np.inf, 5.18], [-3.3, 5.2]))
+    #popt_coex3_Wst, pcov_coex3_Wst = opt.curve_fit(linear, R[checkstable_coex3], Weq_coex_3[checkstable_coex3], p0= [-3.36, 5.18])#, bounds=([-np.inf, 5.18], [-3.3, 5.2]))
     # Coexistence 3 Eq for Wstar has a decaying exponential form.
-    #popt_coex3_Wst, pcov_coex3_Wst = opt.curve_fit(decaying_exponential, R[upper_R_minus_min_checkstable_coex3], Weq_coex_3[upper_R_minus_min_checkstable_coex3], 
-    #                                               p0=[5, 0.1, R_minus_min, 1])#, bounds=( [ 0, 0, 0, 0], [np.inf, np.inf, np.inf, 1]))
+    popt_coex3_Wst, pcov_coex3_Wst = opt.curve_fit(decaying_exponential, R[upper_R_minus_min_checkstable_coex3], Weq_coex_3[upper_R_minus_min_checkstable_coex3], 
+                                                   p0=[5, 0.1, R_minus_min, 1])#, bounds=( [ 0, 0, 0, 0], [np.inf, np.inf, np.inf, 1]))
     # Coexistence 1 for Ostar has a linear form.
     popt_coex3_Ost, pcov_coex3_Ost = opt.curve_fit(linear, R[checkstable_coex1], Oeq_coex_3[checkstable_coex1])
     # Coexistence 3 for Predator has a saturating exponential form, with guess values for A ~ 10^5.5, 
@@ -733,8 +733,8 @@ def find_functional_forms_ss():
     ax[0,0].set_ylabel('$V^*$')
 
     ax[0,1].plot(R[checkstable_coex3], Weq_coex_3[checkstable_coex3], label='$W^*_\mathrm{Coexist3}$', alpha=0.75)
-    ax[0,1].plot(R[checkstable_coex3], linear(R[checkstable_coex3], *popt_coex3_Wst), label=r"$W^* = %g\times R + %g$" %(popt_coex3_Wst[0], popt_coex3_Wst[1]), alpha=0.75)
-    #ax[0,1].plot(R[checkstable_coex3], decaying_exponential(R[checkstable_coex3], *popt_coex3_Wst), label=r"$W^* = %g + %g e^{-%g(R - %g)}$" %(popt_coex3_Wst[3], popt_coex3_Wst[0], popt_coex3_Wst[1], popt_coex3_Wst[2]), alpha=0.75)
+    #ax[0,1].plot(R[checkstable_coex3], linear(R[checkstable_coex3], *popt_coex3_Wst), label=r"$W^* = %g\times R + %g$" %(popt_coex3_Wst[0], popt_coex3_Wst[1]), alpha=0.75)
+    ax[0,1].plot(R[checkstable_coex3], decaying_exponential(R[checkstable_coex3], *popt_coex3_Wst), label=r"$W^* = %g + %g e^{-%g(R - %g)}$" %(popt_coex3_Wst[3], popt_coex3_Wst[0], popt_coex3_Wst[1], popt_coex3_Wst[2]), alpha=0.75)
     ax[0,1].set_title('$W^*$ vs R')
     ax[0,1].set_ylabel('$W^*$')
 

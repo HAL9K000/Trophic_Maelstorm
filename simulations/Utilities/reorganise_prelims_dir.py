@@ -223,7 +223,11 @@ def post_process(prefixes= []):
                 T_vals = sorted([float(re.sub( "T_", "", v)) for v in T_vals])
                 # Only consider unique values of T.
                 T_vals =np.unique(T_vals)
-            
+            # Extend files with 0s at the end of "<<P(x; t)>_x>_r" for higher values of T_vals.
+            # Do this using gen_missing_zero_Prelims(...)
+            if (gen_missing_zero_Prelims(files, T_vals, subdirpath, "csv", 
+                                          dt= dt, compare_col_labels= ["<<P(x; t)>_x>_r"]) == None):
+                print("Error: Could not extend files with zeros for higher values of T in " + subdirpath)
             # For each value of T, find Rmax of corresponding files in files.
             for t in T_vals:
                 t = int(t) if float(t).is_integer() else t

@@ -47,17 +47,17 @@ from matplotlib.collections import LineCollection
 
 
 # User inputs.
-SPB = 2; # Number of species in the model
+SPB = 3; # Number of species in the model
 #in_dir = f"../Data/Remote/DP/Reorg_Frames/{SPB}Sp/DPParam_MFT/" # FOR DP
 #out_dir = f"../../Images/{SPB}Sp/DPParam_MFT/" # FOR DP
 
-in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/MSCALE_20_MFT/"
-out_dir = f"../../Images/{SPB}Sp/MSCALE_20_MFT/"
+in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/ASCALE_20_100_NEWMFTEQ/"
+out_dir = f"../../Images/{SPB}Sp/ASCALE_20_100_NEWMFTEQ/"
 Path(out_dir).mkdir(parents=True, exist_ok=True)
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 
-g = 128;  dP = 10000; Geq = 748.29; R_max= -1;
-#g = 128;  dP = 1; Geq = 0; R_max= -1;
+g = 128;  dP = 10000; Geq = 0.04802; R_max= -1;
+#g = 128;  dP = 1; Geq = 0.2991; R_max= -1;
 T_vals =[]; TS_vals =[];
 a_vals = []    
 
@@ -174,7 +174,7 @@ Optionally, one can provide the relative path (from parendir) to the text files 
 by the relative paths given by avals_txtdir, Tvals_txtdir and maxR_txtdir. 
 The same applies for pngdir (relative path to png files for given a, T, dP, Geq etc values)
 '''
-def home_video(file_parendir, out_dir, prefixes, a_vals, T_vals, maxR, pngformat= "CombinedImg/BioConc_a_{a}_T_{T}_n_{R}.png", pngdir =  "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/",
+def home_video(file_parendir, out_dir, prefixes, a_vals, T_vals, maxR, minR = 0, pngformat= "CombinedImg/BioConc_a_{a}_T_{T}_n_{R}.png", pngdir =  "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/",
                videoname="guess", video_relpath="guess", avals_txtdir = "{Pre}/a_vals.txt", Tvals_txtdir = "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_vals.txt",
                 maxR_txtdir = "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/maxR.txt"):
 
@@ -222,7 +222,7 @@ def home_video(file_parendir, out_dir, prefixes, a_vals, T_vals, maxR, pngformat
                         print(f"maxR.txt not found in the input directory for a = {a}, T = {T}. Skipping this a-value.")
                         continue
                 
-                for R in range(0, maxR):
+                for R in range(minR, maxR):
                     try:
                         img = cv2.imread(file_parendir +pngdir.format(s=0, Pre=Pre, g=g, dP=dP, Geq=Geq, a=a, T=T, R=R) 
                                          + pngformat.format(s=0, L=g, dP=dP, Geq=Geq,  a=a, T=T, R=R))
@@ -240,7 +240,10 @@ def home_video(file_parendir, out_dir, prefixes, a_vals, T_vals, maxR, pngformat
             if videoname == "guess":
                 #Extract string preceding the first underscore in the pngformat string.
                 Prefix = re.sub("/", "", Pre)
-                videoname = f"{Prefix}_Tmax_{max_T}.mp4"
+                if inputmax_R <= 0:
+                    videoname = f"{Prefix}_Tmax_{max_T}.mp4"
+                else:
+                    videoname = f"{Prefix}_Tmax_{max_T}_Rmin_{minR}_Rmax_{maxR}.mp4"
             
             if video_relpath == "guess":
                 # Modify video save path depending on number of a_vals and T_vals encountered.
@@ -271,7 +274,7 @@ def home_video(file_parendir, out_dir, prefixes, a_vals, T_vals, maxR, pngformat
     # End of Prefix loop
 
 
-def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, plt_gamma= False, delpng = False):
+def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, minR =0, plt_gamma= False, delpng = False):
     # If a_vals and T_vals are not provided, the script reads the relevant text files and extracts the a_vals and T_vals from them.
     # List of a_vals provided {in_dir}/{PREFIX}/a_vals.txt
     # List of T_vals provided {in_dir}/{PREFIX}/L_{g}_a_{a_val}/dP_{dP}/Geq_{Geq}/T_{T}/T_vals.txt
@@ -321,7 +324,7 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, plt_gamma= F
 
             print(f"Creating images for a = {a}, T = {T} at dP = {dP}, Geq = {Geq}, maxR = {maxR}...")
 
-            for R in range(0, maxR):
+            for R in range(minR, maxR):
             # Reading the data from the csv file
                 # Convert a and T to int format if they are integers.
                 try:
@@ -1073,8 +1076,8 @@ def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseri
                     ax.legend()
                 # End of s loop
                 #Set ymax for axs[3] to be 500.
-                if(SPB == 3):
-                    axs[2].set_ylim(-5, 500)
+                #if(SPB == 3):
+                #    axs[2].set_ylim(-5, 500)
                 #axs[2].set_ylim(-5, 500)
                 fig.suptitle(r"$\mu(\rho(x, t))$" + f" For {Pre} at a = {a}, dP = {dP}, Geq = {Geq}")
                 plt.savefig(savepngdir + f"TimeSeries_a_{a}_dP_{dP}_Geq_{Geq}.png")
@@ -1654,15 +1657,17 @@ def recursive_copydir(src, dst, include_filetypes = ["*.txt"],
 
 #
 recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filetypes =["*.png", "*.jpg", "*.jpeg", "*.mp4"], symlinks=False)
-#a_vals = [0.026, 0.034, 0.0415, 0.042, 0.052] #, 0.057 , 0.06] #0.051, 0.053, 0.055]; 
-#T_vals=[0, 63095.7, 69183.1, 75857.7, 83176.3, 91201, 99999.9]
+a_vals = [ 0.026, 0.034, 0.0415, 0.042, 0.05, 0.052] #0.026, 0.034, 0.0415, 0.042, 0.05, 0.052] #, 0.057 , 0.06] #0.051, 0.053, 0.055]; 
+T_vals=[0, 63095.7, 69183.1, 75857.7, 83176.3, 91201, 99999.9]#, 109648, 120226, 131826, 144544, 158489, 173780, 190546, 208930]
+#T_vals=[0, 63095.7, 83176.3, 91201, 99999.9, 120226, 131826, 144544, 158489, 173780, 190546, 208930]
 #T_vals= [158489, 173780, 190546, 208930, 229087, 251189, 275423, 301995, 331131, 363078]
 #prefixes = ["DIC-DDM1-NREF-0.5LI", "DIC-DDM5-NREF-0.5LI", "DIC-DDM10-NREF-0.5LI", "DIC-DDM5-NREF-1.1HI"]
-prefixes = ["DIC-S5M100LI"]    #"DIC-S10M3LI"]    #"DIC-S8M1LI"] #"DiC-B6-UNITY"] #"DiC-B6-UNTY" 
+prefixes = [ "DiC-UA125A2-1UNI", "DiC-UA125A2-5E2UNI"]       #"DiC-UA125A0-1UNI", "DiC-UA125A0-5E2UNI"]    #"DiC-G0A1A0-1LI"]  
+#"DIC-S5M100LI"] #"DIC-S10M3LI"]    #"DIC-S8M1LI"] #"DiC-B6-UNITY"] #"DiC-B6-UNTY" 
 #"DiC-B6-MFTEQ"]#"DiC-STD"]#,"DiC-S7LI", "DiC-0.1LI"]
 #prefixes = ["COR-DDM5-NREF-0.5HI", "COR-DDM10-NREF-0.5HI", "COR-DDM1-NREF-0.5HI"]
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
-TS_vals = [190546] #57544] #69183.1] # #[229087] #[208930] #91201]  #[190546]; #[109648];
+TS_vals = [131826]  #36307.7]#, 131826] #190546] #57544] #69183.1] # #[229087] #[208930] #91201]  #[190546]; #[109648];
 #a_vals = []#0.034, 0.048, 0.054]; 
 #T_vals = []#0, 91201, 190546, 208930, 229087]
 
@@ -1676,7 +1681,7 @@ print(f"in_dir: {in_dir} \nout_dir: {out_dir}")
 input("Press F to pay respects...")
 print("\n\n__________________________________________________________________________________________\n\n")
 
-'''
+''' FOR VIDEOS OF ALL REPLICATES
 for Pre in prefixes:
     frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= 0, plt_gamma= False, delpng = False)
     print(f"Done with making frames for {Pre}")
@@ -1687,6 +1692,20 @@ for Pre in prefixes:
                      maxR_txtdir = "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/maxR.txt", videoname = "guess",
                      video_relpath= "{Pre}/Videos/Conc/{a}/{Tmin}-{Tmax}/")
 #'''
+
+''' FOR VIDEOS OF INDIVIDUAL REPLICATES
+for Pre in prefixes:
+    for R in range(0, 4):
+        frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= R+1, minR= R, plt_gamma= False, delpng = False)
+        print(f"Done with making frames for {Pre}")
+        for a in a_vals:
+            print(f"Making video for {Pre} at a = {a} \n\n")
+            home_video(out_dir, out_dir, [Pre], [a], T_vals= T_vals, maxR= R+1, minR= R,
+                    pngformat= "CombinedImg/BioConc_a_{a}_T_{T}_n_{R}.png", pngdir= "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/",
+                        maxR_txtdir = "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/maxR.txt", videoname = "guess",
+                        video_relpath= "{Pre}/Videos/Conc/{a}/{Tmin}-{Tmax}/")
+#'''
+
 ''' FOR SPREADING TESTS, WITH PREFIX = NREF-GAU/ REF-GAU
 for Pre in prefixes:
     frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= 0, plt_gamma= True, delpng = False)
@@ -1715,7 +1734,7 @@ elif SPB == 2:
 elif SPB == 1:
     variable_labels = ["<<P(x; t)>_x>_r"]; Tavg_win_index = [65000, 100000] #[65000, 100000]
 analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels)
-analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = Tavg_win_index, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels)
+#analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = Tavg_win_index, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels)
 
 
 #analyse_FRAME_POTdata(in_dir, out_dir, prefixes, a_vals, T_vals, find_minima= True, filename = "Pot_Well.csv", 

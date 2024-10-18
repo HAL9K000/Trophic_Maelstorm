@@ -23,6 +23,9 @@ A detailed description of each function is provided below.
 '''
 
 
+class SkipFile(Exception):
+    pass
+
 '''# Summary of the function find_timerange(...)
     This function finds all T values in provided "files" (a list of files that may or may not be from the same directory)
     that have a_val = a. (t-values can be float or integer). It then extracts the "indx" smallest or largest values of T 
@@ -555,6 +558,89 @@ def logarithm10_time_bins(t_max, dt, size=0):
     else:
         return logspaced
 
+'''# Summary of the function gen_missing_zero_Prelims(...)
+# This function combs through the files in files, which are in the directory pathtodir.
+These files follow the naming convention "/TSERIES*_T_{Tval}_a_{aval}_R_{Rval}.csv" where Tval, aval and Rval are the values of T, a and R respectively.
+The list of Tvals is given by T_vals. This function will do the following:
+1. It will go through all the files in files in descending order of T_vals (starting from the second largest Tval).
+2. If at least the last two values in the columns corresponding to compare_col_labels are zero, it will "extend" the matched files over time (for all larger Tvals (say Tval_larger1, Tval_larger2, ...))
+by creating new files with the same {aval}, but with {Tval_largeri} replaced by the larger Tval {Tval}, and {Rval} replaced by Rmax +1, where Rmax is the largest Rval for the files matching the given {Tval_largeri}
+This "extension" will occur by copying the matched files, and appending 0 values to all columns in the copied files for the new time-stamps.
+3. If the last two values in the columns corresponding to compare_col_labels are not zero, it will skip the file.
+4. For the "extended" files, the "t" column (time-stamps) will be generated using logarithmically spaced time-stamps from 0 to {Tval_largeri}, with time-stamps spaced by dt.
+
+Finally, if the files have non-standardised columns (a label in include_col_labels is not present in the column names of the files), the function will return an error.
+'''
+def gen_missing_zero_Prelims(files, pathtodir, T_vals, ext="csv", dt =None, compare_col_labels= ["<<P(x; t)>_x>_r" ] ):
+    
+    T_vals_desc = np.sort(T_vals)[::-1]
+    for Tval in T_vals_desc[1:]:
+        # Going from second largest Tval to the smallest Tval.
+        # Find all files in files that have Tval.
+        t = int(Tval) if float(Tval).is_integer() else Tval
+        selectedfiles = glob.glob(pathtodir + "/TSERIES*_T_" + str(t) + "*.csv")
+        maxR = len(selectedfiles)
+        for file in selectedfiles:
+            try:
+                Rval = int(re.search(r'R_[\d]+', file).group(0).split("_")[1])
+                # Read the file.
+                if(ext == "csv"):
+                    df = pan.read_csv(file, header=0)
+                else:
+                    try:
+                        df = pan.read_table(file, header=0)
+                    except Exception as e:
+                        print("Error: Non-standard extension for file " + pathtodir +"/" + file + " with error message: \n" + str(e))
+                        return None
+                # Modify column names in df to remove leading and trailing whitespaces.
+                df.columns = [col.strip() for col in df.columns]
+                # First check if the column names in compare_col_labels are present in df.columns. If not, return an error.
+                if not all([col in df.columns for col in compare_col_labels]):
+                    print("Error: Columns in file " + pathtodir + "/" + file + " are not standardised.")
+                    return None
+                # Check if the last two values in the columns corresponding to compare_col_labels are zero.
+                for col in compare_col_labels:
+                    if not all(df[col].iloc[-2:] == 0):
+                        raise SkipFile
+                print(f"Extending file {file} at T = {Tval} over time.")
+                # If the last two values in the columns corresponding to compare_col_labels are zero, "extend" the matched files over time.
+                # This is done by creating new files with the same {aval}, but with {Tval_larger} replaced by the larger Tval {Tval}, and {Rval} replaced by Rmax +1.
+                # The "extension" will occur by copying the matched files, and appending 0 values to all columns in the copied files for the new time-stamps.
+                # The "extended" files will have the "t" column (time-stamps) generated using logarithmically spaced time-stamps from 0 to {Tval_larger}, with time-stamps spaced by dt.
+                for Tval_larger in T_vals_desc:
+                    if Tval_larger <= Tval:
+                        continue
+                    # Find all files in files that have Tval_larger.
+                    t_larger = int(Tval_larger) if float(Tval_larger).is_integer() else Tval_larger
+                    selectedfiles_larger = glob.glob(pathtodir + "/TSERIES*_T_" + str(t_larger) + "*.csv")
+                    if len(selectedfiles_larger) != 0:
+                        df_larger = pan.read_csv(selectedfiles_larger[0], header=0)
+                    Rmax = len(selectedfiles_larger)
+                    # Find the largest Rval for the files matching the given {Tval_larger}.
+                    Rmax = max([int(re.search(r'R_[\d]+', file).group(0).split("_")[1]) for file in selectedfiles_larger])
+                    # Create a new file with the same {aval}, but with {Tval_larger} replaced by the larger Tval {Tval}, and {Rval} replaced by Rmax +1.
+                    new_file = file.replace("T_" + str(t), "T_" + str(t_larger)).replace("R_" + str(Rval), "R_" + str(Rmax + 1))
+                    new_df = df.copy()
+                    # Generate the "t" column (time-stamps) using logarithmically spaced time-stamps from 0 to {Tval_larger}, with time-stamps spaced by dt.
+                    if not all(df["t"] == 0) or dt == None:
+                        new_df["t"] = logarithm10_time_bins(Tval_larger, dt, len(df))
+                    else:
+                        new_df["t"] = logarithm10_time_bins(Tval_larger, dt)
+                    # Append 0 values to all columns in the copied files for the new time-stamps.
+                    for col in new_df.columns:
+                        if col != "t":
+                            new_df[col] = new_df[col].append(pan.Series([0]*(len(new_df) - len(df))), ignore_index=True)
+                    # Write the new file to the directory.
+                    new_df.to_csv(new_file, index=False)
+                    print(f"Extended file {file} at T = {Tval} over time to {new_file} at T = {Tval_larger} and R = {Rmax + 1}.")
+                    # Generate the "t" column (time-stamps) using logarithmically spaced time-stamps from 0 to {Tval_larger}, with time-stamps spaced by dt.
+            except SkipFile:
+                print(f"Skipping file {file} at T = {Tval} as the last two values in the columns corresponding to compare_col_labels are not zero.")
+                continue
+            except Exception as e:
+                print(f"Error: {e} for file {file} at T = {Tval}. Skipping file.")
+                
+    return 1
 
 '''# Summary of the function gen_MEAN_INDVL_Colsfiledata(...)
 # This function generates the mean for each column for each file in files, as well as the mean across all files for each column.

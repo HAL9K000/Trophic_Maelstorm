@@ -95,8 +95,7 @@ int main(int argc, char *argv[])
   cout << "Diffusion Constants For Species:\n";
   cout << "D0 = " << setprecision(16) << D[0] << "\t D1 = " << D[1] << "\t D2 = " << setprecision(16) << D[2] << "\t D3 = " << setprecision(16) << D[3] << endl;
 
-  cout << "This is a 3Sp (Three) Stochastic Rietkerk Model Script WITHOUT DDM\n";
-  cout << "Header Species Check: " << std::to_string(SpB) << "\n";
+  cout << "This is a 3Sp (Three) Stochastic Rietkerk Model Script WITHOUT DDM AND G* INIT FOR 2SP EQ\n";
 
   cout << "\n============================================================\n";
 
@@ -263,15 +262,9 @@ int main(int argc, char *argv[])
         else if(ajm_scale == 10.0)
         { A_Pr = 6.8798713e+04; b_Pr = -20.4693606; A_W = 4.65526; b_W = 14.9438; mW = -55.1092;  cW = -0.0286443; }
         else if(ajm_scale == 25.0)
-        { A_Pr = 2.75159916e+04; b_Pr = -20.4953090; A_W = 4.86169; b_W = 12.9258; mW = -53.9559;  cW = -0.044096; }
-        else if(ajm_scale == 50.0)
-        { A_Pr = 1.37574163e+04; b_Pr = -20.5039489; A_W = 4.92608802; b_W = 3.68792022; mW = -33.60729439;  cW = -0.07048515; }
-        else if(ajm_scale == 100.0)
-        { A_Pr = 6.87856303e+03; b_Pr = -20.5082747; A_W = 4.96537423; b_W = 3.19028452; mW = -53.4178045;  cW = -0.0445609397; }
-        else if(ajm_scale == 150.0)
-        { A_Pr = 4.58567622e+03; b_Pr = -20.5097222; A_W = 4.97691262; b_W = 2.68932522; mW = -53.9559;  cW = -0.044096; }
+        { A_Pr = 2.75159916e+04; b_Pr = -20.4953090; A_W = 4.86169; b_W = 12.9258; mW = -53.9559;  cW = 0.044096; }
         else
-        { std::cerr << "Scaling factor for ajm not supported. Please use 1, 10, 25, 50, 100 or 150." << endl; exit(1); }
+        { std::cerr << "Scaling factor for ajm not supported. Please use 1, 10, or 25." << endl; exit(1); }
       }
       else if (aij_scale == 10.0)
       {
@@ -280,7 +273,7 @@ int main(int argc, char *argv[])
         else if(ajm_scale == 10.0)
         { A_Pr = 6.0987417e+04; b_Pr = -10.9556230; A_W = 4.6581; b_W = 13.2612; mW = -11.889; cW = 0.263293; }
         else if(ajm_scale == 25.0)
-        { A_Pr = 2.4392e+04; b_Pr = -10.9619; A_W = 4.8; b_W = 2.68932522; mW = -53.3597073;  cW = -0.0490352778; }
+        { A_Pr = 2.4392e+04; b_Pr = -10.9619; A_W = 4.8; b_W = 13.2612; mW = -11.889;  cW = 0.263293; }
         else
         { std::cerr << "Scaling factor for ajm not supported. Please use 1, 10, or 25." << endl; exit(1); }
       }
@@ -295,8 +288,8 @@ int main(int argc, char *argv[])
   
   string MFT_V = std::to_string(mV) + " * a + " + std::to_string(cV);
   string MFT_V_Prev = std::to_string(mV_Prev) + " * a + " + std::to_string(cV_Prev);
-  string MFT_G = std::to_string(Gstar);
-  // string MFT_G = std::to_string(A_G) + " * ( 1 - exp( " + std::to_string(b_G) + " * ( a - " + std::to_string(a_c) + " )) )";
+  //string MFT_G = std::to_string(Gstar);
+  string MFT_G = std::to_string(A_G) + " * ( 1 - exp( " + std::to_string(b_G) + " * ( a - " + std::to_string(a_c) + " )) )";
   string MFT_G_Prev = std::to_string(0);
   string MFT_Pr = std::to_string(A_Pr) + " * ( 1 - exp( " + std::to_string(b_Pr) + " * ( a - " + std::to_string(a_c) + " )) )";
   string MFT_Pr_Prev = std::to_string(0);

@@ -16,6 +16,10 @@ if [[ $# -lt 4 || $# -gt 5 ]]; then
     exit 1
 fi
 
+SCRIPT_DIR="$(dirname $0)"
+# Source the execute_commands.sh script
+source "$SCRIPT_DIR/expect_commands.sh"
+
 in_par_frame_file="$1"
 in_par_prelims_file="$2"
 time_gap_hours="$3"
@@ -51,7 +55,12 @@ compress_dir() {
     fi
 }
 
-# Function to execute additional commands (optional fourth argument)
+# Function to execute additional commands (optional fourth argument) using the execute_commands.sh script
+execute_sh_commands()
+{
+    execute_commands "$commands_file"
+}
+# OLD Function to execute additional commands (optional fourth argument)
 execute_additional_commands() {
     local commands_file="$1"
     
@@ -106,7 +115,8 @@ while [[ $current_iter -lt $stop_iter ]]; do
     # Execute additional commands at the start of the outer loop (if the fourth argument is provided)
     if [[ -n "$commands_file" ]]; then
         echo "Executing additional commands from $commands_file..."
-        execute_additional_commands "$commands_file"
+        #execute_additional_commands "$commands_file"
+        execute_sh_commands
     fi
 
     while IFS= read -r line || [[ -n "$line" ]]; do
