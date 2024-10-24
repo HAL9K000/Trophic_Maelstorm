@@ -14,7 +14,7 @@
 
 # Check if the number of arguments is at least 2
 if [ $# -lt 3 ]; then
-    echo "Usage: $0 <path/to/init_file.txt> <job_name> <SPB> [Optional <n> <k> <init =1>]"
+    echo "Usage: $0 <path/to/init_file.txt> <job_name> <SPB> [Optional <init =1> <n> <k>]"
     echo "Where: n is --cpus-per-task and k is the number of jobs in the array."
     exit 1
 fi
@@ -27,21 +27,21 @@ fi
 
 
 # Extract n and k from the arguments if they are provided
-if [ $# -ge 5 ]; then
-    k=$5
+if [ $# -ge 6 ]; then
+    k=$6
 else
     # Read k from the init file (number of lines in the file - 1)
     k=$(wc -l < $1)
 fi
 
-if [ $# -ge 4 ]; then
-    n=$4
+if [ $# -ge 5 ]; then
+    n=$5
 else
     # Read n as the maximum value of div (seventh column) in the init file
     n=$(awk 'NR>1 {print $7}' $1 | sort -nr | head -n 1)
 fi
-if [ $# -ge 6 ]; then
-    init=$6
+if [ $# -ge 4 ]; then
+    init=$4
 else
     init=1
 fi
