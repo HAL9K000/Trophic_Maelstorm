@@ -80,6 +80,31 @@ void add_three(int a, int b, int c)
 	int d = a + b +c; cout << d << endl;
 }
 
+// Function to replace placeholders in the string with corresponding values from the map
+// Placeholders are in the format {key}, where key is the key in the map
+string format_str(const std::string& s, const std::map<string, string>& values) 
+{
+    string result = s;
+    std::regex placeholder_pattern(R"(\{([a-zA-Z0-9_]+)\})");  // Regex to match {key}
+    std::smatch match;
+
+    // Find all placeholders in the string
+    while (std::regex_search(result, match, placeholder_pattern)) {
+        std::string placeholder = match[0];  // Full match, e.g., "{Pre}"
+        std::string key = match[1];          // Capture group, e.g., "Pre"
+
+        // Replace with corresponding value from the map if key exists
+        auto it = values.find(key);
+        if (it != values.end()) {
+            result.replace(match.position(0), placeholder.length(), it->second);
+        } else {
+            throw std::runtime_error("Key not found: " + key);
+        }
+    }
+
+    return result;
+}
+
 bool comparePairs(const pair<int, int>& a, const pair<int, int>& b) 
 {
     return (a.first * a.first + a.second * a.second) < (b.first * b.first + b.second * b.second);
@@ -94,14 +119,21 @@ void set_Prefix(string& user_prefix)
 	stat_prefix =  "../Data/Rietkerk/Stochastic/"+ std::to_string(SpB) +"Sp/1stOrderCC_Rietkerk_" + prefix + "_STOC_P_c_G_"; //Header for frame files.
 }
 
-void set_input_Prefix(string& user_inputprefix, double user_input_T /* = -1*/)
+void set_input_Prefix(string& user_inputframepath, string& user_prefix, double user_a_c, double user_dP, double user_Geq /* = -1*/, double user_input_T /* = -1*/)
 {
 	//Sets the global prefix for the INPUT files (for Burn-In Frames)
-	csv_prefix = user_inputprefix; 
-	input_folder = "../Data/Input/Rietkerk/"+ std::to_string(SpB) +"Sp/"+ csv_prefix +"/"; //Folder to store input data.
+	input_frame_subfolder = user_inputframepath; //Folder to store input data.
+	input_frame_parenfolder = "../Input/Rietkerk/"+ std::to_string(SpB) +"Sp"; //Folder to store input data.
+
+	// Update map input_keys with the new values
+	input_keys["outPRE"] = user_prefix;
+	input_keys["a_c"] = std::to_string(user_a_c);
+	input_keys["dP"] = std::to_string(user_dP);
+	if(user_Geq >= 0)
+		input_keys["Geq"] = std::to_string(user_Geq);
 
 	if(user_input_T >= 0)
-		input_T = user_input_T;
+		input_keys["T"] = std::to_string(user_input_T);
 	
 }
 
@@ -521,12 +553,30 @@ void init_exprtk_randbiMFTframe_OLD(D2Vec_Double &array, int size, double R, dou
 
 void init_exprtk_readCSVcolumns_frame(D2Vec_Double &array, vector<int> &const_index, const string &parendir, const string &filenamePattern, 
 					const std::vector<std::string> &read_cols, double a, double a_c,  int L, int r, double c_spread[])
-{
+{	
+	/** SUMMARY: 
+	 * @brief Initialises a frame (D2Vec_Double vector called "array") as follows:
+	 * The frame is initialised by reading the columns matching entries in read_cols in the CSV files in the directory "parendir" 
+	 * with the filename pattern "filenamePattern". The columns are read from the file corresponding to the value of "r", which is
+	 * the replicate number. Maximum replicate number is determined by findMaxRepNo(parendir, filenamePattern), so that r values are within bounds.
+	 * Column values that do not match the entries in read_cols are ignored, and are generated using expertk expressions (present in MFT_Vec_CoexExpr).
+	 * 
+	 * The values of the columns "W(x;t)" and "O(x;t)" are stored in the last two rows of the array.
+	 * For all other columns, the values are stored in the rows corresponding to the column index - 2.
+	*/
     std::mutex errorMutex;
 
 	int maxRepNo = findMaxRepNo(parendir, filenamePattern);
 
-	r = r % maxRepNo;
+	int rd = std::random_device{}();
+	std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
+	rng.seed(rd);
+
+	uniform_int_distribution<int> unif_int;
+	unif_int = uniform_int_distribution<int>(0,  maxRepNo);
+
+	r = r + unif_int(rng); // Randomly select a replicate number
+	r = r % (maxRepNo + 1); // Ensure that r is within bounds
 	// File name template: "/FRAME_T_{Tval}_a_{a_c}_R_{Rval}.csv"
 	string basefilename = filenamePattern + std::to_string(r) + ".csv";
     
@@ -542,6 +592,13 @@ void init_exprtk_readCSVcolumns_frame(D2Vec_Double &array, vector<int> &const_in
 		{
             continue; // Skip non-matching files.
         }
+		else
+		{
+			std::lock_guard<std::mutex> lock(errorMutex);
+			stringstream m0;
+			m0 << "Filename: " << filename << " matches pattern: " << basefilename << endl;
+			cerr << m0.str(); cout << m0.str();
+		}
 
         std::ifstream inputFile(entry.path());
         if (!inputFile.is_open()) {
@@ -549,6 +606,7 @@ void init_exprtk_readCSVcolumns_frame(D2Vec_Double &array, vector<int> &const_in
             std::cerr << "Error opening file: " << filename << std::endl;
             continue;
         }
+		
 
         std::string line;
         std::getline(inputFile, line); // Read header
@@ -655,10 +713,6 @@ void init_exprtk_readCSVcolumns_frame(D2Vec_Double &array, vector<int> &const_in
 
 			// Create a local symbol table, copying the global symbol table
 			exprtk::symbol_table<double> local_symbol_table;// = global_symbol_table;
-
-			int rd = std::random_device{}();
-			std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
-			rng.seed(rd);
 
 			uniform_real_distribution<double> unif;
 			unif = uniform_real_distribution<double>(0.0, 1.0);
@@ -1877,7 +1931,7 @@ void first_order_critical_exp_delta(int div, double t_max, double a_start, doubl
 	vector<double> a_space = linspace(a_start, a_end, div);
 	cout << "NOSTRA" <<endl;
   	// The pspace to iterate over.
-    vector <double> t_measure = logarithm10_time_bins(t_max, dt);
+    vector <double> t_measure = logarithm10_time_bins(t_max, 5*dt);
 	// Computes and returns ln-distributed points from t= 10^{0} to log10(t_max) (the latter rounded down to 1 decimal place) 
   // Returns time-points measured on a natural logarithmic scale from e^{2} to e^ln(t_max) rounded down to one decimal place.
 
@@ -2442,8 +2496,72 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 		#if defined(INIT) && INIT == 0
 			// CORRESPONDS TO HOMOGENEOUS MFT FRAME INITIALISATION
 			init_exprtk_homogenousMFTframe(Rho_dt, g*g, a, a_c, clow); // Returns a frame with random speckles of high and low density.
+		#elif defined(INIT) && INIT == 2
+			// BURN-IN FRAME INITIALISATION (EXPRTK)
+		
+			stringstream  rain, dPO, Lgrid, t_val; rain  << a; Lgrid << g; dPO << dP; t_val << 91201; 
+			map<string, string> local_input_keys = input_keys; // Copy input_keys to local_input_keys.
+			local_input_keys["T"] = t_val.str(); local_input_keys["a"] = rain.str(); local_input_keys["dP"] = dPO.str();
+			local_input_keys["L"] = Lgrid.str();
+			//Update the values of T, a, dP and L in local_input_keys.
+			string local_input_frame_subfolder = input_frame_subfolder; //Copy input_frame_subfolder to local_input_frame_subfolder.
+			// Formatted string for input_frame_subfolder.
+			string local_input_folder = format_str(local_input_frame_subfolder, local_input_keys); //Format input_folder_pattern with local_input_keys.
+
+			string initcsv_parendir= input_frame_parenfolder + local_input_folder; //Parent directory for csv files.
+
+			/**INPUT Filename Patterns are of the form: FRAME_T_{}_a_{}_R_{}.csv (WHEN READING RIETKERK FRAMES)
+			string csv_filename_pattern = input_prefix + t_val.str() + "_a_" + rain.str() + "_R_";
+			const vector<string> initcsv_columns = {"P(x;t)", "W(x;t)", "O(x;t)"}; //Columns to be read from csv file.
+			vector<int> const_species;
+			for(int s=1; s< SpB; s++)
+				const_species.push_back(s); //Species to be initialised with constant values.
+			//*/
+			
+			///** INPUT WHEN READING ARTIFICIAL HEX FILES (Filename patterns: FRAME_T_0_a_0_R_{}.csv) 
+			string csv_filename_pattern = input_prefix + "0_a_0_R_";
+			const vector<string> initcsv_columns = {"P(x;t)"};
+			vector<int> const_species;
+			for(int s=1; s< Sp; s++)
+				const_species.push_back(s); //Species to be initialised with constant values (ALL EXCEPT VEGETATION).
+			//*/
+
+
+			//Check first if initcsv_parendir exists, if not throw an error and exit.
+			if(!std::filesystem::exists(initcsv_parendir))
+			{
+				stringstream m1_1;
+				m1_1 << "RUN-TIME ERROR: Parent Directory " << initcsv_parendir << 
+				"\nfor Initialisation CSV Files does not exist for Thread Rank:\t " << omp_get_thread_num() 
+				<< "  with a_value:\t" << a << "\t and Replicate:\t" << j << " EXITING." <<endl; 
+				cout << m1_1.str(); cerr << m1_1.str(); errout.open(thr, std::ios_base::app); errout << m1_1.str(); errout.close();
+				exit(5);
+			}
+
+			
+			init_exprtk_readCSVcolumns_frame(Rho_dt, const_species, initcsv_parendir, csv_filename_pattern, initcsv_columns, a, a_c, g, j, clow);
+
+			vector<double> temp_vec= {Rho_dt[0].begin(),Rho_dt[0].end()}; //Rho_dt for species 's'
+			double init_veg_num = occupied_sites_of_vector(temp_vec, g*g); //Finds number of occupied at given t.
+			vector<double>().swap(temp_vec); //Flush temp_vec out of memory.
+
+			
+
+			if(init_veg_num == 0.0)
+			{
+				stringstream m1_1;
+				m1_1 << "RUN-TIME WARNING: ZERO Active BURN-IN veg sites for Thread Rank:\t " << omp_get_thread_num() 
+				<< "  with a_value:\t" << a << "\t and Replicate:\t" << j << " CONSIDER RE-RUNNING OVER A DIFFERENT RANGE." <<endl; 
+				cout << m1_1.str(); errout.open(thr, std::ios_base::app); errout << m1_1.str(); errout.close();
+			}
+
+			stringstream m1_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
+			m1_1 << "Initial Conditions: BURN-IN # Active Veg sites:\t"<< init_veg_num << " for Thread Rank:\t " << omp_get_thread_num() 
+			<< "  with a_value:\t" << a << "\t and Replicate:\t" << j << endl; 
+			cout << m1_1.str(); errout.open(thr, std::ios_base::app); errout << m1_1.str(); errout.close();
 		#else
-		init_exprtk_randbiMFTframe(Rho_dt, g*g, a, a_c, dP, perc, clow); // Returns a frame with random speckles of high and low density.
+			// DEFAULT FRAME INITIALISATION (RANDOM MFT BASED SPECKLES)
+			init_exprtk_randbiMFTframe(Rho_dt, g*g, a, a_c, dP, perc, clow); // Returns a frame with random speckles of high and low density.
 		#endif
 		/** // GAUSSIAN FRAME INITIALISATION  
 		// Initialise vector <double> amp to elements of clow[].
@@ -2539,7 +2657,7 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 				vector<double>().swap(temp_alt); //Flush temp out of memory.0
 
 				// FRAME SAVING
-				if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 60000 && t <= 150000 || t >= 200 && t <= 10000 
+				if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 60000 && t <= 150000 || t >= 200 && t <= 12000 
 					|| t== 0)
 				{
 					//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
@@ -2574,6 +2692,30 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 					
 
 					// SAVE SELECTED FRAMES
+					/** FRAME SAVING STRATEGY FOR LOW DT (DT ~ 0.01)
+					if(t < 250)
+					{
+						//Only save one in FOUR frames here.
+						if(index%4 ==0 || t== 0)
+						{
+							save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+
+							stringstream m3;
+							m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
+							cout << m3.str(); //errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
+						}
+					}
+					else if(t >= 250 && t < 600)
+					{	//Only save one in two frames here.
+						if(index%2 ==0)
+						{
+							save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+							stringstream m3;
+							m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
+							cout << m3.str(); //errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
+						}
+					}//*/  
+					///**  FRAME SAVING STRATEGY (DT ~ 0.1)
 					if(t < 760)
 					{
 						//Only save one in three frames here.
@@ -2595,7 +2737,7 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 							m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
 							cout << m3.str(); //errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
 						}
-					}
+					} //*/
 					else
 					{
 						//Save all frames here.
@@ -3317,9 +3459,12 @@ void first_order_critical_exp_delta_stochastic_2Sp(int div, double t_max, double
 
 	//Remove last element of t_measure
 	//t_measure.pop_back();
+	
+	// Remove all elements of t_measure that lie between 750 and 1750.
+	//t_measure.erase(std::remove_if(t_measure.begin(), t_measure.end(), [](double x){return (x > 600.0 && x < 1500.0);}), t_measure.end());
 
 
-	//vector <double> t_linearwindow = linspace(int(0.8*t_max), int(0.8*t_max) + 1000, 25); // Computes and returns linearly distributed points from t= 20 to 240 (the latter rounded down to 1 decimal place
+	//vector <double> t_linearwindow = linspace(600, 1500, 19); // Computes and returns linearly distributed points from t= 20 to 240 (the latter rounded down to 1 decimal place
 
 	// Insert the linear window to t_measure vector after the element in t_measure that is just less than the first element in t_linearwindow.
 	//auto it = std::upper_bound(t_measure.begin(), t_measure.end(), t_linearwindow[0]);
@@ -4086,27 +4231,46 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		#elif defined(INIT) && INIT == 2
 			// BURN-IN FRAME INITIALISATION (EXPRTK)
 		
-			stringstream  rain, dPO, Lgrid, t_val;
-			rain  << a; Lgrid << g; t_val << input_T; dPO << dP;
-			//INPUT Filename Patterns are of the form: FRAME_T_{}_a_{}_R_{}.csv
+			stringstream  rain, dPO, Lgrid, t_val; rain  << a; Lgrid << g; dPO << dP; t_val << 91201; 
+			map<string, string> local_input_keys = input_keys; // Copy input_keys to local_input_keys.
+			local_input_keys["T"] = t_val.str(); local_input_keys["a"] = rain.str(); local_input_keys["dP"] = dPO.str();
+			local_input_keys["L"] = Lgrid.str();
+			//Update the values of T, a, dP and L in local_input_keys.
+			string local_input_frame_subfolder = input_frame_subfolder; //Copy input_frame_subfolder to local_input_frame_subfolder.
+			// Formatted string for input_frame_subfolder.
+			string local_input_folder = format_str(local_input_frame_subfolder, local_input_keys); //Format input_folder_pattern with local_input_keys.
+
+			string initcsv_parendir= input_frame_parenfolder + local_input_folder; //Parent directory for csv files.
+
+			/**INPUT Filename Patterns are of the form: FRAME_T_{}_a_{}_R_{}.csv (WHEN READING RIETKERK FRAMES)
 			string csv_filename_pattern = input_prefix + t_val.str() + "_a_" + rain.str() + "_R_";
-			string initcsv_parendir= input_folder + "/L_" + Lgrid.str() + "_a_" + rain.str() 
-			+ "/dP_" + dPO.str() + "/T_" + t_val.str();//Parent directory for csv files.
+			const vector<string> initcsv_columns = {"P(x;t)", "W(x;t)", "O(x;t)"}; //Columns to be read from csv file.
+			vector<int> const_species;
+			for(int s=1; s< SpB; s++)
+				const_species.push_back(s); //Species to be initialised with constant values.
+			//*/
+			
+			///** INPUT WHEN READING ARTIFICIAL HEX FILES (Filename patterns: FRAME_T_0_a_0_R_{}.csv) 
+			string csv_filename_pattern = input_prefix + "0_a_0_R_";
+			const vector<string> initcsv_columns = {"P(x;t)"};
+			vector<int> const_species;
+			for(int s=1; s< Sp; s++)
+				const_species.push_back(s); //Species to be initialised with constant values (ALL EXCEPT VEGETATION).
+			//*/
+
 
 			//Check first if initcsv_parendir exists, if not throw an error and exit.
 			if(!std::filesystem::exists(initcsv_parendir))
 			{
 				stringstream m1_1;
-				m1_1 << "RUN-TIME ERROR: Parent Directory for Initialisation CSV Files does not exist for Thread Rank:\t " << omp_get_thread_num() 
+				m1_1 << "RUN-TIME ERROR: Parent Directory " << initcsv_parendir << 
+				"\nfor Initialisation CSV Files does not exist for Thread Rank:\t " << omp_get_thread_num() 
 				<< "  with a_value:\t" << a << "\t and Replicate:\t" << j << " EXITING." <<endl; 
 				cout << m1_1.str(); cerr << m1_1.str(); errout.open(thr, std::ios_base::app); errout << m1_1.str(); errout.close();
 				exit(5);
 			}
 
-			const vector<string> initcsv_columns = {"P(x;t)", "W(x;t)", "O(x;t)"}; //Columns to be read from csv file.
-			vector<int> const_species;
-			for(int s=1; s< SpB; s++)
-				const_species.push_back(s); //Species to be initialised with constant values.
+			
 			init_exprtk_readCSVcolumns_frame(Rho_dt, const_species, initcsv_parendir, csv_filename_pattern, initcsv_columns, a, a_c, g, j, clow);
 
 			vector<double> temp_vec= {Rho_dt[0].begin(),Rho_dt[0].end()}; //Rho_dt for species 's'
@@ -4218,7 +4382,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				vector<double>().swap(temp_alt); //Flush temp out of memory.0
 
 				// FRAME SAVING
-				if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 60000 && t <= 150000 || t >= 200 && t <= 10000 
+				if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 60000 && t <= 150000 || t >= 200 && t <= 12000 
 					|| t== 0)
 				{
 					//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
@@ -4253,6 +4417,31 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					
 
 					// SAVE SELECTED FRAMES
+					/** FRAME SAVING STRATEGY FOR LOW DT (DT ~ 0.01)
+					if(t < 250)
+					{
+						//Only save one in 4 frames here.
+						if(index%4 ==0 || t== 0)
+						{
+							save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+
+							stringstream m3;
+							m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
+							cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
+						}
+					}
+					else if(t >= 250 && t < 600)
+					{	//Only save one in two frames here.
+						if(index%2 ==0)
+						{
+							save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+							stringstream m3;
+							m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
+							cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
+						}
+					} //*/
+
+					///** PREVIOUS FRAME SAVING STRATEGY (DT ~ 0.1)
 					if(t < 760)
 					{
 						//Only save one in three frames here.
@@ -4274,7 +4463,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 							m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
 							cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
 						}
-					}
+					}//*/
 					else
 					{
 						//Save all frames here.
@@ -4932,7 +5121,7 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 	vector<double> a_space = linspace(a_start, a_end, div);
 	cout << "NOSTRA" <<endl;
   	// The pspace to iterate over.
-    vector <double> t_measure = logarithm10_time_bins(t_max, dt);
+    vector <double> t_measure = logarithm10_time_bins(t_max, 5*dt);
 	//vector <double> t_measure = linspace(40, 880, 22);
 	// Computes and returns ln-distributed points from t= 10^{0} to log10(t_max) (the latter rounded down to 1 decimal place) 
   	// Returns time-points measured on a natural logarithmic scale from e^{2} to e^ln(t_max) rounded down to one decimal place.
@@ -4943,8 +5132,11 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 	//Remove last element of t_measure
 	//t_measure.pop_back();
 
+	// Remove all elements of t_measure that lie between 750 and 1750.
+	//t_measure.erase(std::remove_if(t_measure.begin(), t_measure.end(), [](double x){return (x > 600.0 && x < 1500.0);}), t_measure.end());
 
-	//vector <double> t_linearwindow = linspace(int(0.8*t_max), int(0.8*t_max) + 1000, 25); // Computes and returns linearly distributed points from t= 20 to 240 (the latter rounded down to 1 decimal place
+
+	//vector <double> t_linearwindow = linspace(600, 1500, 19); // Computes and returns linearly distributed points from t= 20 to 240 (the latter rounded down to 1 decimal place
 
 	// Insert the linear window to t_measure vector after the element in t_measure that is just less than the first element in t_linearwindow.
 	//auto it = std::upper_bound(t_measure.begin(), t_measure.end(), t_linearwindow[0]);
@@ -4963,9 +5155,19 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 		cout << t_measure[i] << " ";
   	} 	cout << endl;
 
+	int rd = std::random_device{}();
+	std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
+	rng.seed(rd); // Seed the generator
+	std::uniform_int_distribution<int> unif_int(0, 30); //Use this to generate random numbers between 0 and 30.
+
+	
   	//usleep will pause the program in micro-seconds (1000000 micro-seconds is 1 second)
     const int microToSeconds = 1000000;   
-    const double delay1 = 5 * microToSeconds;     //5 seconds
+    const double delay1 = unif_int(rng)* microToSeconds;     //5 seconds
+
+	// Random delay to stagger the start of the parallel threads.
+	usleep(static_cast<int>(delay1)); //Sleep for delay1 microseconds
+	//std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int>(delay1))); //Sleep for delay1 microseconds
 
     
     cout<<"Delay 1 in progress... ("<<delay1/microToSeconds<<"s)"<<endl;
@@ -5047,9 +5249,7 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 
 	cout << endl << "Dornic Integration Time: " << duration.count() << " seconds" << endl;
 
-	int rd = std::random_device{}();
-	std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
-	rng.seed(rd);
+	
 	std::uniform_real_distribution<double> unif(0.0, 1.0);
 	//Store a uniformly distributed random number between 0 and 1 (rounded to 3 decimal places).
 	double id = round(unif(rng)* 1000.0) / 1000.0; //Random number between 0 and 1.

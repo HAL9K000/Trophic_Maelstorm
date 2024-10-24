@@ -61,7 +61,7 @@ start_screen(){
         echo "Error: Insufficient screen names provided. Exiting."
         exit 1
     fi
-    read -r p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 p11 p12 <<< $(sed -n "$((i+2))p" $1)
+    read -r p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 p11 p12 p13 <<< $(sed -n "$((i+2))p" $1)
     #Remove trailing whitespaces and new lines from p9
     if [ $spb -eq 1 ]; then
         p9=$(echo $p9 | tr -d '[:space:]')
@@ -74,9 +74,23 @@ start_screen(){
         p12=$(echo $p12 | tr -d '[:space:]')
         prefix=$p12
     fi
+    if [ $init -eq 2 ]; then
+        # Check if p13 is not empty
+        if [ -z "$p13" ]; then
+            p12=$(echo $p12 | tr -d '[:space:]')
+        else
+            p13=$(echo $p13 | tr -d '[:space:]')
+        fi
+    fi
+    
     if ! screen -list | grep -q "${screen_names[$screen_index]}"; then
         # Start a new screen session and run the job
-        screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; g++-12 -DSPB=${spb} -DINIT=${init} rietkerk_bjork_basic.cpp order_${spb}stoc_test_rietkerk.cpp -fopenmp -o ${screen_names[$screen_index]}_${prefix}.out -std=c++23; ./${screen_names[$screen_index]}_${prefix}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 $p11 $p12 &> stderr_${screen_names[$screen_index]}.txt; cd $curr_dir"
+        #If init !=2, compile  order_${spb}stoc_test_rietkerk.cpp else compile order_${spb}stoc_burnin_rietkerk.cpp
+        if [ $init -ne 2 ]; then
+            screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; g++-12 -DSPB=${spb} -DINIT=${init} rietkerk_bjork_basic.cpp order_${spb}stoc_test_rietkerk.cpp -fopenmp -o ${screen_names[$screen_index]}_${prefix}.out -std=c++23; ./${screen_names[$screen_index]}_${prefix}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 $p11 $p12 &> stderr_${screen_names[$screen_index]}.txt; cd $curr_dir"
+        else
+            screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; g++-12 -DSPB=${spb} -DINIT=${init} rietkerk_bjork_basic.cpp order_${spb}stoc_burnin_rietkerk.cpp -fopenmp -o ${screen_names[$screen_index]}_${prefix}.out -std=c++23; ./${screen_names[$screen_index]}_${prefix}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 $p11 $p12 $p13 &> stderr_${screen_names[$screen_index]}.txt; cd $curr_dir"
+        fi
         screen_index=$((screen_index+1))
     else
         #echo "Screen session ${screen_names[$screen_index]} is already running. Using the next screen name."

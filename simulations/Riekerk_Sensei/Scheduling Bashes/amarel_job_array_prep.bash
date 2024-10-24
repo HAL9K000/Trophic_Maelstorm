@@ -73,7 +73,7 @@ cat << EOF > ${2}_array.sh
 # Path to the input file containing the arguments
 init_file=$1
 # Read the corresponding line of arguments based on SLURM_ARRAY_TASK_ID
-read -r p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 p11 p12 <<< \$(sed -n "\$((SLURM_ARRAY_TASK_ID+2))p" \$init_file)
+read -r p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 p11 p12 p13 <<< \$(sed -n "\$((SLURM_ARRAY_TASK_ID+2))p" \$init_file)
 CPUS_PER_TASK=\$p7
 #Strip whitespaces and newlines from p12
 p12=\$(echo \$p12 | tr -d '[:space:]')
@@ -89,6 +89,14 @@ else
     p12=\$(echo \$p12 | tr -d '[:space:]')
     prefix=\$p12
 fi
+if [ $init -eq 2 ]; then
+    # Check if p13 is not empty
+    if [ -z "\$p13" ]; then
+        p12=$(echo \$p12 | tr -d '[:space:]')
+    else
+        p13=$(echo \$p13 | tr -d '[:space:]')
+    fi
+fi
 
 echo \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9 \$p10 \$p11 \$p12
 # Dynamically set the number of CPUs per task
@@ -97,10 +105,14 @@ echo \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9 \$p10 \$p11 \$p12
 cd ..
 
 # Use the variables p1, p2, p3, p4, p5, p6, p7, p8, p9 to compile the source files:
-g++ -DSPB=${3} -DINIT=${init} rietkerk_bjork_basic.cpp order_${3}stoc_test_rietkerk.cpp -fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
+if [ $init -ne 2 ]; then
+    g++ -DSPB=${3} -DINIT=${init} rietkerk_bjork_basic.cpp order_${3}stoc_test_rietkerk.cpp -fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
+else
+    g++ -DSPB=${3} -DINIT=${init} rietkerk_bjork_basic.cpp order_${3}stoc_burnin_rietkerk.cpp -fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
+fi
 
 # Run the compiled program with the input parameters
-./ama_${2}_\${SLURM_ARRAY_TASK_ID}.out \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9 \$p10 \$p11 \$p12 &> std_${2}_\${SLURM_ARRAY_TASK_ID}.txt
+./ama_${2}_\${SLURM_ARRAY_TASK_ID}.out \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9 \$p10 \$p11 \$p12 \$p13 &> std_${2}_\${SLURM_ARRAY_TASK_ID}.txt
 
 // Finally, move back to the submission directory
 cd \$SLURM_SUBMIT_DIR

@@ -210,7 +210,7 @@ int main(int argc, char *argv[])
   
   aij = aij_scale*aij; A[0][1] = aij; A[1][0] = aij; // Attack rate matrix []. No canabilism, symmetric effects.
   ajm = ajm_scale*ajm; A[1][2] = ajm; A[2][1] = ajm; // Attack rate matrix []. No canabilism, symmetric effects.
-  Gstar = 0; //mm/((em -mm*hjm)*ajm); //Steady state for grazer.
+  Gstar = mm/((em -mm*hjm)*ajm); //Steady state for grazer.
   double Vstar_veg = mj/((ej -mj*hij)*aij); //Steady state for vegetation (Veg) IFF there is NO predator.
   //Gstar = mm/((em -mm*hjm)*ajm); //Steady state for grazer.
   
@@ -317,7 +317,7 @@ int main(int argc, char *argv[])
     double scaling_factor[2*Sp] = {10, dP/dP, dP/(10.0*dP), 1,  1, 1, 1, 0.1*init_frac_pred, 1, 1};
     // USED FOR HOMOGENEOUS MFT BASED INITIAL CONDITIONS.
   #else
-    double scaling_factor[2*Sp] = {0, 0*dP/dP, dP/(10.0*dP), 1, 1, 5, 0*1, 0.1*init_frac_pred, 1, 1};
+    double scaling_factor[2*Sp] = {0, dP/dP, dP/(10.0*dP)*init_frac_pred, 1, 1, 5, 1, 0.1*init_frac_pred, 1, 1};
     // USED FOR PERIODIC MFT BASED INITIAL CONDITIONS.
   #endif
 

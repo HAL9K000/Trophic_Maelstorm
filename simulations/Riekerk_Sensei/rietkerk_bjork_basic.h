@@ -96,7 +96,6 @@ inline double input_T=0; /** Time for input data */
 
 // Strings that are used for I/O operations and file naming in the simulations.
 inline string prefix = "DiC-NREF-LI";
-inline string csv_prefix = "DiC-UA125A2-UNI";
 inline string frame_folder = "../Data/Rietkerk/Frames/Stochastic/"+ std::to_string(SpB) +"Sp/" + prefix + "_"; //Folder to store frames.
 inline string prelim_folder = "../Data/Rietkerk/Prelims/Stochastic/"+ std::to_string(SpB) +"Sp/"+ prefix +"_"; //Folder to store preliminary data.
 inline const string frame_prefix = "/FRAME_P_c_DP_G_"; //Prefix for frame files.
@@ -108,7 +107,11 @@ inline const string replicate_prefix = "/PRELIM_TSERIES_P_c_DP_G_"; //Prefix for
 inline const string input_prefix = "/FRAME_T_"; //Prefix for input files.
 inline string stat_prefix = "../Data/Rietkerk/Stochastic/"+ std::to_string(SpB) +"Sp/1stCC_Rietkerk_" + prefix + "_P_c_G_";
 
-inline string input_folder = "../Data/Rietkerk/Input/"+ std::to_string(SpB) +"Sp/"+ prefix +"/"; //Folder to store input data.
+inline string input_frame_parenfolder = "../Input/Rietkerk/"+ std::to_string(SpB) +"Sp"; //Parendirectory for input data.
+inline string input_frame_subfolder =""; //Subfolder for input data.
+// NOTE: Complete path to input data is input_frame_parenfolder + input_frame_subfolder + input_prefix +"*.csv"
+inline std::map<string, string> input_keys = { {"outPRE", ""}, {"a", "0"}, {"a_c", "0"}, {"T", "0"}, {"dP", "0"}, {"Geq", "0"}, {"R", ""}, 
+{"MAMP", "0"}, {"SEP", "0"}, {"WID", "0"}, {"MSF", "0"}};
 
 // Strings that are used for the Expertk library to parse mathematical expressions.
 // These represent MFT-versions of the species Coexistance equilibria wrt to the order parameter (Rainfall, given by a).
@@ -204,9 +207,10 @@ inline const double PI = CalculatePi<14>::pi;
 template <typename T> int sgn(T val);
 void increase_stack_limit(long long stack_size);
 bool maxis(int a, int b);
+string format(const std::string& s, const std::map<string, string>& values);
 void add_three(int a, int b, int c); //Test function.
 void set_Prefix(string& user_prefix);
-void set_input_Prefix(string& user_inputprefix, double user_input_T = -1);
+void set_input_Prefix(string& user_inputframepath, string& user_prefix, double user_a_c, double user_dP, double user_Geq = -1, double user_input_T = -1);
 void set_global_system_params(double dt, double dx);
 void set_global_predator_params(double Km);
 

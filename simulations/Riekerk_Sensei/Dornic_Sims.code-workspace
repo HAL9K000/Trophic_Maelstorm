@@ -106,7 +106,9 @@
 			"stacktrace": "cpp",
 			"filesystem": "cpp",
 			"*.inc": "cpp",
-			"*.x": "cpp"
+			"*.x": "cpp",
+			"rope": "cpp",
+			"slist": "cpp"
 		},
 		"C_Cpp.intelliSenseEngineFallback": "enabled"
 	}

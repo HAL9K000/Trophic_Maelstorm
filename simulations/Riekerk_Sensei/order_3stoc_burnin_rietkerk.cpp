@@ -5,7 +5,8 @@ int main(int argc, char *argv[])
   increase_stack_limit(1024L); //Increase stack limit to 1024 MB.
 
   string preFIX; // Prefix for the output files
-  string input_preFIX= "DiC-UA125A2-UNI"; // Prefix for the input files
+  string input_preFIX= "HEXBLADE"; // Prefix for the input files
+  string input_frame_subdir; // Subdirectory for the input frames.
   double input_Tval = 75857.7;
   double a_c =1/24.0;
   double c, gmax, alpha, d, rW, W0, t_max, dt, dx; //int g, div;
@@ -148,9 +149,18 @@ int main(int argc, char *argv[])
         + prefix + " will be used: ";
     cin >> preFIX;
 
+    cout << "NOTE: Valid keys for BURN-IN frames include : [";
+    // Iterate over the keys in the map input_keys.
+    for (auto const& x : input_keys)
+      cout << x.first << '\t'; // string (key) 
+    cout << "]\n";
+    
+    cout << "Enter input subdirectory for BURN-IN frames (for example '/HEXBLADE/L_{L}_a_0/SEP_10_WID_4/MSF_0.25/MAMP_20000_MINVAL_0.0'): ";
+    cin >> input_frame_subdir;
+
   }
   // If the user has entered the correct number of arguments, then the arguments are read from the command line.
-  else if(argc == 13)
+  else if(argc == 14)
   {
     dt = atof(argv[1]);
     t_max = atof(argv[2]);
@@ -164,13 +174,14 @@ int main(int argc, char *argv[])
     aij_scale = atof(argv[10]);
     ajm_scale = atof(argv[11]);
     preFIX = argv[12];
+    input_frame_subdir = argv[13];
   }
   // If there are otherwise an arbitrary number of arguements, terminate the program.
   else
   {
     cout << "Please enter the correct number of arguments.\n";
     cout << "The correct number of arguments is 13.\n";
-    cout << "The arguments are as follows: dt, t_max, g, r, a_start, a_end, div, dP, init_GP, PREFIX.\n";
+    cout << "The arguments are as follows: dt, t_max, g, r, a_start, a_end, div, dP, init_GP, PREFIX, BRIN_DIR.\n";
     exit(1);
   }
 
@@ -214,8 +225,9 @@ int main(int argc, char *argv[])
   }
 
   // Define input file folders.
-  set_input_Prefix(input_preFIX, input_Tval); //Set the prefix (and thus save folders) to the user-defined prefix.
-  cout << "Input directory for frames: " << input_folder << "\n";
+  set_input_Prefix(input_frame_subdir, preFIX, a_c, dP, Gstar); 
+  //Set the prefix (and thus save folders) to the user-defined prefix.
+  cout << "Heuristic Input directory for frames: " << input_frame_parenfolder  + input_frame_subfolder << "\n";
 
   set_global_system_params(dt, dx); //Set the global parameters for the simulation.
   cout << "Global parameters set, with dt/2.0 = " << dt2 << " and dx*dx = " << dx2 <<  " and 1/(dx*dx) = " << dx1_2 << "\n";
@@ -329,7 +341,7 @@ int main(int argc, char *argv[])
     double scaling_factor[2*Sp] = {10, dP/dP, dP/(10.0*dP), 1,  1, 1, 1, 0.1*init_frac_pred, 1, 1};
     // USED FOR HOMOGENEOUS MFT BASED INITIAL CONDITIONS.
   #else
-    double scaling_factor[2*Sp] = {0, dP/dP, dP/(10.0*dP), 1, 1, 5, 1, 0.1*init_frac_pred, 1, 1};
+    double scaling_factor[2*Sp] = {0, dP/dP, dP/(10.0*dP)*init_frac_pred, 1, 1, 5, 1, 0.1*init_frac_pred, 1, 1};
     // USED FOR PERIODIC MFT BASED INITIAL CONDITIONS.
   #endif
 
