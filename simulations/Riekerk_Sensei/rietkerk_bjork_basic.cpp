@@ -2759,6 +2759,10 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 					//std::copy(rho_rep_avg_var.begin(), rho_rep_avg_var.begin() + index, rho_rep_avg_var_temp.begin());
 					var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index+1, 0);
 
+					//Time is stored in the first column.
+					for(int i=0; i < index+1; i++)
+					   rho_rep_avg_var_temp[i][0] = t_meas[i];
+
 					//Finally save to file.
 					stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, veq, jID; // cgm, sig0;
 					a1 << a_st; a2 << a_end;
@@ -2804,6 +2808,11 @@ void rietkerk_Dornic_2D_2Sp(D2Vec_Double &Rho, vector <double> &t_meas, double t
 							D2Vec_Double rho_rep_avg_var_future_temp(new_index+1, vector<double> (Sp4_1, 0.0)); 
 							//Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
 							var_mean_incremental_surv_runs(rho_rep_avg_var_future_temp, Rho_M, new_index+1, 0);
+
+							//Time is stored in the first column.
+							for(int i=0; i < new_index+1; i++)
+								rho_rep_avg_var_future_temp[i][0] = t_meas[i];
+
 							stringstream tm_future; tm_future << t_meas[new_index]; // Time at which the frame is saved.
 
 							string filenamePattern_future = replicate_prefix + L.str() + "_T_" + tm_future.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
@@ -4488,6 +4497,10 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					//std::copy(rho_rep_avg_var.begin(), rho_rep_avg_var.begin() + index, rho_rep_avg_var_temp.begin());
 					var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index+1, 0);
 
+					//Time is stored in the first column.
+					for(int i=0; i < index+1; i++)
+					   rho_rep_avg_var_temp[i][0] = t_meas[i];
+
 					//Finally save to file.
 					stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, geq, jID; // cgm, sig0;
 					a1 << a_st; a2 << a_end;
@@ -4530,6 +4543,10 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 							//Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
 							var_mean_incremental_surv_runs(rho_rep_avg_var_future_temp, Rho_M, new_index+1, 0);
 							stringstream tm_future; tm_future << t_meas[new_index]; // Time at which the frame is saved.
+
+							//Time is stored in the first column.
+							for(int i=0; i < new_index+1; i++)
+								rho_rep_avg_var_future_temp[i][0] = t_meas[i];
 
 							string filenamePattern_future = replicate_prefix + L.str() + "_T_" + tm_future.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
 							"_D2_"+ Dm.str() + "_R_";
