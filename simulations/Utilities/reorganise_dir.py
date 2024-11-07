@@ -366,6 +366,7 @@ def main():
                     f.close()
                                 
                 for a in a_vals:
+                    a = int(a) if float(a).is_integer() else a
                     savedir = "L_" + str(g) + "_a_" + str(a) + "/dP_" + str(dP) + "/Geq_" 
                     if Geq == "NA" and Veq != "NA":
                         savedir += str(Veq) + "/"

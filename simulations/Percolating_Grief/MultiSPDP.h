@@ -48,6 +48,10 @@ namespace fs = std::filesystem;
 	#define SPB 3 //Number of biota species in the system (default value used if NOT defined).
 #endif
 
+#ifndef INIT
+	#define INIT 0 //Initial condition for the system (0 = Homogeneous, 1 = Random Heterogenous Speckles, 2 = Burn-in)
+#endif
+
 #if SPB == 3
 	#include "MultiSPDP_constants_3Sp.h"
 #elif SPB == 2
@@ -83,7 +87,14 @@ inline const string gamma_prefix = "/GAMMA_G_"; //Prefix for gamma files.
 inline const string prelim_prefix = "/PRELIM_AGGRAND_P_c_ID_"; //Prefix for preliminary data files.
 inline const string replicate_prefix = "/PRELIM_TSERIES_P_c_DP_G_"; //Prefix for replicate time-series data files.
 
+inline const string input_prefix = "/FRAME_T_"; //Prefix for input files.
 inline string stat_prefix = "../Data/DP/Stochastic/"+ std::to_string(SpB) +"Sp/1stCC_"  + prefix + "_P_c_G_";
+
+inline string input_frame_parenfolder = "../Input/DP/"+ std::to_string(SpB) +"Sp"; //Parendirectory for input data.
+inline string input_frame_subfolder =""; //Subfolder for input data.
+// NOTE: Complete path to input data is input_frame_parenfolder + input_frame_subfolder + input_prefix +"*.csv"
+inline std::map<string, string> input_keys = { {"outPRE", ""}, {"a", "0"}, {"a_c", "0"}, {"ascaled", "0"}, {"T", "0"}, {"dP", "0"}, {"Geq", "0"}, {"R", ""}, 
+{"MAMP", "0"}, {"SEP", "0"}, {"WID", "0"}, {"MSF", "0"}};
 
 //inline const string prelimheader = " a , r, L, t , <<P(x; t)>_x>_r, Var[<P(x; t)>_x]_r, # Surviving Runs P(x; t),"
 //	" # Active Sites P(x; t), <<G(x; t)>_x>_r, Var[<G(x; t)>_x]_r, # Surviving Runs G(x; t), # Active Sites G(x; t), \n";
@@ -91,7 +102,7 @@ inline string stat_prefix = "../Data/DP/Stochastic/"+ std::to_string(SpB) +"Sp/1
 // Strings that are used for the Expertk library to parse mathematical expressions.
 // These represent MFT-versions of the species Coexistance equilibria wrt to the order parameter (Rainfall, given by a).
 
-inline vector<string> MFT_Vec_CoexExpr(Sp, ""); //Vector of MFT Coexistance expressions for all species.
+inline vector<string> MFT_Vec_CoexExpr(2*Sp, ""); //Vector of MFT Coexistance expressions for all species.
 
 //inline exprtk::symbol_table<double> global_symbol_table; //Symbol table for the Expertk library.
 
@@ -182,8 +193,10 @@ inline const double PI = CalculatePi<14>::pi;
 template <typename T> int sgn(T val);
 void increase_stack_limit(long long stack_size);
 bool maxis(int a, int b);
+string format_str(const std::string& s, const std::map<string, string>& values);
 void add_three(int a, int b, int c); //Test function.
 void set_Prefix(string& user_prefix);
+void set_input_Prefix(string& user_inputframepath, string& user_prefix, double user_a_c, double user_dP, double user_Geq = -1, double user_input_T = -1);
 void set_global_system_params(double dt, double dx);
 void set_global_predator_params(double Km);
 
@@ -196,9 +209,11 @@ void init_fullframe(D2Vec_Double &array, int Sp, int size);
 void init_randbistableframe(D2Vec_Double &array, int size, double R, double R_c, double perc,  double c_high[], double c_low[]);
 // NOTE: The following function REQUIRES the exprtk library to be included in the project.
 void init_exprtk_randbiMFTframe(D2Vec_Double &array, int size, double R, double R_c, double dP, double perc,  double c_spread[]);
-
+void init_exprtk_readCSVcolumns_frame(D2Vec_Double &array, vector<int> &const_index, const string &parendir, const string &filenamePattern, 
+					const std::vector<std::string> &read_cols, double a, double a_c,  int L, int r, double c_spread[]);
 
 void init_csvconstframe(D2Vec_Double &array, D2Vec_Double &const_ind_val, const std::string& filename, const vector<int> &columns, int size);
+void init_burnin_wrapper(D2Vec_Double &Rho_dt, double a, double a_c, int a_scalingfactor, double dP, double perc,  int L, int r, double c_spread[] );
 void init_randconstframe(D2Vec_Double &array, int Sp, int size, double perc,   double c_high[], double c_low[]);
 void init_constframe(D2Vec_Double &array,  int Sp, int size, double constant[]);
 void init_randframe(D2Vec_Double &array, int Sp, int size, double mean[], double sd[]);
@@ -230,7 +245,7 @@ std::vector<double> logarithm10_time_bins(double t_max, double dt);
 //----------------------------- Misc. Supporting Add-ons -------------------------------------------------
 
 void recursive_dir_create(const string& path_to_dir);
-int findMaxRepNo(string& parendir, const string& filenamePattern);
+int findMaxRepNo(const string& parendir, const string& filenamePattern);
 int theborderwall(D2Vec_Double &Rho_t, int g);
 void determine_neighbours_R2( int g, int S, D3Vec_Int &neighbours_R2);
 void determine_neighbours_Sq4(int g, D3Vec_Int &neighbours_Sq4);
@@ -261,7 +276,7 @@ void f_DP_Dor_1Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double b
 void calc_gamma_2Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringSites, D2Vec_Double &Rho_t, D2Vec_Double &gamma,  
 	double (&Rho_avg)[Sp], vector <std::pair<double, int>>& rfrac, double nVeg_frac, int r_max, int L);
 void f_DP_Dor_2Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double b, double c, 
-	double (&Dxd2)[Sp], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double dx1_2, double g);
+	double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double g);
 
 
 //------------------- Vegetation + Grazer + Predator -------------------//
@@ -275,7 +290,7 @@ void calc_gamma_3Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringS
 void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec_Double &Rho_t, D2Vec_Double &gamma,  
 			double (&Rho_avg)[Sp], vector <std::pair<double, int>>& rfrac, double nVeg_frac, int r_max, int L);
 void f_DP_Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double b, double c, 
-	double (&Dxd2)[Sp], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double dx1_2, double g);
+	double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double g);
 void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D2Vec_Double &K1, D2Vec_Double &K2, D2Vec_Double &K3, D2Vec_Double &K4, D3Vec_Int &nR2,
 	double b, double c, double (&Dxd2)[Sp], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t,double dt,double dx, int g);
 void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double b, double c, double (&D)[Sp], double v[],

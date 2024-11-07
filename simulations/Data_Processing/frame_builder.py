@@ -47,17 +47,17 @@ from matplotlib.collections import LineCollection
 
 
 # User inputs.
-SPB = 3; # Number of species in the model
-#in_dir = f"../Data/Remote/DP/Reorg_Frames/{SPB}Sp/DPParam_MFT/" # FOR DP
-#out_dir = f"../../Images/{SPB}Sp/DPParam_MFT/" # FOR DP
+SPB = 1; # Number of species in the model
+in_dir = f"../Data/Remote/DP/Reorg_Frames/{SPB}Sp/DDParam_MFT/" # FOR DP
+out_dir = f"../../Images/{SPB}Sp/DPParam_MFT/" # FOR DP
 
-in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/ASCALE_20_100_NEWMFTEQ/"
-out_dir = f"../../Images/{SPB}Sp/ASCALE_20_100_NEWMFTEQ/"
+#in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/ASCALE_20_100_NEWMFTEQ_INIT/"
+#out_dir = f"../../Images/{SPB}Sp/ASCALE_20_100_NEWMFTEQ/"
 Path(out_dir).mkdir(parents=True, exist_ok=True)
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 
-g = 128;  dP = 10000; Geq = 4.802; R_max= -1;
-#g = 128;  dP = 1; Geq = 0.2991 0.0032013; R_max= -1;
+#g = 128;  dP = 10000; Geq = 0.19208; R_max= -1;
+g = 128;  dP = 1; Geq = 0 ; R_max= -1; #0.0032013
 T_vals =[]; TS_vals =[];
 a_vals = []    
 
@@ -235,7 +235,7 @@ def home_video(file_parendir, out_dir, prefixes, a_vals, T_vals, maxR, minR = 0,
             # End of T loop
         # End of a loop
         print(f"Number of images: {len(img_array)}")
-        if(len(img_array) > 0):
+        if(len(img_array) > 0 and img_array[0] is not None):
             height, width, layers = img_array[0].shape; size = (width, height)
             if videoname == "guess":
                 #Extract string preceding the first underscore in the pngformat string.
@@ -349,7 +349,7 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, minR =0, plt
                     plt.close()
                 '''
                 # Creating combinbed subplots
-                fig, axs = plt.subplots(1, SPB, figsize = set_figsize(SPB))
+                #fig, axs = plt.subplots(1, SPB, figsize = set_figsize(SPB))
                 for s in range(SPB):
                     ax = axs[s] if SPB > 1 else axs
                     data_Sp = np.array(data.iloc[:, s]).reshape(g, g)
@@ -602,7 +602,7 @@ def get_FRAME_POTdata(indir, PREFIX, a_vals, T_vals, return_localminima= True, p
     return (data, local_minima)
 
 
-def get_PRELIM_EQdata(indir, PREFIX, a_vals, tseries_vals, 
+def get_PRELIM_EQdata(indir, PREFIX, a_vals, tseries_vals, a_scale =1,
                       include_col_labels= ["t",  "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"], 
                       meanfilename = "MEAN_TSERIES_T_{TS}.csv"):
 
@@ -610,6 +610,7 @@ def get_PRELIM_EQdata(indir, PREFIX, a_vals, tseries_vals,
     if a_vals == None:
         print("Exiting..."); return;
     #print(f"List of TS values: {tseries_vals}")
+    a_scaled_vals = [a*a_scale for a in a_vals]
     if len(tseries_vals) == 0 or tseries_vals == None:
         for a in a_vals:
             a = int(a) if a.is_integer() else a
@@ -625,7 +626,10 @@ def get_PRELIM_EQdata(indir, PREFIX, a_vals, tseries_vals,
 
                                                                                                     
     print(f"List of a values: {a_vals}")
+    if (a_scale != 1):
+        print(f"List of scaled a values: {a_scaled_vals}")
     print(f"List of TS values: {tseries_vals}")
+
 
     
     
@@ -643,7 +647,7 @@ def get_PRELIM_EQdata(indir, PREFIX, a_vals, tseries_vals,
                 df.columns = df.columns.astype(str)
                 df.columns = [col.strip() for col in df.columns]
                 
-                df.index = pan.MultiIndex.from_tuples([(PREFIX, a, -1, TS)]*len(df), names = ['Prefix', 'a', 'R', 'Tmax'])
+                df.index = pan.MultiIndex.from_tuples([(PREFIX, a*a_scale, -1, TS)]*len(df), names = ['Prefix', 'a', 'R', 'Tmax'])
                 # Only include the columns that fully contain any of the strings in include_col_labels barring "t"
                 mean_col_labels = include_col_labels.copy(); mean_col_labels.remove("t")
                 df = df[[col for col in df.columns if any([label in col for label in mean_col_labels])] + ["t"]]
@@ -678,13 +682,13 @@ def get_PRELIM_EQdata(indir, PREFIX, a_vals, tseries_vals,
 
                     # Check if "t" is all zeros, if so, replace with "t" column values from data slice indexed by [(PREFIX, a, -1, TS)]
                     if df["t"].sum() == 0:
-                        df["t"] = data.loc[(PREFIX, a, -1, TS), "t"].values
+                        df["t"] = data.loc[(PREFIX, a*a_scale, -1, TS), "t"].values
                     Rval = int(re.search(r"R_(\d+)", f).group(1))
 
                     # Assign the data to the appropriate index in the DataFrame (for the length of the data)
-                    df.index = pan.MultiIndex.from_tuples([(PREFIX, a, Rval, TS)]*len(df), names = ['Prefix', 'a', 'R', 'Tmax'])
+                    df.index = pan.MultiIndex.from_tuples([(PREFIX, a*a_scale, Rval, TS)]*len(df), names = ['Prefix', 'a', 'R', 'Tmax'])
 
-                    #df.index = pan.MultiIndex.from_tuples([(PREFIX, a, Rval, TS)], names = ['Prefix', 'a', 'R', 'Tmax'])
+                    #df.index = pan.MultiIndex.from_tuples([(PREFIX, a*a_scale, Rval, TS)], names = ['Prefix', 'a', 'R', 'Tmax'])
 
 
                     '''#print(df.info())
@@ -969,7 +973,7 @@ def analyse_FRAME_POTdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], fi
 
 
 def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseries_vals =[],
-                                   meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"]):
+                                   meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"], a_scaling = 1):
     savefilename = re.sub(r'\.csv$', '', meanfilename.format(Pre="PREFIX", g="g", dP="dP", Geq="Geq", a="a", TS="TS"))
     if len(prefixes) == 0:
         prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(indir, '*/'))]
@@ -983,7 +987,7 @@ def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseri
     for Pre in prefixes:
         
 
-        data = get_PRELIM_EQdata(indir, Pre, init_a_vals, init_TS_vals, meanfilename = meanfilename, include_col_labels= include_col_labels)
+        data = get_PRELIM_EQdata(indir, Pre, init_a_vals, init_TS_vals, a_scaling, meanfilename = meanfilename, include_col_labels= include_col_labels)
         # We are interested in the AVG columns for each species.
         # Note that the number of columns can vary for each a and T value, as R_max can vary, so we need to handle this.
         # Data has columns for each species given by {var}, of the form:
@@ -1035,12 +1039,15 @@ def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseri
         '''
         print(f"num_species = {num_species}")
         # Get the list of a values and T values from the data.
-        a_vals = data.index.get_level_values('a').unique().to_list()
+        a_scaled_vals = data.index.get_level_values('a').unique().to_list()
+        #Force a to be represented in decimal form rather than scientific notation (so 0.00001 is 0.00001 rather than 1e-5).
         tseries_vals = data.index.get_level_values('Tmax').unique().to_list()
-        print(a_vals, tseries_vals)
+        print(a_scaled_vals, tseries_vals)
         
-        for a in a_vals:
-            a = int(a) if float(a).is_integer() else a
+        for a in a_scaled_vals:
+            #a = int(a) if float(a).is_integer() else a
+            #Force a to be represented in decimal form rather than scientific notation.
+            
             for TS in tseries_vals:
                 savepngdir = out_dir + f"{Pre}/TimeSeries/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{TS}/"
                 Path(savepngdir).mkdir(parents=True, exist_ok=True)
@@ -1087,12 +1094,60 @@ def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseri
         
         # End of a loop
         # Use home_video function to create a video of the plots.
-        home_video(out_dir, out_dir, prefixes=[f"{Pre}/TimeSeries"], a_vals= a_vals, T_vals=[Tmax], maxR= 1, 
+        home_video(out_dir, out_dir, prefixes=[f"{Pre}/TimeSeries"], a_vals= a_scaled_vals, T_vals=[Tmax], maxR= 1, 
                    pngformat= "TimeSeries_a_{a}_dP_{dP}_Geq_{Geq}.png", pngdir= "{Pre}/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/", 
                    videoname = f"TimeSeries_{Pre}_Tmax_{Tmax}.mp4", video_relpath= "{Pre}/Videos/{amin}-{amax}/")
         # Note that there is only one png per a value, so the video will be a simple slideshow (and R_max = 1).
         
         input("Press F to Continue...")
+
+
+def analyse_PRELIMS_TRAJECTORYdata(indir, out_dir, prefixes=[], a_vals=[], tseries_vals =[], x_label = ["<<G(x; t)>_x>_r"], y_label = ["<<Pr(x; t)>_x>_r"], 
+        hue_label = ["<<P(x; t)>_x>_r"], size_label = [], T_window = [200, 5000], meanfilename = "Mean_TSERIES_T_{TS}_dP_{dP}_Geq_{Geq}.csv", a_scaling = 1):
+    
+    readfilename =  meanfilename.format(Pre="PREFIX", g="g", dP="dP", Geq="Geq", a="a", TS="TS")
+    if len(prefixes) == 0:
+        prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(indir, '*/'))]
+    combined_data = pan.DataFrame()
+    sea.set_palette("husl")
+    colours = [hex_list[i][-1] for i in range(len(hex_list))]
+
+    init_a_vals = a_vals; init_TS_vals = tseries_vals;
+    include_col_labels = ["t"] + x_label + y_label + hue_label + size_label
+
+    for Pre in prefixes:
+        readcsvdir = out_dir + f"{Pre}/TimeSeries/"
+        # We are interested in the AVG columns for each species.
+        # Note that the number of columns can vary for each a and T value, as R_max can vary, so we need to handle this.
+        # Data has columns for each species given by {var}, of the form:
+        # t   AVG[{var}]_SURV   ...   AVG[{var}]_ALL   ...   AVG[{var}]   ...
+        # where {var} is one of the species names. The dataframe is multi-indexed by Prefix, a, R, Tmax,
+        # where R = -1 for the mean values.
+        #Check if the file exists
+        if not os.path.exists(readcsvdir + readfilename):
+            print(f"File {readcsvdir + readfilename} not found. Generating data for {Pre}....")
+            data = get_PRELIM_EQdata(indir, Pre, init_a_vals, init_TS_vals, a_scaling, meanfilename = meanfilename, include_col_labels= include_col_labels)
+            if data.empty:
+                print(f"No data found for {Pre}. Skipping....")
+                continue
+        else:
+            # Data has columns for each species given by {var}, of the form:
+            # t   AVG[{var}]_SURV   ...   AVG[{var}]_ALL   ...   AVG[{var}]   ...
+            # where {var} is one of the species names. The dataframe is multi-indexed by Prefix, a, R, Tmax,
+            # where R = -1 for the mean values.
+            data = pan.read_csv(readcsvdir + readfilename, header = [0, 1, 2, 3], index_col = [0, 1, 2, 3])
+
+        print("====================================================================")
+        print(f"Data for {Pre}:")
+        print("====================================================================\n")
+        #print(data.info())
+        print(data.head())
+        print(data.tail())
+        print(data.columns)
+        print(data.index)
+
+            
+
 
 
 def analyse_FRAME_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tavg_window_index = [-100000, 0], filename = "MEAN_STD_Surviving_Runs.txt"):
@@ -1233,7 +1288,7 @@ def analyse_FRAME_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tav
 
 
 def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], Tavg_window_index = [-100000, 0], meanfilename = "Mean_TSERIES_T_{TS}.csv",
-                           var_labels= [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"]):
+                           var_labels= [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"], a_scaling =1):
 
     savefilename = re.sub(r'\.csv$', '', meanfilename.format(Pre="PREFIX", g="g", dP="dP", Geq="Geq", a="a", TS="TS"))
     if len(prefixes) == 0:
@@ -1247,7 +1302,7 @@ def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], 
         savedir = out_dir + f"{Pre}/PhaseDiagrams/"
         Path(savedir).mkdir(parents=True, exist_ok=True)
         
-        data = get_PRELIM_EQdata(indir, Pre, a_vals, TS_vals, meanfilename= meanfilename, include_col_labels= include_col_labels)
+        data = get_PRELIM_EQdata(indir, Pre, a_vals, TS_vals, a_scaling, meanfilename= meanfilename, include_col_labels= include_col_labels)
         # Note that the number of columns can vary for each a and T value, as R_max can vary, so we need to handle this.
         # Data has columns for each species given by {var}, of the form:
         # t   AVG[{var}]_SURV   ...   AVG[{var}]_ALL   ...   AVG[{var}]   ...
@@ -1267,11 +1322,12 @@ def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], 
         data.to_csv(savedir + f"{savefilename}_dP_{dP}_Geq_{Geq}.csv")
         #Concatenate the data to the combined data
         combined_data = pan.concat([combined_data, data], axis = 0)
-        Avals_list = sorted(data.index.get_level_values('a').unique().to_list())
+        Avals_scaled_list = sorted(data.index.get_level_values('a').unique().to_list())
+        print(Avals_scaled_list)
         TSvals_list = sorted(data.index.get_level_values('Tmax').unique().to_list())
         Tavg = pan.DataFrame()
         # Iterating over the Pre, a indices, average over the last Tavg_window_index values of T and assign to new DataFrame.
-        for a in Avals_list:
+        for a in Avals_scaled_list:
             for TS in TSvals_list:
                 # Get Tmax for this a value
                 Tmax = TS
@@ -1351,7 +1407,7 @@ def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], 
             # End of s loop
             Twin_min = Tavg_TS_all.index.get_level_values("Twin_min").min(); Twin_max = Tavg_TS_all.index.get_level_values("Twin_max").max()
             fig.suptitle(r"$\mu$ and $\sigma$ of" + f" Species For {Pre}, dP = {dP}, Geq = {Geq} B/W {Twin_min} -- {Twin_max}")
-            plt.savefig(savedir + f"MeanSTD_{Pre}_amin_{Avals_list[0]}_amax_{Avals_list[-1]}_Twin_{Twin_min}_{Twin_max}_dP_{dP}_Geq_{Geq}.png")
+            plt.savefig(savedir + f"MeanSTD_{Pre}_amin_{Avals_scaled_list[0]}_amax_{Avals_scaled_list[-1]}_Twin_{Twin_min}_{Twin_max}_dP_{dP}_Geq_{Geq}.png")
             plt.show()
             plt.close()
         # End of TS loop
@@ -1657,17 +1713,28 @@ def recursive_copydir(src, dst, include_filetypes = ["*.txt"],
 
 #
 recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filetypes =["*.png", "*.jpg", "*.jpeg", "*.mp4"], symlinks=False)
-a_vals = [ 0.05] #0.026, 0.034, 0.0415, 0.042, 0.05, 0.052] #, 0.057 , 0.06] #0.051, 0.053, 0.055]; 
-T_vals=[0, 63095.7, 69183.1, 75857.7, 83176.3, 91201, 99999.9]#, 109648, 120226, 131826, 144544, 158489, 173780, 190546, 208930]
-#T_vals=[0, 63095.7, 83176.3, 91201, 99999.9, 120226, 131826, 144544, 158489, 173780, 190546, 208930]
+a_vals = [1.65, 1.675, 1.7, 20] #0.026, 0.034, 0.0415, 0.042, 0.05, 0.052] #, 0.057 , 0.06] #0.051, 0.053, 0.055]; 
+a_scaling = 0.001
+#T_vals= [0, 251.13, 331.1, 436.48, 575.41, 758.56, 831.71, 999.9, 1202.19, 1445.4, 1737.78, 2089.23, 2511.85, 3019.94, 3630.77, 4365.13, 5247.99, 6309.49, 6918.23, 7585.71, 8317.54, 9120.1, 9999.99]
+T_vals=[91201];
+#[0, 33, 47.85, 68.75, 99.55, 144.1, 208.45, 250.8, 301.95, 363, 436.15, 524.7, 600.05, 649.99, 700.04, 749.98, 800.03, 849.97, 900.02, 949.96, 1000.01, 1049.95, 1100, 1150.05, 1199.99, 1250.04, 1299.98, 1350.03, 1399.97, 1450.02, 1499.96, 1584.55, 1737.45, 1905.2, 7585.6] 
+#[0, 144.54, 190.52, 251.13, 331.1, 436.48, 575.41, 758.56, 831.71, 999.9, 1202.19, 1445.4, 1737.78, 2089.23, 2511.85, 3019.94, 3630.77, 4365.13, 5247.99, 6309.49, 6918.23, 7585.71, 9120.1, 9999.99, 10964.7, 91201, 63095.7, 69183.1, 75857.7, 91201,  99999.9, 10964.3, 120226, 131826, 144544, 158489]
+# 3SP INIT [0, 575.3, 758.45, 911.9, 1096.15, 1317.8, 1584.55, 1905.2, 2290.75, 2753.85, 3311, 3980.7, 4786.1, 5754.1, 6309.05, 6917.9, 7585.6, 8317.1, 9120.1, 9999.55, 91201, 99999.9, 10964.3, 120226, 131826, 144544, 158489]
+#T_vals= [ 109648, 120226, 131826, 144544, 158489, 173780, 190546, 208930]
+#T_vals=[0, 63095.7, 69182.9, 75857.7, 83176.3, 91201, 99999.9, 109647, 120226, 131826, 144544, 158489, 173780, 190546, 208930]
 #T_vals= [158489, 173780, 190546, 208930, 229087, 251189, 275423, 301995, 331131, 363078]
 #prefixes = ["DIC-DDM1-NREF-0.5LI", "DIC-DDM5-NREF-0.5LI", "DIC-DDM10-NREF-0.5LI", "DIC-DDM5-NREF-1.1HI"]
-prefixes = [ "DiC-S0A0LI"]#"DiC-UA125A0-1UNI", "DiC-UA125A0-5E2UNI"]#"DiC-UA125A2-1UNI", "DiC-UA125A2-5E2UNI"]   #"DiC-UA125A0-1UNI", "DiC-UA125A0-5E2UNI"]    #"DiC-G0A1A0-1LI"]  
+prefixes = [ "DiC-B6-UNITY"]
+#"RTK-UA125-LOPRG-1UNI", "RTK-UA125-REGPRG-1UNI" ]
+#"RTK-UA125A0-REGPRG-1UNI", "RTK-UA125A0-REGPRG-5E2UNI",  "RTK-UA125A0-LOPRG-1UNI", "RTK-UA125A0-LOPRG-5E2UNI"]
+#"HX1001-UA125A0-5E2UNI", "HX1005-UA125A0-5E2UNI", "HX2001-UA125A0-5E2UNI", "HX2005-UA125A0-5E2UNI", "HX3001-UA125A0-5E2UNI"]           
+#"DiC-UA125A0-1UNI", "DiC-UA125A0-5E2UNI"]
+#"DiC-UA125A0-S1DTUNI", "DiC-UA125A0-S1DT5E2UNI"]   #"DiC-UA125A0-1UNI", "DiC-UA125A0-5E2UNI"]#"DiC-UA125A2-1UNI", "DiC-UA125A2-5E2UNI"]   #"DiC-UA125A0-1UNI", "DiC-UA125A0-5E2UNI"]    #"DiC-G0A1A0-1LI"]  
 #"DIC-S5M100LI"] #"DIC-S10M3LI"]    #"DIC-S8M1LI"] #"DiC-B6-UNITY"] #"DiC-B6-UNTY" 
 #"DiC-B6-MFTEQ"]#"DiC-STD"]#,"DiC-S7LI", "DiC-0.1LI"]
 #prefixes = ["COR-DDM5-NREF-0.5HI", "COR-DDM10-NREF-0.5HI", "COR-DDM1-NREF-0.5HI"]
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
-TS_vals = [229087]  #36307.7]#, 131826] #190546] #57544] #69183.1] # #[229087] #[208930] #91201]  #[190546]; #[109648];
+TS_vals = [91201]  #36307.7]#, 131826] #190546] #57544] #69183.1] # #[229087] #[208930] #91201]  #[190546]; #[109648];
 #a_vals = []#0.034, 0.048, 0.054]; 
 #T_vals = []#0, 91201, 190546, 208930, 229087]
 
@@ -1681,13 +1748,13 @@ print(f"in_dir: {in_dir} \nout_dir: {out_dir}")
 input("Press F to pay respects...")
 print("\n\n__________________________________________________________________________________________\n\n")
 
-''' FOR VIDEOS OF ALL REPLICATES
+#''' FOR VIDEOS OF ALL REPLICATES
 for Pre in prefixes:
-    frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= 0, plt_gamma= False, delpng = False)
+    frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= 20, plt_gamma= False, delpng = False)
     print(f"Done with making frames for {Pre}")
     for a in a_vals:
         print(f"Making video for {Pre} at a = {a} \n\n")
-        home_video(out_dir, out_dir, [Pre], [a], T_vals= T_vals, maxR= -1, 
+        home_video(out_dir, out_dir, [Pre], [a], T_vals= T_vals, maxR= 20, 
                    pngformat= "CombinedImg/BioConc_a_{a}_T_{T}_n_{R}.png", pngdir= "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/",
                      maxR_txtdir = "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/maxR.txt", videoname = "guess",
                      video_relpath= "{Pre}/Videos/Conc/{a}/{Tmin}-{Tmax}/")
@@ -1695,7 +1762,7 @@ for Pre in prefixes:
 
 ''' FOR VIDEOS OF INDIVIDUAL REPLICATES
 for Pre in prefixes:
-    for R in range(0, 4):
+    for R in range(0, 3):
         frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= R+1, minR= R, plt_gamma= False, delpng = False)
         print(f"Done with making frames for {Pre}")
         for a in a_vals:
@@ -1725,16 +1792,17 @@ for Pre in prefixes:
 #analyse_timeseriesData(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "MEAN_REPLICATES.txt")
 if SPB == 3:
     variable_labels = [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"]
-    Tavg_win_index = [80000, 140000] #[100000, 240000]
+    Tavg_win_index = [150000, 200000] #[100000, 240000]
     # Window for averaging over last Tavg_win_index values of T (if negative, then average over last |Tavg_win_index| values of T)
     # If Tavg_win_index[0] < 0 and Tavg_win_index[1] <= 0, then average over last Tavg_win_index[0] + Tmax to Tavg_win_index[1] + Tmax values of T.
     # If Tavg_win_index[1] >= Tavg_win_index[0] >= 0, then average over last Tavg_win_index[0] to Tavg_win_index[1] values of T.
 elif SPB == 2:
     variable_labels = [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r","<<W(x; t)>_x>_r" , "<<O(x; t)>_x>_r"]; Tavg_win_index = [150000, 200000]#[150000, 240000] #[50000, 100000] #
 elif SPB == 1:
-    variable_labels = ["<<P(x; t)>_x>_r"]; Tavg_win_index = [65000, 100000] #[65000, 100000]
-analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels)
-#analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = Tavg_win_index, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels)
+    variable_labels = ["<<P(x; t)>_x>_r"]; Tavg_win_index = [70000, 100000] #[65000, 100000]
+
+#analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels, a_scaling= a_scaling)
+#analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = Tavg_win_index, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels, a_scaling= a_scaling)
 
 
 #analyse_FRAME_POTdata(in_dir, out_dir, prefixes, a_vals, T_vals, find_minima= True, filename = "Pot_Well.csv", 

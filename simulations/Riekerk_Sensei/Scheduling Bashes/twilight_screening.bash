@@ -99,7 +99,7 @@ start_screen(){
         #echo "Screen session ${screen_names[$screen_index]} is already running. Using the next screen name."
         screen_index=$((screen_index+1))
         # Recursively call the function with the updated screen_idx
-        screen_index=$(start_screen $file_path $spb $screen_index $i)
+        screen_index=$(start_screen $file_path $spb $screen_index $i $init)
     fi
     echo "$screen_index"
 }

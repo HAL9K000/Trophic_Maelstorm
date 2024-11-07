@@ -4,8 +4,15 @@ int main(int argc, char *argv[])
 {
   increase_stack_limit(1024L); //Increase stack limit to 1024 MB.
 
+  #if defined(INIT) && INIT != 2
+    string error_string = "ERROR: The initial condition MUST be set to 2 (Burn-in).\n";
+    cout << error_string; cerr << error_string;
+    exit(1);
+  #endif
+
   string preFIX; // Prefix for the output files
-  //double a_c =1/24.0;
+  string input_preFIX= ""; // Prefix for the input files
+  string input_frame_subdir; // Subdirectory for the input frames.
   double a_c, b, c, gmax, alpha, d, rW, W0, t_max, dt, dx; //int g, div;
   double a_start, a_end; double r; double dP; // Kick for high initial state
   int g, div;
@@ -37,61 +44,64 @@ int main(int argc, char *argv[])
   v1 = 0.45427; //In km/hr
   v2 = 0.40587; //In km/hr
 
-  double D[Sp] ={d0, d1}; //Diffusion coefficients for species.
-  double sigma[Sp] ={s0, s1}; //Demographic stochasticity coefficients for species.
-  double v[Sp] ={0, v1}; //Velocity of species.
+  double D[Sp] ={d0, d1, d2}; //Diffusion coefficients for species.
+  double sigma[Sp] ={s0, s1, s2}; //Demographic stochasticity coefficients for species.
+  double v[Sp] ={0, v1, v2}; //Velocity of species.
 
-  /**
-
-  double beta = c*gmax - d;
-  double p0istar, p0jstar, p0mstar; // Analytic steady state values.
-
-  p0jstar = d*K[1]/beta; 
-  p0istar = (c/d)*(R - rW*p0jstar);
-  p0mstar = (R/alpha)*(p0istar + K[2] )/(p0istar + K[2]*W0);
-  */
-  double aij, hij, ej, mj;
-  double m_scale, aij_scale; // Scaling factors for the mass and attack rate of the grazer.
+  double aij, hij, ej, mj;  double ajm, hjm, em, mm;
+  double mj_scale, aij_scale, mm_scale, ajm_scale; // Scaling factors for the mass and attack rate of the grazer.
+  mj_scale = 1.0; aij_scale = 1.0; mm_scale = 1.0; ajm_scale = 1.0;
   
   aij = 3.6*pow(10.0, -6.08)*pow(20.0, -0.37); // in km^2/(hr kg)
   hij = 1; // Handling time in hrs
   ej =0.45; mj = 0.061609*pow(20.0, -0.25)/8760.0; // Mortality rate in hr^{-1}
+  //Predator of mass 100 kg.
+  ajm = 3.6*pow(10.0, -6.08)*pow(100.0, -0.37); // in km^2/(hr kg)
+  hjm = 1; // Handling time in hrs
+  em =0.85; mm = 0.061609*pow(100.0, -0.25)/8760.0; // Mortality rate in hr^{-1}
 
   
 
   double Km = pow(10.0, 1.22)*pow(100.0, -0.31); // Carrying capacity of predator in kg/km^2s
 
   //double Gstar = mm/((em -mm*hjm)*ajm); //Steady state for grazer.
-  double H[SpB][SpB] ={{0, hij}, 
-                     {hij, 0.0}};    // Handling time matrix [T]. No canabilism, symmetric effects.
-  double A[SpB][SpB] ={{0, aij}, 
-                      {aij, 0.0}};  // Attack rate matrix []. No canabilism, symmetric effects. 
-  double M[SpB] = {d, mj};     // Mortality Rate of Species. (in hr^{-1})
-  double E[SpB] ={1.0, ej}; //Efficiency of consumption.
+  double H[SpB][SpB] ={{0, hij, 0}, 
+                     {hij, 0.0, hjm}, 
+                     {0, hjm, 0}};    // Handling time matrix [T]. No canabilism, symmetric effects.
+  double A[SpB][SpB] ={{0, aij, 0}, 
+                      {aij, 0.0, ajm}, 
+                      {0, ajm, 0}};  // Attack rate matrix []. No canabilism, symmetric effects. 
+  double M[SpB] = {d, mj, mm};     // Mortality Rate of Species. (in hr^{-1})
+  double E[SpB] ={1.0, ej, em}; //Efficiency of consumption.
   //double D[Sp] ={d0, d1}; //Diffusion coefficients for species. (in km^2/hr)
-  double pR[Sp] ={0.0, 1.04285/2.0}; //Perception radius of species (in km)
+  double pR[Sp] ={0.0, 1.04285/2.0, 1.25536/2.0}; //Perception radius of species (in km)
 
   double kappa = (A[0][1]*(E[1] - M[1]*H[0][1])); // Check notation in MFT derivation PDF.
   a_c = M[1]*b/(kappa); // Critical value of a for grazer co-existance.
 
   
-  double Vstar = M[1]/(kappa); // MFT value of V for grazer co-existance.
+  double Vstar_veg = M[1]/(kappa); // MFT value of V for grazer co-existance.
+  double Gstar = 0;
   double init_frac_graz = 1.0; //Initial fraction of grazers and predators in the high state.
+  double init_frac_pred = 1.0; //Initial fraction of grazers and predators in the high state.
   
   cout << "Presets are as follows:\n";
   cout << "For the vegetation:\n";
   cout << "c = " << c << "\t b = " << b << "\t kappa = " << kappa << endl;
-  cout << "\n MFT Vegetation Co-existance Equilibrium Density = " << Vstar << " kg/km^2\n" << endl;
+  cout << "\n MFT Vegetation Co-existance Equilibrium Density = " << Vstar_veg << " kg/km^2\n" << endl;
   cout << "For the grazer:\n";
   cout << "aij = " << aij << "\t hij = " << hij << "\t ej = " << ej << "\t mj = " << mj << endl;
   cout << "\nMFT Grazer Co-existance Critical Threshold = " << a_c << " hr^{-1}\n" << endl;
+  cout << "For the predator:\n";
+  cout << "ajm = " << ajm << " " << A[1][2] << "\t hjm = " << hjm << " " << H[1][2] 
+       << "\t em = " << em << " " << E[2] <<  "\t mm = " << mm <<  " " << M[2] << endl;
   cout << "\n System-level details:\n";
   cout << "pi = " << PI  << endl;
 
   cout << "Diffusion Constants For Species:\n";
   cout << "D0 = " << setprecision(16) << D[0] << "\t D1 = " << D[1] << "\t D2 = " << setprecision(16) << D[2] << "\t D3 = " << setprecision(16) << D[3] << endl;
 
-  cout << "This is a 2Sp (Two) Stochastic DP Model Script WITHOUT DDM\n";
+  cout << "This is a 3Sp (Three) Stochastic Stochastic DP Model Script WITH BURN-IN FRAMES AND UNIT INITIALISATION OF GRAZERS\n";
   cout << "Header Species Check: " << std::to_string(SpB) << "\n";
 
   cout << "\n============================================================\n";
@@ -131,18 +141,30 @@ int main(int argc, char *argv[])
     cin >> dP;
 
     cout << "Enter fractional deviation from MFT for initial conditions of Grazer and Predator above R_c (0.5-1.2 is a good choice): ";
-    cin >> init_frac_graz;
+    cin >> init_frac_pred;
 
     cout << "Enter scaling factor for grazer attacking rate (aij) which has a base value " << aij << " \t:";
     cin >> aij_scale;
+
+    cout << "Enter scaling factor for predator attacking rate (ajm) which has a base value " << ajm << " \t:";
+    cin >> ajm_scale;
 
     cout << "Enter Prefix (common choices include 'DiC-REF', 'DDM-DiC-BURNIN', 'nDiC' etc.) If not provided, default value: " 
         + prefix + " will be used: ";
     cin >> preFIX;
 
+    cout << "NOTE: Valid keys for BURN-IN frames include : [";
+    // Iterate over the keys in the map input_keys.
+    for (auto const& x : input_keys)
+      cout << x.first << '\t'; // string (key) 
+    cout << "]\n";
+    
+    cout << "Enter input subdirectory for BURN-IN frames (for example '/HEXBLADE/L_{L}_a_0/SEP_10_WID_4/MSF_0.25/MAMP_20000_MINVAL_0.0'): ";
+    cin >> input_frame_subdir;
+
   }
   // If the user has entered the correct number of arguments, then the arguments are read from the command line.
-  else if(argc == 12)
+  else if(argc == 14)
   {
     dt = atof(argv[1]);
     t_max = atof(argv[2]);
@@ -152,16 +174,18 @@ int main(int argc, char *argv[])
     a_end = atof(argv[6]);
     div = atoi(argv[7]);
     dP = atof(argv[8]);
-    init_frac_graz = atof(argv[9]);
+    init_frac_pred = atof(argv[9]);
     aij_scale = atof(argv[10]);
-    preFIX = argv[11];
+    ajm_scale = atof(argv[11]);
+    preFIX = argv[12];
+    input_frame_subdir = argv[13];
   }
   // If there are otherwise an arbitrary number of arguements, terminate the program.
   else
   {
     cout << "Please enter the correct number of arguments.\n";
-    cout << "The correct number of arguments is 10.\n";
-    cout << "The arguments are as follows: dt, t_max, g, r,a_start, a_end, div, dP, init_frac_grazpred, PREFIX.\n";
+    cout << "The correct number of arguments is 13.\n";
+    cout << "The arguments are as follows: dt, t_max, g, r,a_start, a_end, div, dP, init_GP,  PREFIX, BRIN_DIR.\n";
     exit(1);
   }
 
@@ -196,11 +220,20 @@ int main(int argc, char *argv[])
   aij = aij_scale*aij; A[0][1] = aij; A[1][0] = aij; // Attack rate matrix []. No canabilism, symmetric effects.
   kappa = (A[0][1]*(E[1] - M[1]*H[0][1])); // Check notation in MFT derivation PDF.
   a_c = M[1]*b/(kappa); // Critical value of a for grazer co-existance.
-  Vstar = M[1]/(kappa); // MFT value of V for grazer co-existance.
+  Vstar_veg = M[1]/(kappa); // MFT value of V for grazer co-existance.
+  ajm = ajm_scale*ajm; A[1][2] = ajm; A[2][1] = ajm; // Attack rate matrix []. No canabilism, symmetric effects.
+  Gstar = 0.0;
   
   cout << "Scaled grazer attacking rate (aij) = " << A[0][1] << " " << A[1][0] << "\n";
-  cout << "Scaled MFT biomass density of Vegetation (V*) = " << Vstar << " kg/km^2\n";
+  cout << "Scaled MFT biomass density of Vegetation (V*) = " << Vstar_veg << " kg/km^2\n";
   cout << "Scaled MFT critical threshold for grazer co-existance (a_c) = " << a_c << " hr^{-1}\n" << endl;
+
+
+  //Vstar_veg = 0.0; // Set Vstar_veg to zero for the burn-in frames.
+
+  // Define input file folders.
+  set_input_Prefix(input_frame_subdir, preFIX, a_c, dP, Gstar); //Set the prefix (and thus save folders) to the user-defined prefix.
+  cout << "Heuristic Input directory for frames: " << input_frame_parenfolder  + input_frame_subfolder << "\n";
 
   set_global_system_params(dt, dx); //Set the global parameters for the simulation.
   cout << "Global parameters set, with dt/2.0 = " << dt2 << " and dx*dx = " << dx2 <<  " and 1/(dx*dx) = " << dx1_2 << "\n";
@@ -213,41 +246,35 @@ int main(int argc, char *argv[])
   // Coexistance equilibrium density of grazer as a function of a. (Geq = mG*a + cG)
   double mV = 1/b; // Vegetation only equilibrium density as a function of a. (Veq = a/b =mV*a)
 
-  string MFT_PreV = std::to_string(mV) + " * a";
-  string MFT_PreG = std::to_string(0.0);
-  string MFT_V = std::to_string(Vstar);
-  string MFT_G = std::to_string(mG) + " * a - " + std::to_string(cG);
+  
+  string MFT_V = std::to_string(1.0); string MFT_PreV = std::to_string(1.0);
+  string MFT_G = std::to_string(0);
+  string MFT_PreG = std::to_string(0);
+  string MFT_Pr = std::to_string(0);
+  string MFT_PrevPr= std::to_string(0);
   
 
-  MFT_Vec_CoexExpr.assign({MFT_PreV, MFT_PreG, MFT_V, MFT_G});
+  MFT_Vec_CoexExpr.assign({ MFT_PreV, MFT_PreG, MFT_PrevPr, MFT_V, MFT_G, MFT_Pr});
   // NOTE: The following clow is used for analytic MFT based initial conditions. 
-  double scaling_factor[2*Sp] = {1, dP/dP*init_frac_graz,  1, init_frac_graz};
-
-  // LE ORIGINAL (NORMAL CLOSE TO MFT)
-  //double clow[2*Sp] = {0, dP/50000.0, dP/500000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};
-  // HIGH INIT, > MFT
-  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, dP, Gstar*1.5, 15, 4, 10};
-  // LOW INIT, < MFT
-  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, 2, 0.6, 4, 10};
-  // CLOSE TO MFT
-  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, Gstar, 10, 4, 10};
+  double scaling_factor[2*Sp] = {1, dP/(10.0*dP)*init_frac_graz, dP/(10.0*dP)*init_frac_pred,  1, 0.1*init_frac_graz, 0.1*init_frac_pred};
 
   // NORMAL INIT CLOSE TO MFT
   double chigh[2*Sp] = {dP, dP/10000.0,  10000.0 + dP, 10};
 
-  stringstream ast, est, dPo, veq; ast << a_start; est  << a_end; dPo << dP; veq << setprecision(5) << Vstar;
-
-  
-	// This is done to avoid overwriting of files.
-  string path_to_folder = frame_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Veq_" + veq.str();
+  stringstream ast, est, dPo, geq; ast << a_start; est  << a_end; dPo << dP; geq << setprecision(5) << Gstar;
+  // This is done to avoid overwriting of files.
+  string path_to_folder = frame_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Geq_" + geq.str();
   recursive_dir_create(path_to_folder);
 
   path_to_folder = prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() 
-                  + "_Veq_" + veq.str() +"/TimeSeries";
+                  + "_Geq_" + geq.str() +"/TimeSeries";
   recursive_dir_create(path_to_folder);
+
+  
   recursive_dir_create("../Data/DP/Stochastic/"+ std::to_string(SpB) +"Sp");
   
-  first_order_critical_exp_delta_stochastic_MultiSp(div, t_max, a_start, a_end, a_c, b, c, D, v, sigma, A, H, E, M, pR, chigh, scaling_factor, dt, dx, dP, r, g, -1.0, Vstar);
+  first_order_critical_exp_delta_stochastic_MultiSp(div, t_max, a_start, a_end, a_c, b, c, D, v, sigma, A, H, E, M, pR, chigh, scaling_factor, dt, dx, dP, r, g, Gstar, -1.0);
+  
 
   return 0;
 }

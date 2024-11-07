@@ -207,7 +207,7 @@ inline const double PI = CalculatePi<14>::pi;
 template <typename T> int sgn(T val);
 void increase_stack_limit(long long stack_size);
 bool maxis(int a, int b);
-string format(const std::string& s, const std::map<string, string>& values);
+string format_str(const std::string& s, const std::map<string, string>& values);
 void add_three(int a, int b, int c); //Test function.
 void set_Prefix(string& user_prefix);
 void set_input_Prefix(string& user_inputframepath, string& user_prefix, double user_a_c, double user_dP, double user_Geq = -1, double user_input_T = -1);
@@ -230,6 +230,7 @@ void init_exprtk_randbiMFTframe_OLD(D2Vec_Double &array, int size, double R, dou
 
 
 void init_csvconstframe(D2Vec_Double &array, D2Vec_Double &const_ind_val, const std::string& filename, const vector<int> &columns, int size);
+void init_burnin_wrapper(D2Vec_Double &Rho_dt, double a, double a_c, double dP, double perc,  int L, int r, double c_spread[] );
 void init_randconstframe(D2Vec_Double &array, int Sp, int size, double perc,   double c_high[], double c_low[]);
 void init_constframe(D2Vec_Double &array,  int Sp, int size, double constant[]);
 void init_randframe(D2Vec_Double &array, int Sp, int size, double mean[], double sd[]);

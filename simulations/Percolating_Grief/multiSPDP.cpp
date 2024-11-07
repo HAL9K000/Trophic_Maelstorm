@@ -80,6 +80,31 @@ void add_three(int a, int b, int c)
 	int d = a + b +c; cout << d << endl;
 }
 
+// Function to replace placeholders in the string with corresponding values from the map
+// Placeholders are in the format {key}, where key is the key in the map
+string format_str(const std::string& s, const std::map<string, string>& values) 
+{
+    string result = s;
+    std::regex placeholder_pattern(R"(\{([a-zA-Z0-9_]+)\})");  // Regex to match {key}
+    std::smatch match;
+
+    // Find all placeholders in the string
+    while (std::regex_search(result, match, placeholder_pattern)) {
+        std::string placeholder = match[0];  // Full match, e.g., "{Pre}"
+        std::string key = match[1];          // Capture group, e.g., "Pre"
+
+        // Replace with corresponding value from the map if key exists
+        auto it = values.find(key);
+        if (it != values.end()) {
+            result.replace(match.position(0), placeholder.length(), it->second);
+        } else {
+            throw std::runtime_error("Key not found: " + key);
+        }
+    }
+
+    return result;
+}
+
 bool comparePairs(const pair<int, int>& a, const pair<int, int>& b) 
 {
     return (a.first * a.first + a.second * a.second) < (b.first * b.first + b.second * b.second);
@@ -91,7 +116,25 @@ void set_Prefix(string& user_prefix)
 	prefix = user_prefix; 
 	frame_folder = "../Data/DP/Frames/Stochastic/"+ std::to_string(SpB) +"Sp/" + prefix + "_";  //Folder to store frames.
 	prelim_folder  = "../Data/DP/Prelims/Stochastic/"+ std::to_string(SpB) +"Sp/"+ prefix +"_"; //Folder to store preliminary data.
-	stat_prefix =  "../Data/DP/Stochastic/"+ std::to_string(SpB) +"Sp/1stOrderCC_Rietkerk_" + prefix + "_STOC_P_c_G_"; //Header for frame files.
+	stat_prefix =  "../Data/DP/Stochastic/"+ std::to_string(SpB) +"Sp/1stOrderCC_DP_" + prefix + "_STOC_P_c_G_"; //Header for frame files.
+}
+
+void set_input_Prefix(string& user_inputframepath, string& user_prefix, double user_a_c, double user_dP, double user_Geq /* = -1*/, double user_input_T /* = -1*/)
+{
+	//Sets the global prefix for the INPUT files (for Burn-In Frames)
+	input_frame_subfolder = user_inputframepath; //Folder to store input data.
+	input_frame_parenfolder = "../Input/DP/"+ std::to_string(SpB) +"Sp"; //Folder to store input data.
+
+	// Update map input_keys with the new values
+	input_keys["outPRE"] = user_prefix;
+	input_keys["a_c"] = std::to_string(user_a_c);
+	input_keys["dP"] = std::to_string(user_dP);
+	if(user_Geq >= 0)
+		input_keys["Geq"] = std::to_string(user_Geq);
+
+	if(user_input_T >= 0)
+		input_keys["T"] = std::to_string(user_input_T);
+	
 }
 
 void set_global_system_params(double dt, double dx)
@@ -112,27 +155,6 @@ void set_global_predator_params(double Km)
 	K_P = Km; // Carrying Capacity of the predator
 	K_P1 = 1.0/Km; // Inverse of the carrying capacity of the predator
 }
-
-/** // set_global_user_Rietkerk_params(...) Commented out for now, as it is not used in the current implementation.
-void set_global_user_Rietkerk_params(double c,double gmax,double alpha, double rW, double W0, double (&D)[Sp], 
-	double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB])
-{
-	// Sets the global parameters for the Rietkerk model, as defined by the user.
-	// This helps save computational time by avoiding repeated calculations.
-
-	cgmax = c*gmax; K2W0 = K[2]*W0; 
-	// For 2 Sp Rietkerk model, set only A01H01
-	if (SpB >= 2)
-	{
-		A01H01 = A[0][1]*H[0][1];
-	}
-	// For 3 Sp Rietkerk model, set A12H12 as well.
-	if (SpB >= 3)
-	{
-		A12H12 = A[1][2]*H[1][2];
-	}
-}
-// */
 
 
 void display_symbol_table(const exprtk::symbol_table<double>& symbol_table) {
@@ -267,7 +289,8 @@ void init_exprtk_randbiMFTframe(D2Vec_Double &array, int size, double R, double 
 		std::cerr << "Value of expression for species " << s << " for [a, thr, expr]: " 
 			<< R << " , " << thr << " , " << expressions[s].value() << "\n";
 	}
-	/** // IN THE CASE OF NON-HOMOGENOUS PERTURBATIONS 
+	#if defined(INIT) && INIT == 1
+	///** // IN THE CASE OF NON-HOMOGENOUS PERTURBATIONS 
 	if (R < R_c)
 	{
 		double highval_veg = std::max(dP, c_spread[0]*(expressions[0].value()));
@@ -317,7 +340,7 @@ void init_exprtk_randbiMFTframe(D2Vec_Double &array, int size, double R, double 
 		}
 	}
 	//*/
-
+	#elif defined(INIT) && INIT == 0
 	// IN THE CASE OF HOMOGENOUS INITIALISATION (NO PERTURBATIONS)
 	if (R < R_c)
 	{
@@ -350,11 +373,297 @@ void init_exprtk_randbiMFTframe(D2Vec_Double &array, int size, double R, double 
 		}
 	}
 	//*/
-
+	#else
+	std::lock_guard<std::mutex> lock(errorMutex);
+	std::cerr << "Error: INIT MUST BE DEFINED AS 0 OR 1 when using init_exprtk_randbiMFTframe()." << std::endl;
+	exit(1);
+	#endif
 	//errorMutex.lock();
 	local_symbol_table.remove_variable("a");
 	// Unlock the mutex
 	//errorMutex.unlock();
+}
+
+void init_exprtk_readCSVcolumns_frame(D2Vec_Double &array, vector<int> &const_index, const string &parendir, const string &filenamePattern, 
+					const std::vector<std::string> &read_cols, double a, double a_c,  int L, int r, double c_spread[])
+{	
+	/** SUMMARY: 
+	 * @brief Initialises a frame (D2Vec_Double vector called "array") as follows:
+	 * The frame is initialised by reading the columns matching entries in read_cols in the CSV files in the directory "parendir" 
+	 * with the filename pattern "filenamePattern". The columns are read from the file corresponding to the value of "r", which is
+	 * the replicate number. Maximum replicate number is determined by findMaxRepNo(parendir, filenamePattern), so that r values are within bounds.
+	 * Column values that do not match the entries in read_cols are ignored, and are generated using expertk expressions (present in MFT_Vec_CoexExpr).
+	 * 
+	 * The values of the columns "W(x;t)" and "O(x;t)" are stored in the last two rows of the array.
+	 * For all other columns, the values are stored in the rows corresponding to the column index - 2.
+	*/
+    std::mutex errorMutex;
+
+	int maxRepNo = findMaxRepNo(parendir, filenamePattern);
+
+	int rd = std::random_device{}();
+	std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
+	rng.seed(rd);
+
+	uniform_int_distribution<int> unif_int;
+	unif_int = uniform_int_distribution<int>(0,  maxRepNo);
+
+	r = r + unif_int(rng); // Randomly select a replicate number
+	r = r % (maxRepNo + 1); // Ensure that r is within bounds
+	// File name template: "/FRAME_T_{Tval}_a_{a_c}_R_{Rval}.csv"
+	string basefilename = filenamePattern + std::to_string(r) + ".csv";
+    
+    // Loop through all files in the parent directory matching the pattern.
+    for (const auto &entry : fs::directory_iterator(parendir)) 
+	{
+        std::string filename = "/" + entry.path().filename().string();
+        // Check if filename matches the pattern.
+        if (filename.find(basefilename) == std::string::npos) 
+			continue; // Skip non-matching files.
+		else
+		{
+			std::lock_guard<std::mutex> lock(errorMutex);
+			stringstream m0;
+			m0 << "Filename: " << filename << " matches pattern: " << basefilename << " with [a, thr, r]: " << a  << " , " << omp_get_thread_num() << " , " << r << "\n";
+			cerr << m0.str(); cout << m0.str();
+		}
+
+        std::ifstream inputFile(entry.path());
+        if (!inputFile.is_open()) {
+            std::lock_guard<std::mutex> lock(errorMutex);
+            std::cerr << "Error opening file: " << filename << " with [a, thr, r]: " << a  << " , " << omp_get_thread_num() << " , " << r << "\n";
+            continue;
+        }
+		
+
+        std::string line;
+        std::getline(inputFile, line); // Read header
+
+        // Parse the header line to map column names to indices
+        std::unordered_map<std::string, int> header_map;
+        std::stringstream ss(line);
+        std::string col_name;
+        int col_idx = 0;
+        while (std::getline(ss, col_name, ',')) {
+            //col_name.erase(std::remove_if(col_name.begin(), col_name.end(), isspace), col_name.end());
+			col_name.erase(std::remove_if(col_name.begin(), col_name.end(), [](unsigned char c) { return std::isspace(c); }), col_name.end());
+            header_map[col_name] = col_idx++;
+        }
+
+        // Verify that all columns in read_cols are present in the CSV header
+        for (const auto &col : read_cols) 
+		{
+            if (header_map.find(col) == header_map.end()) 
+			{
+				stringstream m0;
+				m0 << "Column missing in CSV file: " << col << " in file " << filename 
+				<< "with [a, thr, r]: " << a  << " , " << omp_get_thread_num() << " , " << r << std::endl;
+                inputFile.close();
+				cerr << m0.str(); cout << m0.str();
+                throw std::invalid_argument("Column missing in CSV file");
+				exit(5);
+            }
+        }
+
+        // Read the data and store the selected columns in the array
+        int row = 0;
+        while (std::getline(inputFile, line) && row < L * L) 
+		{
+            std::stringstream line_ss(line);
+            std::string cell;
+            int csv_col = 0;
+            while (std::getline(line_ss, cell, ',')) 
+			{
+                // Find corresponding column in read_cols
+                for (size_t i = 0; i < read_cols.size(); ++i) 
+				{
+                    if (header_map[read_cols[i]] == csv_col) 
+					{
+                        try 
+						{
+							//Check if read_cols[i] == "W(x;t)" or "O(x;t)"
+							if (read_cols[i] == "W(x;t)")
+							  array[Sp-2][row] = std::stod(cell); // Store value in array
+							else if (read_cols[i] == "O(x;t)")
+							  array[Sp-1][row] = std::stod(cell); // Store value in array
+							else
+                            	array[csv_col-2][row] = std::stod(cell); // Store value in array
+                        }
+						catch (const std::invalid_argument& e) 
+                		{
+							std::lock_guard<std::mutex> lock(errorMutex);
+                    		std::cerr << "Error: Unable to convert cell value to double. Column index: " << i
+							<< " , for file: " << filename << " on thread #" << omp_get_thread_num() 
+							<< "\n with the offending line: \n" << line_ss.str()<< std::endl;
+							//Check if read_cols[i] == "W(x;t)" or "O(x;t)"
+							if (read_cols[i] == "W(x;t)")
+							  array[Sp-2][row] = 0; // Store value in array
+							else if (read_cols[i] == "O(x;t)")
+							  array[Sp-1][row] = 0; // Store value in array
+							else
+                            	array[csv_col-2][row] = 0; // Store value in array
+                		} 
+                		catch (const std::out_of_range& e) 
+                		{
+							std::lock_guard<std::mutex> lock(errorMutex);
+                    		std::cerr << "Error: Cell value out of range for double. Column index: " << i 
+							<< " , for file: " << filename << " on thread #" << omp_get_thread_num() 
+							<< "\n with the offending line: \n" << line_ss.str() << std::endl;
+							if (read_cols[i] == "W(x;t)")
+							  array[Sp-2][row] = 0; // Store value in array
+							else if (read_cols[i] == "O(x;t)")
+							  array[Sp-1][row] = 0; // Store value in array
+							else
+                            	array[csv_col-2][row] = 0; // Store value in array
+                		}
+						catch (const std::exception &e) 
+						{
+                            std::lock_guard<std::mutex> lock(errorMutex);
+                            std::cerr << "Error: Unable to convert cell value to double. Column index: " << i
+							<< " , for file: " << filename << " on thread #" << omp_get_thread_num() 
+							<< "\n with the offending line: \n" << line_ss.str() << std::endl;
+
+                        }
+                    }
+                }
+                csv_col++;
+            }
+            row++;
+        } // End of while loop for reading the CSV file
+
+		// Check if sizeof const_ind_val is not 0, if so, use expertk to set the values in the array.
+		if(const_index.size() != 0)
+		{
+			
+			// Create expression objects for each species
+			std::vector<exprtk::expression<double>> expressions(2*Sp);
+    		exprtk::parser<double> parser;
+
+			// Create a local symbol table, copying the global symbol table
+			exprtk::symbol_table<double> local_symbol_table;// = global_symbol_table;
+
+			uniform_real_distribution<double> unif;
+			unif = uniform_real_distribution<double>(0.0, 1.0);
+			int thr = omp_get_thread_num();
+
+			local_symbol_table.add_variable("a", a);
+			local_symbol_table.add_variable("a_c", a_c);
+
+			// Compile the expressions
+			for(int s=0; s< 2*Sp; s++)
+			{
+				std::lock_guard<std::mutex> lock(errorMutex);
+
+				std::string expression_string = MFT_Vec_CoexExpr[s];
+				expressions[s].register_symbol_table(local_symbol_table);
+				if (!parser.compile(expression_string, expressions[s]))
+				{
+					std::cerr << "Error: Unable to compile expression for species " << s << " for [a, thr, expr]: "
+					<< a << " , " << thr << " , " << expression_string << "\n";
+				}
+			}
+
+			// Now iterate over the const_ind_val vector and set the values in the array.
+			for(auto& s : const_index)
+			{
+				if (a < a_c)
+				{
+					for(size_t i=0; i< L*L; i++)
+					{
+						// If the MFT condition before the critical point is 0, set the species to c_spread[s]
+						// Otherwise, set the species to the MFT value multiplied by the constant values in c_spread
+						if(expressions[s].value() == 0)
+							array[s][i] = c_spread[s];
+						else
+							array[s][i] = c_spread[s]*expressions[s].value();
+					}
+				}
+				else if ( a >= a_c)
+				{
+					// Set the other species to the constant values
+					for(size_t i=0; i< L*L; i++)
+					{
+						if(expressions[s + Sp].value() != 0)
+							array[s][i] = c_spread[s + Sp]*expressions[s+Sp].value();
+						else
+							array[s][i] = c_spread[s + Sp];
+					}	
+				}
+			} // End of for loop for const_index
+        
+    	} // End of if(const_index.size() != 0)
+
+		
+		inputFile.close();
+	} // End of for loop for directory_iterator
+}
+
+void init_burnin_wrapper(D2Vec_Double &Rho_dt, double a, double a_c, int a_scalingfactor, double dP, double perc,  int L, int r, double c_spread[] )
+{
+	stringstream  rain, scaled_rain, dPO, Lgrid, t_val; 
+
+	if(input_frame_subfolder.find("DiC-B6-UNITY") != std::string::npos)
+	{
+		if( a < 0.001675)
+			a = 0.001675; // Set a to 0.001675 if it is less than this value, when b= 1e-6 (DiC-B6-UNITY).
+	}
+	
+	rain  << a; scaled_rain<< a_scalingfactor*a; Lgrid << L; dPO << dP; t_val << 91201; 
+	map<string, string> local_input_keys = input_keys; // Copy input_keys to local_input_keys.
+	local_input_keys["T"] = t_val.str(); local_input_keys["a"] = rain.str(); local_input_keys["ascaled"] = scaled_rain.str();
+	local_input_keys["dP"] = dPO.str(); local_input_keys["L"] = Lgrid.str();
+	//Update the values of T, a, dP and L in local_input_keys.
+	string local_input_frame_subfolder = input_frame_subfolder; //Copy input_frame_subfolder to local_input_frame_subfolder.
+	// Formatted string for input_frame_subfolder.
+	string local_input_folder = format_str(local_input_frame_subfolder, local_input_keys); //Format input_folder_pattern with local_input_keys.
+
+	string initcsv_parendir= input_frame_parenfolder + local_input_folder; //Parent directory for csv files.
+	vector<int> const_species; //Vector to store species to be initialised with constant values.
+	string csv_filename_pattern; //Filename pattern for csv files.
+
+	const vector<string> initcsv_columns = {"P(x;t)"};
+	for(int s=1; s< Sp; s++)
+			const_species.push_back(s); //Species to be initialised with constant values (ALL EXCEPT VEGETATION).
+
+	// Check if local_input_folder contains "HEXBLADE"
+	if(local_input_folder.find("HEXBLADE") != std::string::npos)
+	{	// INPUT WHEN READING ARTIFICIAL HEX FILES (Filename patterns: FRAME_T_0_a_0_R_{}.csv) 
+		csv_filename_pattern = input_prefix + "0_a_0_R_";
+	}
+	else
+	{	//INPUT Filename Patterns are of the form: FRAME_T_{}_a_{}_R_{}.csv (WHEN READING RIETKERK FRAMES)
+		csv_filename_pattern = input_prefix + t_val.str() + "_a_" + scaled_rain.str() + "_R_";
+	}
+
+	//Check first if initcsv_parendir exists, if not throw an error and exit.
+	if(!std::filesystem::exists(initcsv_parendir))
+	{
+		stringstream m1_1;
+		m1_1 << "RUN-TIME ERROR: Parent Directory " << initcsv_parendir << 
+		"\nfor Initialisation CSV Files does not exist for Thread Rank:\t " << omp_get_thread_num() 
+		<< "  with a_value:\t" << a << "\t and Replicate:\t" << r << " EXITING." <<endl; 
+		cout << m1_1.str(); cerr << m1_1.str();
+		exit(5);
+	}
+
+	init_exprtk_readCSVcolumns_frame(Rho_dt, const_species, initcsv_parendir, csv_filename_pattern, initcsv_columns, a, a_c, L, r, c_spread);
+
+	vector<double> temp_vec= {Rho_dt[0].begin(),Rho_dt[0].end()}; //Rho_dt for species 's'
+	double init_veg_num = occupied_sites_of_vector(temp_vec, L*L); //Finds number of occupied at given t.
+	vector<double>().swap(temp_vec); //Flush temp_vec out of memory.
+
+	if(init_veg_num == 0.0)
+	{
+		stringstream m1_1;
+		m1_1 << "RUN-TIME WARNING: ZERO Active BURN-IN veg sites for Thread Rank:\t " << omp_get_thread_num() 
+		<< "  with a_value:\t" << a << "\t and Replicate:\t" << r << " CONSIDER RE-RUNNING OVER A DIFFERENT RANGE.\n"; 
+		cout << m1_1.str(); 
+	}
+
+	stringstream m1_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
+	m1_1 << "Initial Conditions: BURN-IN # Active Veg sites:\t"<< init_veg_num << " for Thread Rank:\t " << omp_get_thread_num() 
+	<< "  with a_value:\t" << a << "\t and Replicate:\t" << r << "\n"; 
+	cout << m1_1.str();
 }
 
 
@@ -754,63 +1063,6 @@ void var_mean_incremental_surv_runs(D2Vec_Double &t_avg_var_rep_N, const D2Vec_D
 
 }
 
-
-/** Old version of var_mean_incremental_surv_runs() function. Retained for reference.
-void var_mean_incremental_surv_runs_MultiSp(double t_avg_var_rep_N[][Sp4_1], double X_curr[][Sp2], int size, int j)
-{
-	/** X_curr contains time-series data (indexed as (N(t), <rho(t)>x)) from the current surviving replicate (given by r) with a length "size".
-	 *  rep_avg_var stores the time(t), running density average and variance of X_curr, as well as N(t) and number of survivng replicates 
-	 * for each time-step from previous surviving replicates ( <= r-1) respectively.
-	 * In this function, X_curr is used to update the running avg and variance of rep_avg_var to account for current surviving replicate r(t).
-	 * Note rep_avg_Var[t][3] stores number of surviving runs at t.
-	*/
-/**
-	double mean_prev[size];
-	for(int s=0; s < Sp; s++)
-	{
-		int s_eff = s-2;
-		if(s ==0)
-		{  s_eff = 0; }
-		else if(s_eff <= 0)
-		{	continue; }
-		for(int i=0; i<size; i++)
-		{
-			int r= t_avg_var_rep_N[i][4*s_eff+ 5]+1; //Number of surviving replicates
-			//Number of surviving run at time t.
-			if(X_curr[i][2*s+ 0] != 0.0)
-			{
-				// Only surviving runs are considered.
-				mean_prev[i] = t_avg_var_rep_N[i][4*s_eff+ 3]; //Stores X_n-1 mean data as temp variable.
-				if(t_avg_var_rep_N[i][4*s_eff + 5] == 0.0)
-				{	//First surviving run encountered at time t, encountered here.
-					t_avg_var_rep_N[i][4*s_eff+ 3] = X_curr[i][2*s+ 1]; t_avg_var_rep_N[i][4*s+ 4] = 0.0; 
-					t_avg_var_rep_N[i][4*s_eff+ 6] = X_curr[i][2*s+ 0];
-				}
-				else
-				{	//Not the first surviving run, which means r = rep_avg_var[i][3]+1 >=2
-					t_avg_var_rep_N[i][4*s_eff+ 3] = (X_curr[i][2*s+1] + (r-1)*t_avg_var_rep_N[i][4*s_eff+ 3])/r; //Note r>= 1.
-					t_avg_var_rep_N[i][4*s_eff+ 6] = (X_curr[i][2*s+0] + (r-1)*t_avg_var_rep_N[i][4*s_eff+6])/r; //Note r>= 1.
-					//Calculating and storing incremental variance (V^2_n) [For formula derivation, refer to notes.]
-					t_avg_var_rep_N[i][4*s_eff+4] = (t_avg_var_rep_N[i][4*s_eff+3] - mean_prev[i])*(t_avg_var_rep_N[i][4*s_eff+3] - mean_prev[i]) +
-					(1/(r-1))*( (r-2)*t_avg_var_rep_N[i][4*s_eff+4] + 
-					(X_curr[i][2*s+1] - t_avg_var_rep_N[i][4*s_eff+3])*(X_curr[i][2*s+1] - t_avg_var_rep_N[i][4*s_eff+3]));
-				}
-				t_avg_var_rep_N[i][4*s_eff+5] = r; //At the end, update number of succesful runs.
-			}
-		}
-	}
-	for(int s=1; s < 2; s++)
-	{
-		for(int i=0; i<size; i++)
-		{
-		//For soil water and surface water.
-			t_avg_var_rep_N[i][s] = (X_curr[i][2*s+1] + (j-1)*t_avg_var_rep_N[i][s])/j; //Note r>= 1.
-		}
-	}
-
-}
-**/
-
 // --------------------------- Partitioning functions to make life easier -----------------------------------//
 
 template<typename T>std::vector<double> linspace(T start_in, T end_in, int num_in)
@@ -1135,47 +1387,6 @@ void generateNeighboringSitesFromCentral(const auto range_CentralNeighboringSite
 }
 
 
-/** //NON RANGE VERSION OF THE FUNCTION generateNeighboringSitesFromCentral(). Retained for reference.
-void generateNeighboringSitesFromCentral(const vector<pair<int, int>>& centralNeighboringSites, 
-                                         vector<int>& neighboringSites, int i, int j, int L)
-{
-    // Resize neighboringSites if necessary
-	if (neighboringSites.size() != centralNeighboringSites.size())
-    	neighboringSites.resize(centralNeighboringSites.size());
-
-    // Generate neighboring sites for the lattice site (i, j) based on the central neighboring sites for the lattice site (0, 0)
-    for (size_t k = 0; k < centralNeighboringSites.size(); ++k) {
-        const auto& offset = centralNeighboringSites[k];
-        int dx = offset.first;
-        int dy = offset.second;
-
-        int nx = (i + dx + L) % L;  // Equivalent to (i + dx) mod L with reflective boundary conditions.
-        int ny = (j + dy + L) % L;  // Equivalent to (j + dy) mod L with reflective boundary conditions.
-        neighboringSites[k] = nx * L + ny;
-    }
-}
-// */
-
-
-/** Old version of the function generateNeighboringSitesFromCentral(). Retained for reference.
-std::vector<int> generateNeighboringSitesFromCentral(const vector<pair<int, int>>& centralNeighboringSites, int i, int j, int L)
-{
-	vector<int> neighboringSites;
-    // Generate neighboring sites for the lattice site (i, j) based on the central neighboring sites for the lattice site (0, 0)
-    for (const auto& offset : centralNeighboringSites) {
-        int dx = offset.first;
-        int dy = offset.second;
-
-        int nx = (i + dx + L) % L;  // Equivalent to (i + dx) mod L with reflective boundary conditions.
-        int ny = (j + dy + L) % L;  // Equivalent to (j + dy) mod L with reflective boundary conditions.
-        neighboringSites.push_back(nx * L + ny);
-    }
-
-    return neighboringSites;
-} 
-*/
-
-
 //----------------------------- Regular DP Integration Machinery --------------------------------------------//
 
 void save_prelimframe(D2Vec_Double &Rho_t, const string &parendir, const string &filenamePattern, double a, double a_st, double a_end, double t, 
@@ -1472,7 +1683,8 @@ void calc_gamma_2Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringS
 
 //------------------- 3SPECIES DP Vegetation + Grazer + Predator -------------------//
 
-void f_DP_Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double b, double c, double (&Dxd2)[Sp], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double dx1_2, double g)
+void f_DP_Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double b, double c, 
+	double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double g)
 {
 	//Vector function that updates an array containing ( dP/dt, dG/dt, dPr/dt) for each site in the lattice.
     //Based on the Rietkerk model for plant vegetation dynamics with the Dornic twist where linear and stoch term for vegetation (and grazer) are already taken care of.
@@ -1505,20 +1717,11 @@ void f_DP_Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double b
 void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D2Vec_Double &K1, D2Vec_Double &K2, D2Vec_Double &K3, D2Vec_Double &K4, D3Vec_Int &nR2,
 		double b, double c, double (&Dxd2)[Sp], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t,double dt,double dx, int g)
 {
-	//double dt6 = dt/6.0; double dt2 = dt/2.0; double dx1_2 = 1/(dx*dx);
-
-	/** // OLD DECLARATIONS of K1, K2, K3, K4 and Rho_M. Skipped as declaration and assignment is done in rietkerk_Dornic_2D_MultiSp
-	 * and doing it here takes O(n^2) time each time this function is called.
-	D2Vec_Double K1(Sp, vector<double> (g*g, 0.0)); D2Vec_Double K2(Sp, vector<double> (g*g, 0.0));
-    D2Vec_Double K3(Sp, vector<double> (g*g, 0.0)); D2Vec_Double K4(Sp, vector<double> (g*g, 0.0));
-    D2Vec_Double Rho_M(Sp, vector<double> (g*g, 0.0));
-	*/
-
 	// RECALL: Dxd2[s] = D[s]/dx2
 	#if SPB == 3
-		f_DP_Dor_3Sp(K1, Rho_t, nR2, b, c, Dxd2, A, H, E, t, dt, dx1_2, g); //K1 updated, For 3 Species.
+		f_DP_Dor_3Sp(K1, Rho_t, nR2, b, c, A, H, E, t, dt, g); //K1 updated, For 3 Species.
 	#elif SPB == 2
-		f_DP_Dor_2Sp(K1, Rho_t, nR2, b, c, Dxd2, A, H, E, t, dt, dx1_2, g); //K1 updated, For 2 Species.
+		f_DP_Dor_2Sp(K1, Rho_t, nR2, b, c, A, H, E, t, dt, g); //K1 updated, For 2 Species.
 	#elif SPB == 1
 		f_DP_Dor_1Sp(K1, Rho_t, nR2, b, c,  t, dt, g); //K1 updated, For 1 Species.
 	#else
@@ -1532,9 +1735,9 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 	}
 
 	#if SPB == 3
-		f_DP_Dor_3Sp(K2, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt2, dt, dx1_2, g); //K2 updated.
+		f_DP_Dor_3Sp(K2, Rho_tsar, nR2, b, c, A, H, E, t + dt2, dt, g); //K2 updated.
 	#elif SPB == 2
-		f_DP_Dor_2Sp(K2, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt2, dt, dx1_2, g); //K2 updated.
+		f_DP_Dor_2Sp(K2, Rho_tsar, nR2, b, c, A, H, E, t + dt2, dt, g); //K2 updated.
 	#elif SPB == 1
 		f_DP_Dor_1Sp(K2, Rho_tsar, nR2, b, c, t + dt2, dt, g); //K2 updated, For 1 Species.
 	#endif
@@ -1546,9 +1749,9 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 	}
 
 	#if SPB == 3
-		f_DP_Dor_3Sp(K3, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt2, dt, dx1_2, g); //K3 updated.
+		f_DP_Dor_3Sp(K3, Rho_tsar, nR2, b, c, A, H, E, t + dt2, dt, g); //K3 updated.
 	#elif SPB == 2
-		f_DP_Dor_2Sp(K3, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt2, dt, dx1_2, g); //K3 updated.
+		f_DP_Dor_2Sp(K3, Rho_tsar, nR2, b, c, A, H, E, t + dt2, dt,  g); //K3 updated.
 	#elif SPB == 1
 		f_DP_Dor_1Sp(K3, Rho_tsar, nR2, b, c, t + dt2, dt, g); //K3 updated, For 1 Species.
 	#endif
@@ -1559,9 +1762,9 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 			Rho_tsar[s][i] = Rho_t[s][i] + (dt)*K3[s][i];
 	}
 	#if SPB == 3
-		f_DP_Dor_3Sp(K4, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt, dt, dx1_2, g); //K4 updated.
+		f_DP_Dor_3Sp(K4, Rho_tsar, nR2, b, c, A, H, E, t + dt, dt,  g); //K4 updated.
 	#elif SPB == 2
-		f_DP_Dor_2Sp(K4, Rho_tsar, nR2, b, c, Dxd2, A, H, E, t + dt, dt, dx1_2, g); //K4 updated.
+		f_DP_Dor_2Sp(K4, Rho_tsar, nR2, b, c, A, H, E, t + dt, dt, g); //K4 updated.
 	#elif SPB == 1
 		f_DP_Dor_1Sp(K4, Rho_tsar, nR2, b, c, t + dt, dt, g); //K4 updated, For 1 Species.
     #endif
@@ -1583,8 +1786,6 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 		}
 	}
 }
-
-
 
 //Calculates gamma for 3 Sp DP model (details in PDF, 
 // ASSUMING PREDATORS AREN'T DETERRED BY HIGH LOCAL VEGETATION DENSITY)
@@ -1823,6 +2024,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 	double chigh[], double clow[], double dt, double dx, double dP, int r, int g, double Gstar /* = -1*/, double Vstar /* = -1*/)
 {
 	double epsilon = 1.0e-12; //Small number to avoid division by zero.
+	int a_scalingfactor = 1000; //Scaling factor for a.
 	double perc =0.015; //Percentage of high density patches.
 	//Store max value in pR[] in a variable r_max.
 	//NOTE: SpB = Sp - 2; //Number of species excluding water terms.
@@ -1953,7 +2155,28 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 
 		// MFT PERTURBATION BASED FRAME INITIALISATION
 		// NOTE: clow[] is used to store the fractional change from MFT steady state for some species, corresponds to c_spread[] in init_exprtk_randbiMFTframe(...).
-		init_exprtk_randbiMFTframe(Rho_dt, g*g, a, a_c, dP, perc, clow); // Returns a frame with random speckles of high and low density.
+		#if defined(INIT) && INIT == 0
+			// HOMOGENEOUS FRAME INITIALISATION (DEFAULT)
+			init_exprtk_randbiMFTframe(Rho_dt, g*g, a, a_c, dP, perc, clow); // Returns a frame with random speckles of high and low density.
+		#elif defined(INIT) && INIT == 1
+			//RANDOM MFT BASED SPECKLE FRAME INITIALISATION
+			init_exprtk_randbiMFTframe(Rho_dt, g*g, a, a_c, dP, perc, clow); // Returns a frame with random speckles of high and low density.
+		#elif defined(INIT) && INIT == 2
+		 	// BURN-IN FRAME INITIALISATION (EXPRTK)
+			init_burnin_wrapper(Rho_dt, a, a_c, a_scalingfactor, dP, perc, g, j, clow);
+
+			vector<double> temp_vec= {Rho_dt[0].begin(),Rho_dt[0].end()}; //Rho_dt for species 's'
+			double init_veg_num = occupied_sites_of_vector(temp_vec, g*g); //Finds number of occupied at given t.
+			vector<double>().swap(temp_vec); //Flush temp_vec out of memory.
+	
+			if(init_veg_num == 0.0)
+			{
+				stringstream m1_1;
+				m1_1 << "RUN-TIME WARNING: ZERO Active BURN-IN veg sites for Thread Rank:\t " << omp_get_thread_num() 
+				<< "  with a_value:\t" << a << "\t and Replicate:\t" << j << " CONSIDER RE-RUNNING OVER A DIFFERENT RANGE.\n"; 
+				cout << m1_1.str(); cerr << m1_1.str();
+			}
+		#endif
 
 
 		/** // GAUSSIAN FRAME INITIALISATION  
@@ -1969,37 +2192,6 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 		// The first SpB species stored in Rho_dt are to be initialised on frame as Gaussian distributions.
 		// Species 0 is the vegetation, Species 1 is the grazer and Species 2 is the predator.
 		// Species 0 should be centered near the top right corner of the grid, Species 1 near the bottom right corner and Species 2 near the bottom left corner. */
-		
-
-		/** // BURN-IN FRAME INITIALISATION
-		
-		stringstream  rain, rep_j, grid; 
-		rain  << a; rep_j << int(j%2); grid << g;
-    	string initcsv_filename= "Burning_In_Frames/FRAME_RAND_Basic_P_c_DP_G_" + grid.str() +"_T_91201_dt_0.2_alph_0.00833333_cgmax_0.0208333_a_" 
-		+ rain.str() +"_dx_0.1_R_"  + rep_j.str() + ".csv";
-		const vector<int> initcsv_columns = {2, 3, 4}; //Columns to be read from csv file.
-		D2Vec_Double const_ind_val = {{1, dP/1000.0 }, {2, dP/5000.0}}; 
-		init_csvconstframe(Rho_dt, const_ind_val, initcsv_filename, initcsv_columns, g*g); //Initialise Rho_dt with burn-in frame.
-		
-		vector<double> temp_vec= {Rho_dt[0].begin(),Rho_dt[0].end()}; //Rho_dt for species 's'
-		double init_veg_num = occupied_sites_of_vector(temp_vec, g*g); //Finds number of occupied at given t.
-		vector<double>().swap(temp_vec); //Flush temp_vec out of memory.
-
-		
-
-		if(init_veg_num == 0.0)
-		{
-			stringstream m1_1;
-			m1_1 << "RUN-TIME WARNING: ZERO Active BURN-IN veg sites for Thread Rank:\t " << omp_get_thread_num() 
-			<< "  with a_value:\t" << a << "\t and Replicate:\t" << j << " CONSIDER RE-RUNNING OVER A DIFFERENT RANGE." <<endl; 
-			cout << m1_1.str(); errout.open(thr, std::ios_base::app); errout << m1_1.str(); errout.close();
-		}
-
-		stringstream m1_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
-    	m1_1 << "Initial Conditions: BURN-IN # Active Veg sites:\t"<< init_veg_num << " for Thread Rank:\t " << omp_get_thread_num() 
-		<< "  with a_value:\t" << a << "\t and Replicate:\t" << j << endl; 
-		cout << m1_1.str(); errout.open(thr, std::ios_base::app); errout << m1_1.str(); errout.close();
-		
 		// */
 
 		for(int i=0; i < g*g; i++)
@@ -2058,7 +2250,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 					//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
 					
 					stringstream L, tm ,d3, p1, rini, gm, a1, a2, Dm0, Dm1, Dm2, alph, w0t, aij, hij, dix, dimitri, sig0, sig1, geq, veq;
-					double a_scaled = 1000.0*a; //Scale a by 1000 for filename.
+					double a_scaled = a_scalingfactor*a; //Scale a by 1000 for filename.
   					L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(5) << a_scaled; dix << setprecision(2) << dx;
   					rini << j; Dm0 << D[0]*pow(10.0, 7.0); Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2]; 
 					a1 << a_st; a2  << a_end; sig0 << sigma[0]; sig1 << sigma[1]; dimitri  << dP;
@@ -2085,7 +2277,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 
 					stringstream m3;
 					m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
-					cout << m3.str();
+					cout << m3.str(); cerr << m3.str();
 					// */
 					
 
@@ -2099,7 +2291,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 
 							stringstream m3;
 							m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
-							cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
+							cout << m3.str();
 						}
 					}
 					else if(t >= 760 && t < 6000)
@@ -2109,7 +2301,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 							save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
 							stringstream m3;
 							m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
-							cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
+							cout << m3.str(); cerr << m3.str();
 						}
 					}
 					else
@@ -2118,7 +2310,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 						save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
 						stringstream m3;
 						m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
-						cout << m3.str(); errout.open(thr, std::ios_base::app); errout << m3.str(); errout.close();
+						cout << m3.str();
 					}
 					//*/	
 				}
@@ -2130,9 +2322,12 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 					// In this case, copy the first "index" rows of rho_rep_avg_var to a new 2D vector, update the values using var_mean_incremental_surv_runs()
 					// and save to file.
 					D2Vec_Double rho_rep_avg_var_temp(index+1, vector<double> (Sp4_1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+					//Time is stored in the first column.
+					for(int i=0; i < index+1; i++)
+						rho_rep_avg_var_temp[i][0] = t_meas[i];
 					//std::copy(rho_rep_avg_var.begin(), rho_rep_avg_var.begin() + index, rho_rep_avg_var_temp.begin());
 					var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index+1, 0);
-					double a_scaled = 1000.0*a; //Scale a by 1000 for filename.
+					double a_scaled = a_scalingfactor*a; //Scale a by 1000 for filename.
 					//Finally save to file.
 					stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, geq, veq, jID; // cgm, sig0;
 					a1 << a_st; a2 << a_end;
@@ -2156,6 +2351,43 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 					"_D2_"+ Dm.str() + "_R_";
 
 					save_prelimframe(rho_rep_avg_var_temp, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
+
+					// Check if no vegetation is left at this current index. If so, break out of the while loop.
+					if( Rho_M[index][0] == 0.0)
+					{
+						stringstream m3_1;
+						m3_1 << "RUN-TIME WARNING: ZERO Active VEG sites for TIME [t, a, thr, j]\t" 
+						<< t << " , " << a << " , " << omp_get_thread_num()  << " , " << j << " Skipping to next replicate .... \n"; 
+						cout << m3_1.str(); cerr << m3_1.str();
+
+						//Next save future preliminary frames with 0.0 values for population densities after this time point.
+						int index_prelim_range[4] = {int(tot_iter*0.85), int(tot_iter*0.9), int(tot_iter*0.95), int(tot_iter-1)};
+						int iter_index =0;
+						for(int iter_index =0; iter_index < 4; iter_index++)
+						{	
+							int new_index = index_prelim_range[iter_index];
+							if( index > new_index)
+								continue; //Skip to next iteration if index is greater than the current range.
+							// In this case, copy the first "index" rows of rho_rep_avg_var to a new 2D vector, update the values using var_mean_incremental_surv_runs()
+							// and save to file.
+							D2Vec_Double rho_rep_avg_var_future_temp(new_index+1, vector<double> (Sp4_1, 0.0)); 
+							//Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+							var_mean_incremental_surv_runs(rho_rep_avg_var_future_temp, Rho_M, new_index+1, 0);
+							stringstream tm_future; tm_future << t_meas[new_index]; // Time at which the frame is saved.
+
+							//Time is stored in the first column.
+							for(int i=0; i < new_index+1; i++)
+								rho_rep_avg_var_future_temp[i][0] = t_meas[i];
+
+							string filenamePattern_future = replicate_prefix + L.str() + "_T_" + tm_future.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+							"_D2_"+ Dm.str() + "_R_";
+
+							//Finally save to file.
+							save_prelimframe(rho_rep_avg_var_future_temp, parendir, filenamePattern_future, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
+							vector<vector<double>>().swap(rho_rep_avg_var_future_temp); //Flush temp out of memory.
+						}
+						break; //Break out of the while (time) loop.
+					}
 					
 					//stringstream m3;
 					//m3 << "TEMP PRELIM FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
@@ -2488,7 +2720,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 					
 				for(int i=0;i<Rho_dt[0].size();i++)
 				{
-					/** // CHECK FOR NAN AND INF
+					///**  CHECK FOR NAN AND INF
 					if( Rho_dt[s][i] < 0 || isinf(Rho_dt[s][i]) == true and so==1)
 					{
 						stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
@@ -2509,7 +2741,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 						lo == -1;
 					}
 					// Set all lattice sites that are less than 10^-12 to 0.0.
-					if(Rho_dt[s][i] < epsilon)
+					if(Rho_dt[s][i] < epsilon && Rho_dt[s][i] >= 0.0)
 						Rho_dt[s][i] = 0.0;	
 					DRho[s][i] =Rho_dt[s][i]; //Updating dummy variable (necessary to prevent mixing of time in diffusion)
 					//Rho_tsar[s][i] =Rho_dt[s][i]; //Updating dummy variable (necessary to prevent mixing of time in diffusion)
@@ -2686,12 +2918,20 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 		cout << t_measure[i] << " ";
   	} 	cout << endl;
 
+	int rd = std::random_device{}();
+	std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
+	rng.seed(rd); // Seed the generator
+	std::uniform_int_distribution<int> unif_int(0, 30); //Use this to generate random numbers between 0 and 30.
+
+	
   	//usleep will pause the program in micro-seconds (1000000 micro-seconds is 1 second)
     const int microToSeconds = 1000000;   
-    const double delay1 = 5 * microToSeconds;     //5 seconds
+    const double delay1 = unif_int(rng)* microToSeconds;     //5 seconds
 
-    
-    cout<<"Delay 1 in progress... ("<<delay1/microToSeconds<<"s)"<<endl;
+	// Random delay to stagger the start of the parallel threads.
+	usleep(static_cast<int>(delay1)); //Sleep for delay1 microseconds
+	cout<<"Delay 1 in progress... ("<<delay1/microToSeconds<<"s)"<<endl;
+
 	std::vector<vector <double>> vec;
   // Stores collated output from parallel method calls in proper ascending order of p values.
 
@@ -2770,9 +3010,6 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 
 	cout << endl << "Dornic Integration Time: " << duration.count() << " seconds" << endl;
 
-	int rd = std::random_device{}();
-	std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed
-	rng.seed(rd);
 	std::uniform_real_distribution<double> unif(0.0, 1.0);
 	//Store a uniformly distributed random number between 0 and 1 (rounded to 3 decimal places).
 	double id = round(unif(rng)* 1000.0) / 1000.0; //Random number between 0 and 1.
@@ -2835,6 +3072,3 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 	}
 	output_1stdp.close();
 }
-
-
-

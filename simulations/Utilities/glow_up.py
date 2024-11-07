@@ -558,6 +558,63 @@ def logarithm10_time_bins(t_max, dt, size=0):
     else:
         return logspaced
 
+# Computes and returns ln-distributed points from t=10^0 to log10(t_max)
+# for small dt values (dt < 0.05). 
+def logarithm10_time_bins_smalldt(t_max, dt, dt_factor =1, linear_windows =[(600, 1500, 50)], size=0):
+    
+    dt_effective = dt * dt_factor
+    
+    if t_max <= 1:
+        return [0.0]  # No points recorded if t_max < e^0
+
+    tend_one = np.log10(t_max*1.01)
+    power = np.arange(0.0, tend_one, 0.04)  # 25 time-stamps per decade
+
+    t_fin = np.floor( np.power(10, power) / dt_effective) * dt_effective
+
+    t_fin[t_fin <= 1.0] += dt_effective  # Ensure t_fin is strictly above 1.0
+
+    logspaced = np.unique(t_fin).tolist()
+
+    # Removing time-stamps that are too close to each other (within dt/2.0)
+    
+    n = len(logspaced)
+    for i in range(n - 1, 0, -1):
+        if logspaced[i] < logspaced[i - 1] + dt / 2.0:
+            logspaced.pop(i)
+
+    
+    # Add 0.0 to the list of time-stamps if it is not already present at the start
+    if logspaced[0] > 0.0:
+        logspaced.insert(0, 0.0)
+
+    # For linear windows, first generate linearly spaced time-stamps, then remove the time-stamps that are already present in logspaced.
+    # And finally, add the linearly spaced time-stamps to logspaced at the appropriate positions.
+    for window in linear_windows:
+        t_start, t_end, dt_lin = window
+        lin_spaced = np.arange(t_start, t_end, dt_lin).tolist()
+        # Remove time-stamps from logspaced between t_start and t_end.
+        logspaced = [t for t in logspaced if t < t_start or t > t_end]
+        # Add the linearly spaced time-stamps to logspaced at the appropriate positions.
+        for t in lin_spaced:
+            for i in range(len(logspaced) - 1):
+                if logspaced[i] < t < logspaced[i + 1]:
+                    logspaced.insert(i + 1, t)
+                    break
+
+    # Sort the time-stamps in logspaced to ensure they are in ascending order.
+    logspaced.sort()
+
+    
+    print(f"Generated {len(logspaced)} logarithmically spaced time-stamps from 0 to {tend_one} (log10({t_max})) with dt = {dt}.")
+    #print(f"Time-stamps: {logspaced}")
+    if size > 0 and len(logspaced) != size:
+        print(f"Warning! The number of time-stamps generated {len(logspaced)} is not equal to the specified size = {size}. Returning the first  {size} time-stamps.")
+        return logspaced[:size]
+    else:
+        return logspaced    
+
+
 '''# Summary of the function gen_missing_zero_Prelims(...)
 # This function combs through the files in files, which are in the directory pathtodir.
 These files follow the naming convention "/TSERIES*_T_{Tval}_a_{aval}_R_{Rval}.csv" where Tval, aval and Rval are the values of T, a and R respectively.
@@ -679,7 +736,10 @@ def gen_MEAN_INDVL_Prelimsfiledata(files, pathtodir="", ext="csv", tmax =None, d
         pooled_df["t"] = df["t"] # Store the time values in pooled_df.
     else:
         # Use a custom time range if the time values are all zero.
-        pooled_df["t"] = logarithm10_time_bins(tmax, dt, len(df))
+        if dt > 0.05:
+            pooled_df["t"] = logarithm10_time_bins(tmax, dt, len(df))
+        else:
+            pooled_df["t"] = logarithm10_time_bins_smalldt(tmax, dt, dt_factor =1, linear_windows =[(600, 1500, 50)], size= len(df))
 
 
     maxR = len(files)

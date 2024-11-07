@@ -5,7 +5,8 @@ int main(int argc, char *argv[])
   increase_stack_limit(1024L); //Increase stack limit to 1024 MB.
 
   string preFIX; // Prefix for the output files
-  //double a_c =1/24.0;
+  string input_preFIX= ""; // Prefix for the input files
+  string input_frame_subdir; // Subdirectory for the input frames.
   double a_c, b, c, gmax, alpha, d, rW, W0, t_max, dt, dx; //int g, div;
   double a_start, a_end; double r; double dP; // Kick for high initial state
   int g, div;
@@ -41,15 +42,6 @@ int main(int argc, char *argv[])
   double sigma[Sp] ={s0, s1}; //Demographic stochasticity coefficients for species.
   double v[Sp] ={0, v1}; //Velocity of species.
 
-  /**
-
-  double beta = c*gmax - d;
-  double p0istar, p0jstar, p0mstar; // Analytic steady state values.
-
-  p0jstar = d*K[1]/beta; 
-  p0istar = (c/d)*(R - rW*p0jstar);
-  p0mstar = (R/alpha)*(p0istar + K[2] )/(p0istar + K[2]*W0);
-  */
   double aij, hij, ej, mj;
   double m_scale, aij_scale; // Scaling factors for the mass and attack rate of the grazer.
   
@@ -91,7 +83,7 @@ int main(int argc, char *argv[])
   cout << "Diffusion Constants For Species:\n";
   cout << "D0 = " << setprecision(16) << D[0] << "\t D1 = " << D[1] << "\t D2 = " << setprecision(16) << D[2] << "\t D3 = " << setprecision(16) << D[3] << endl;
 
-  cout << "This is a 2Sp (Two) Stochastic DP Model Script WITHOUT DDM\n";
+  cout << "This is a 2Sp (Two) Stochastic DP Model Script WITH BURN-IN FRAMES AND UNIT INITIALISATION OF GRAZERS\n";
   cout << "Header Species Check: " << std::to_string(SpB) << "\n";
 
   cout << "\n============================================================\n";
@@ -140,9 +132,18 @@ int main(int argc, char *argv[])
         + prefix + " will be used: ";
     cin >> preFIX;
 
+    cout << "NOTE: Valid keys for BURN-IN frames include : [";
+    // Iterate over the keys in the map input_keys.
+    for (auto const& x : input_keys)
+      cout << x.first << '\t'; // string (key) 
+    cout << "]\n";
+    
+    cout << "Enter input subdirectory for BURN-IN frames (for example '/HEXBLADE/L_{L}_a_0/SEP_10_WID_4/MSF_0.25/MAMP_20000_MINVAL_0.0'): ";
+    cin >> input_frame_subdir;
+
   }
   // If the user has entered the correct number of arguments, then the arguments are read from the command line.
-  else if(argc == 12)
+  else if(argc == 13)
   {
     dt = atof(argv[1]);
     t_max = atof(argv[2]);
@@ -155,13 +156,14 @@ int main(int argc, char *argv[])
     init_frac_graz = atof(argv[9]);
     aij_scale = atof(argv[10]);
     preFIX = argv[11];
+    input_frame_subdir = argv[12];
   }
   // If there are otherwise an arbitrary number of arguements, terminate the program.
   else
   {
     cout << "Please enter the correct number of arguments.\n";
-    cout << "The correct number of arguments is 10.\n";
-    cout << "The arguments are as follows: dt, t_max, g, r,a_start, a_end, div, dP, init_frac_grazpred, PREFIX.\n";
+    cout << "The correct number of arguments is 12.\n";
+    cout << "The arguments are as follows: dt, t_max, g, r,a_start, a_end, div, dP, init_GP,  PREFIX, BRIN_DIR.\n";
     exit(1);
   }
 
@@ -202,6 +204,13 @@ int main(int argc, char *argv[])
   cout << "Scaled MFT biomass density of Vegetation (V*) = " << Vstar << " kg/km^2\n";
   cout << "Scaled MFT critical threshold for grazer co-existance (a_c) = " << a_c << " hr^{-1}\n" << endl;
 
+
+  Vstar = 0.0; // Set Vstar to zero for the burn-in frames.
+
+  // Define input file folders.
+  set_input_Prefix(input_frame_subdir, preFIX, a_c, dP, Vstar); //Set the prefix (and thus save folders) to the user-defined prefix.
+  cout << "Heuristic Input directory for frames: " << input_frame_parenfolder  + input_frame_subfolder << "\n";
+
   set_global_system_params(dt, dx); //Set the global parameters for the simulation.
   cout << "Global parameters set, with dt/2.0 = " << dt2 << " and dx*dx = " << dx2 <<  " and 1/(dx*dx) = " << dx1_2 << "\n";
   //INITIAL CONDITIONS:
@@ -213,41 +222,33 @@ int main(int argc, char *argv[])
   // Coexistance equilibrium density of grazer as a function of a. (Geq = mG*a + cG)
   double mV = 1/b; // Vegetation only equilibrium density as a function of a. (Veq = a/b =mV*a)
 
-  string MFT_PreV = std::to_string(mV) + " * a";
-  string MFT_PreG = std::to_string(0.0);
-  string MFT_V = std::to_string(Vstar);
-  string MFT_G = std::to_string(mG) + " * a - " + std::to_string(cG);
+  string MFT_PreV = std::to_string(1.0);
+  string MFT_PreG = std::to_string(0.1);
+  string MFT_V = std::to_string(1.0);
+  string MFT_G = std::to_string(0.1);
   
 
   MFT_Vec_CoexExpr.assign({MFT_PreV, MFT_PreG, MFT_V, MFT_G});
   // NOTE: The following clow is used for analytic MFT based initial conditions. 
-  double scaling_factor[2*Sp] = {1, dP/dP*init_frac_graz,  1, init_frac_graz};
-
-  // LE ORIGINAL (NORMAL CLOSE TO MFT)
-  //double clow[2*Sp] = {0, dP/50000.0, dP/500000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};
-  // HIGH INIT, > MFT
-  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, dP, Gstar*1.5, 15, 4, 10};
-  // LOW INIT, < MFT
-  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, 2, 0.6, 4, 10};
-  // CLOSE TO MFT
-  //double clow[2*Sp] = {0, dP/dP, dP/(10.0*dP), 4, 20, 10000.0, Gstar, 10, 4, 10};
+  double scaling_factor[2*Sp] = {1, init_frac_graz,  1, init_frac_graz};
 
   // NORMAL INIT CLOSE TO MFT
   double chigh[2*Sp] = {dP, dP/10000.0,  10000.0 + dP, 10};
 
   stringstream ast, est, dPo, veq; ast << a_start; est  << a_end; dPo << dP; veq << setprecision(5) << Vstar;
-
-  
-	// This is done to avoid overwriting of files.
+  // This is done to avoid overwriting of files.
   string path_to_folder = frame_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Veq_" + veq.str();
   recursive_dir_create(path_to_folder);
 
   path_to_folder = prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() 
                   + "_Veq_" + veq.str() +"/TimeSeries";
   recursive_dir_create(path_to_folder);
+
+  
   recursive_dir_create("../Data/DP/Stochastic/"+ std::to_string(SpB) +"Sp");
   
   first_order_critical_exp_delta_stochastic_MultiSp(div, t_max, a_start, a_end, a_c, b, c, D, v, sigma, A, H, E, M, pR, chigh, scaling_factor, dt, dx, dP, r, g, -1.0, Vstar);
+  
 
   return 0;
 }

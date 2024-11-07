@@ -4,6 +4,12 @@ int main(int argc, char *argv[])
 {
   increase_stack_limit(1024L); //Increase stack limit to 1024 MB.
 
+  #if defined(INIT) && INIT == 2
+    string error_string = "ERROR: The initial condition cannot be set to 2 (Burn-in), Please set the initial condition to 0 or 1 or compile order_2stocDP_burnin.cpp \n";
+    cout << error_string; cerr << error_string;
+    exit(1);
+  #endif
+
   string preFIX; // Prefix for the output files
   //double a_c =1/24.0;
   double a_c, b, c, gmax, alpha, d, rW, W0, t_max, dt, dx; //int g, div;
@@ -91,7 +97,7 @@ int main(int argc, char *argv[])
   cout << "Diffusion Constants For Species:\n";
   cout << "D0 = " << setprecision(16) << D[0] << "\t D1 = " << D[1] << "\t D2 = " << setprecision(16) << D[2] << "\t D3 = " << setprecision(16) << D[3] << endl;
 
-  cout << "This is a 2Sp (Two) Stochastic DP Model Script WITHOUT DDM\n";
+  cout << "This is a 2Sp (Two) Stochastic DP Model Script WITH UNIT INITIALISATION OF GRAZERS\n";
   cout << "Header Species Check: " << std::to_string(SpB) << "\n";
 
   cout << "\n============================================================\n";
@@ -213,15 +219,15 @@ int main(int argc, char *argv[])
   // Coexistance equilibrium density of grazer as a function of a. (Geq = mG*a + cG)
   double mV = 1/b; // Vegetation only equilibrium density as a function of a. (Veq = a/b =mV*a)
 
-  string MFT_PreV = std::to_string(mV) + " * a";
-  string MFT_PreG = std::to_string(0.0);
-  string MFT_V = std::to_string(Vstar);
-  string MFT_G = std::to_string(mG) + " * a - " + std::to_string(cG);
+  string MFT_PreV = std::to_string(1.0);
+  string MFT_PreG = std::to_string(0.1);
+  string MFT_V = std::to_string(1.0);
+  string MFT_G = std::to_string(0.1);
   
 
   MFT_Vec_CoexExpr.assign({MFT_PreV, MFT_PreG, MFT_V, MFT_G});
   // NOTE: The following clow is used for analytic MFT based initial conditions. 
-  double scaling_factor[2*Sp] = {1, dP/dP*init_frac_graz,  1, init_frac_graz};
+  double scaling_factor[2*Sp] = {1, init_frac_graz,  1, init_frac_graz};
 
   // LE ORIGINAL (NORMAL CLOSE TO MFT)
   //double clow[2*Sp] = {0, dP/50000.0, dP/500000.0, 4, 20, 10000.0, Gstar, 10, 4, 10};

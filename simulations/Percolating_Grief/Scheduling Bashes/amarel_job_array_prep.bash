@@ -14,7 +14,7 @@
 
 # Check if the number of arguments is at least 2
 if [ $# -lt 3 ]; then
-    echo "Usage: $0 <path/to/init_file.txt> <job_name> <SPB> [Optional <n> <k>]"
+    echo "Usage: $0 <path/to/init_file.txt> <job_name> <SPB> [Optional <init =0> <n> <k>]"
     echo "Where: n is --cpus-per-task and k is the number of jobs in the array."
     exit 1
 fi
@@ -27,22 +27,27 @@ fi
 
 
 # Extract n and k from the arguments if they are provided
-if [ $# -ge 5 ]; then
-    k=$5
+if [ $# -ge 6 ]; then
+    k=$6
 else
     # Read k from the init file (number of lines in the file - 1)
     k=$(wc -l < $1)
 fi
 
-if [ $# -ge 4 ]; then
-    n=$4
+if [ $# -ge 5 ]; then
+    n=$5
 else
     # Read n as the maximum value of div (seventh column) in the init file
     n=$(awk 'NR>1 {print $7}' $1 | sort -nr | head -n 1)
 fi
+if [ $# -ge 4 ]; then
+    init=$4
+else
+    init=0
+fi
 
 # All the parameters are provided
-echo "k = $k, n = $n"
+echo "k = $k, n = $n", init = $init
 
 
 # Generate the SLURM script with the correct array range
@@ -68,26 +73,46 @@ cat << EOF > ${2}_array.sh
 # Path to the input file containing the arguments
 init_file=$1
 # Read the corresponding line of arguments based on SLURM_ARRAY_TASK_ID
-read -r p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 <<< \$(sed -n "\$((SLURM_ARRAY_TASK_ID+2))p" \$init_file)
+read -r p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 p11 p12 p13 <<< \$(sed -n "\$((SLURM_ARRAY_TASK_ID+2))p" \$init_file)
 CPUS_PER_TASK=\$p7
+#Strip whitespaces and newlines from p12
+p12=\$(echo \$p12 | tr -d '[:space:]')
+prefix=\$p12
 #Remove trailing whitespaces and new lines from p9 if SpB is 1 else remove trailing whitespaces and new lines from p10
 if [ $3 -eq 1 ]; then
     p9=\$(echo \$p9 | tr -d '[:space:]')
+    prefix=\$p11
+elif [ $3 -eq 2 ]; then
+    p11=\$(echo \$p11 | tr -d '[:space:]')
+    prefix=\$p11
 else
-    p10=\$(echo \$p10 | tr -d '[:space:]')
+    p12=\$(echo \$p12 | tr -d '[:space:]')
+    prefix=\$p12
+fi
+if [ $init -eq 2 ]; then
+    # Check if p13 is not empty
+    if [ -z "\$p13" ]; then
+        p12=$(echo \$p12 | tr -d '[:space:]')
+    else
+        p13=$(echo \$p13 | tr -d '[:space:]')
+    fi
 fi
 
-echo \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9 \$p10
+echo \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9 \$p10 \$p11 \$p12 \$p13
 # Dynamically set the number of CPUs per task
 
 # Move to the directory where the source files are located
 cd ..
 
 # Use the variables p1, p2, p3, p4, p5, p6, p7, p8, p9 to compile the source files:
-g++ -DSPB=${3} multiSPDP.cpp order_${3}stocDP.cpp -fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
+if [ $init -ne 2 ]; then
+    g++ -DSPB=${3} -DINIT=${init} multiSPDP.cpp order_${3}stocDP.cpp -fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
+else
+    g++ -DSPB=${3} -DINIT=${init} multiSPDP.cpp order_${3}stocDP_burnin.cpp -fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
+fi
 
 # Run the compiled program with the input parameters
-./ama_${2}_\${SLURM_ARRAY_TASK_ID}.out \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9 \$p10 &> std_${2}_\${SLURM_ARRAY_TASK_ID}.txt
+./ama_${2}_\${SLURM_ARRAY_TASK_ID}.out \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9 \$p10 \$p11 \$p12 \$p13 &> std_${2}_\${SLURM_ARRAY_TASK_ID}.txt
 
 // Finally, move back to the submission directory
 cd \$SLURM_SUBMIT_DIR

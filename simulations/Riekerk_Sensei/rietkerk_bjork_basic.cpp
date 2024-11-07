@@ -770,6 +770,82 @@ void init_exprtk_readCSVcolumns_frame(D2Vec_Double &array, vector<int> &const_in
 	} // End of for loop for directory_iterator
 }
 
+void init_burnin_wrapper(D2Vec_Double &Rho_dt, double a, double a_c, double dP, double perc,  int L, int r, double c_spread[] )
+{
+	stringstream  rain, dPO, Lgrid, t_val; rain  << a; Lgrid << L; dPO << dP; t_val << 91201; 
+	map<string, string> local_input_keys = input_keys; // Copy input_keys to local_input_keys.
+	local_input_keys["T"] = t_val.str(); local_input_keys["a"] = rain.str(); local_input_keys["dP"] = dPO.str();
+	local_input_keys["L"] = Lgrid.str();
+	//Update the values of T, a, dP and L in local_input_keys.
+	string local_input_frame_subfolder = input_frame_subfolder; //Copy input_frame_subfolder to local_input_frame_subfolder.
+	// Formatted string for input_frame_subfolder.
+	string local_input_folder = format_str(local_input_frame_subfolder, local_input_keys); //Format input_folder_pattern with local_input_keys.
+
+	string initcsv_parendir= input_frame_parenfolder + local_input_folder; //Parent directory for csv files.
+	vector<int> const_species; //Vector to store species to be initialised with constant values.
+	string csv_filename_pattern; //Filename pattern for csv files.
+	vector<string> initcsv_columns_temp; //Columns to be read from csv file.
+	// Check if local_input_folder contains "HEXBLADE"
+	if(local_input_folder.find("HEXBLADE") != std::string::npos)
+	{
+		///** INPUT WHEN READING ARTIFICIAL HEX FILES (Filename patterns: FRAME_T_0_a_0_R_{}.csv) 
+		csv_filename_pattern = input_prefix + "0_a_0_R_";
+		initcsv_columns_temp = {"P(x;t)"};
+		
+		for(int s=1; s< Sp; s++)
+			const_species.push_back(s); //Species to be initialised with constant values (ALL EXCEPT VEGETATION).
+		//*/
+	}
+	else
+	{
+		///**INPUT Filename Patterns are of the form: FRAME_T_{}_a_{}_R_{}.csv (WHEN READING RIETKERK FRAMES)
+		csv_filename_pattern = input_prefix + t_val.str() + "_a_" + rain.str() + "_R_";
+		initcsv_columns_temp = {"P(x;t)", "W(x;t)", "O(x;t)"}; //Columns to be read from csv file.
+		for(int s=1; s< SpB; s++)
+			const_species.push_back(s); //Species to be initialised with constant values.
+		//*/
+	}
+
+	//Copy the contents of initcsv_columns_temp to initcsv_columns.
+	const vector<string> initcsv_columns = initcsv_columns_temp;
+
+	// Remove initcsv_columns_temp from memory.
+	vector<string>().swap(initcsv_columns_temp);
+
+	//Check first if initcsv_parendir exists, if not throw an error and exit.
+	if(!std::filesystem::exists(initcsv_parendir))
+	{
+		stringstream m1_1;
+		m1_1 << "RUN-TIME ERROR: Parent Directory " << initcsv_parendir << 
+		"\nfor Initialisation CSV Files does not exist for Thread Rank:\t " << omp_get_thread_num() 
+		<< "  with a_value:\t" << a << "\t and Replicate:\t" << r << " EXITING." <<endl; 
+		cout << m1_1.str(); cerr << m1_1.str();
+		exit(5);
+	}
+
+	
+	init_exprtk_readCSVcolumns_frame(Rho_dt, const_species, initcsv_parendir, csv_filename_pattern, initcsv_columns, a, a_c, L, r, c_spread);
+
+	vector<double> temp_vec= {Rho_dt[0].begin(),Rho_dt[0].end()}; //Rho_dt for species 's'
+	double init_veg_num = occupied_sites_of_vector(temp_vec, L*L); //Finds number of occupied at given t.
+	vector<double>().swap(temp_vec); //Flush temp_vec out of memory.
+
+	
+
+	if(init_veg_num == 0.0)
+	{
+		stringstream m1_1;
+		m1_1 << "RUN-TIME WARNING: ZERO Active BURN-IN veg sites for Thread Rank:\t " << omp_get_thread_num() 
+		<< "  with a_value:\t" << a << "\t and Replicate:\t" << r << " CONSIDER RE-RUNNING OVER A DIFFERENT RANGE.\n"; 
+		cout << m1_1.str(); 
+	}
+
+	stringstream m1_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
+	m1_1 << "Initial Conditions: BURN-IN # Active Veg sites:\t"<< init_veg_num << " for Thread Rank:\t " << omp_get_thread_num() 
+	<< "  with a_value:\t" << a << "\t and Replicate:\t" << r << "\n"; 
+	cout << m1_1.str();
+}
+
 void init_csvconstframe(D2Vec_Double &array, D2Vec_Double &const_ind_val, const string &parendir, const std::string& filename, const vector<int> &columns, int size) 
 {	
 	/**
@@ -1931,7 +2007,7 @@ void first_order_critical_exp_delta(int div, double t_max, double a_start, doubl
 	vector<double> a_space = linspace(a_start, a_end, div);
 	cout << "NOSTRA" <<endl;
   	// The pspace to iterate over.
-    vector <double> t_measure = logarithm10_time_bins(t_max, 5*dt);
+    vector <double> t_measure = logarithm10_time_bins(t_max, dt);
 	// Computes and returns ln-distributed points from t= 10^{0} to log10(t_max) (the latter rounded down to 1 decimal place) 
   // Returns time-points measured on a natural logarithmic scale from e^{2} to e^ln(t_max) rounded down to one decimal place.
 
@@ -4239,67 +4315,25 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			init_exprtk_homogenousMFTframe(Rho_dt, g*g, a, a_c, clow); // Returns a frame with random speckles of high and low density.
 		#elif defined(INIT) && INIT == 2
 			// BURN-IN FRAME INITIALISATION (EXPRTK)
-		
-			stringstream  rain, dPO, Lgrid, t_val; rain  << a; Lgrid << g; dPO << dP; t_val << 91201; 
-			map<string, string> local_input_keys = input_keys; // Copy input_keys to local_input_keys.
-			local_input_keys["T"] = t_val.str(); local_input_keys["a"] = rain.str(); local_input_keys["dP"] = dPO.str();
-			local_input_keys["L"] = Lgrid.str();
-			//Update the values of T, a, dP and L in local_input_keys.
-			string local_input_frame_subfolder = input_frame_subfolder; //Copy input_frame_subfolder to local_input_frame_subfolder.
-			// Formatted string for input_frame_subfolder.
-			string local_input_folder = format_str(local_input_frame_subfolder, local_input_keys); //Format input_folder_pattern with local_input_keys.
 
-			string initcsv_parendir= input_frame_parenfolder + local_input_folder; //Parent directory for csv files.
-
-			/**INPUT Filename Patterns are of the form: FRAME_T_{}_a_{}_R_{}.csv (WHEN READING RIETKERK FRAMES)
-			string csv_filename_pattern = input_prefix + t_val.str() + "_a_" + rain.str() + "_R_";
-			const vector<string> initcsv_columns = {"P(x;t)", "W(x;t)", "O(x;t)"}; //Columns to be read from csv file.
-			vector<int> const_species;
-			for(int s=1; s< SpB; s++)
-				const_species.push_back(s); //Species to be initialised with constant values.
-			//*/
-			
-			///** INPUT WHEN READING ARTIFICIAL HEX FILES (Filename patterns: FRAME_T_0_a_0_R_{}.csv) 
-			string csv_filename_pattern = input_prefix + "0_a_0_R_";
-			const vector<string> initcsv_columns = {"P(x;t)"};
-			vector<int> const_species;
-			for(int s=1; s< Sp; s++)
-				const_species.push_back(s); //Species to be initialised with constant values (ALL EXCEPT VEGETATION).
-			//*/
-
-
-			//Check first if initcsv_parendir exists, if not throw an error and exit.
-			if(!std::filesystem::exists(initcsv_parendir))
-			{
-				stringstream m1_1;
-				m1_1 << "RUN-TIME ERROR: Parent Directory " << initcsv_parendir << 
-				"\nfor Initialisation CSV Files does not exist for Thread Rank:\t " << omp_get_thread_num() 
-				<< "  with a_value:\t" << a << "\t and Replicate:\t" << j << " EXITING." <<endl; 
-				cout << m1_1.str(); cerr << m1_1.str(); errout.open(thr, std::ios_base::app); errout << m1_1.str(); errout.close();
-				exit(5);
-			}
-
-			
-			init_exprtk_readCSVcolumns_frame(Rho_dt, const_species, initcsv_parendir, csv_filename_pattern, initcsv_columns, a, a_c, g, j, clow);
+			init_burnin_wrapper(Rho_dt, a, a_c, dP, perc, clow, g, j);
 
 			vector<double> temp_vec= {Rho_dt[0].begin(),Rho_dt[0].end()}; //Rho_dt for species 's'
 			double init_veg_num = occupied_sites_of_vector(temp_vec, g*g); //Finds number of occupied at given t.
 			vector<double>().swap(temp_vec); //Flush temp_vec out of memory.
-
-			
-
+	
 			if(init_veg_num == 0.0)
 			{
 				stringstream m1_1;
 				m1_1 << "RUN-TIME WARNING: ZERO Active BURN-IN veg sites for Thread Rank:\t " << omp_get_thread_num() 
-				<< "  with a_value:\t" << a << "\t and Replicate:\t" << j << " CONSIDER RE-RUNNING OVER A DIFFERENT RANGE." <<endl; 
-				cout << m1_1.str(); errout.open(thr, std::ios_base::app); errout << m1_1.str(); errout.close();
+				<< "  with a_value:\t" << a << "\t and Replicate:\t" << j << " CONSIDER RE-RUNNING OVER A DIFFERENT RANGE.\n"; 
+				cout << m1_1.str(); cerr << m1_1.str();
 			}
 
 			stringstream m1_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
 			m1_1 << "Initial Conditions: BURN-IN # Active Veg sites:\t"<< init_veg_num << " for Thread Rank:\t " << omp_get_thread_num() 
-			<< "  with a_value:\t" << a << "\t and Replicate:\t" << j << endl; 
-			cout << m1_1.str(); errout.open(thr, std::ios_base::app); errout << m1_1.str(); errout.close();
+			<< "  with a_value:\t" << a << "\t and Replicate:\t" << j << "\n"; 
+			cout << m1_1.str(); cerr << m1_1.str();
 		#else
 			// DEFAULT FRAME INITIALISATION (RANDOM MFT BASED SPECKLES)
 			init_exprtk_randbiMFTframe(Rho_dt, g*g, a, a_c, dP, perc, clow); // Returns a frame with random speckles of high and low density.

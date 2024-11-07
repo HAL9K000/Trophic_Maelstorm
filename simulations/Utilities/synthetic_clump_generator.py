@@ -10,15 +10,15 @@ import random
 SPB =3
 prefix ="HEXBLADE";
 L = 128; r =5;
-output_dir = f"../Data/Input/Rietkerk/{SPB}Sp/{prefix}/L_{L}_a_0/"
+output_dir = f"../Input/DP/{SPB}Sp/{prefix}/L_{L}_a_0/"
 
 # Create the output directory if it does not exist
 os.makedirs(output_dir, exist_ok=True)
 
 
-hex_length = {"  P(x; t)": 20}
+hex_length = {"  P(x; t)": 10}
 gauss_2sd_radius = {"  P(x; t)": 4}
-gauss_amp = {"  P(x; t)": 10000}
+gauss_amp = {"  P(x; t)": 10}
 min_val = {"  P(x; t)": 0.0}
 percent_missing = {"  P(x; t)": 0.1}
 retain_cluster = {"  P(x; t)": 0}
@@ -126,7 +126,7 @@ def main(hex_length, gauss_2sd_radius, L, r, gauss_amp, min_val, output_dir, per
             df[key] = grid.flatten()
             print("Max value: ", np.max(grid))
             #grid = df[key].values.reshape(L, L)
-            #plot_grid(grid, key)
+            plot_grid(grid, key)
         save_grid(df, replicate, output_dir, overwrite=False)
 
 if __name__ == "__main__":
