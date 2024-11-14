@@ -52,6 +52,7 @@ compress_dir() {
         log_error "Failed to compress $outdir"
     else
         echo "Compressed $outdir to $archive_name"
+        log_update "Compressed $outdir to $archive_name"
     fi
 }
 

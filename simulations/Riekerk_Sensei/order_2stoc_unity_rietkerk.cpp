@@ -24,10 +24,15 @@ int main(int argc, char *argv[])
 
   //double p0i = 0.5; double p0j= p0i/200; double p0j= 2.25; double p0m= 8; // In g/m^2
 
-  double k0, k1, k2; double d0, d1, d2, d3; double s0, s1; double v1;//Slightly 
+  double k0, k1, k2; double d0, d1, d2, d3; double s0, s1; double v1; double dtv1;
+  
+  // Diffusion coefficient allometries for consumer species:
+  //General allometry: ln(D (in km^2/hr)) = 0.3473*ln(M) -4.15517, where M is mass in kg of general consumer.
+  //Grazer allometry: ln(D (in km^2/hr)) = 0.5942*ln(M) -6.3578, where M is mass in kg of grazer.
   
   dx= 0.1 ; //From Bonachela et al 2015 (in km)
-  d0 = 0.00025/24.0; d1=0.0298; d2 = 0.00025/24.0; d3= 0.025/24.0; //From Bonachela et al 2015 (in km^2/hr)
+  //d0 = 0.00025/24.0; d1=0.0298; d2 = 0.00025/24.0; d3= 0.025/24.0; //From Bonachela et al 2015 (in km^2/hr) and general D allometry.
+  d0 = 0.00025/24.0; d1=0.01028; d2 = 0.00025/24.0; d3= 0.025/24.0; //From Bonachela et al 2015 (in km^2/hr) and specific D allometries.
   k0= 0; k1 = 5; k2 =5000;
   s0 = sqrt(d0/(dx*dx)); // ~ D0/(dx)^2 (in kg^{0.5}/(km hr))
   s1 = 1; // ~ D/(dx)^2 (in kg^{0.5}/(km hr))
@@ -35,6 +40,9 @@ int main(int argc, char *argv[])
   // Allometric scaling for velocity: 
   // v (m/hr) = 43.706*M^1.772*(1 - e^{-14.27*(M)^(-1.865)}), where M is mass in kg.
   v1 = 0.45427; //In km/hr
+
+  //Time-scale of advection.
+  dtv1 = 0.11817455; //In hr, based on relation ln(dtv_grazer) = 0.2596*ln(M) + 1.8106, where M is mass in kg, and dtv_grazer is in min.
 
   double D[Sp] ={d0, d1, d2, d3}; //Diffusion coefficients for species.
   double K[3] ={k0, k1, k2}; //Diffusion coefficients for species.
@@ -189,9 +197,12 @@ int main(int argc, char *argv[])
   cout << "Scaled grazer attacking rate (aij) = " << A[0][1] << " " << A[1][0] << "\n";
   cout << "Base MFT biomass density of Vegetation (V*) = " << Vstar << " kg/km^2\n" << endl;
   
-  //INITIAL CONDITIONS:
-  // Equations for MFT Eqilibrium values  as functions of a (Rainfall).
+  // Next, create the integer array dtV[SpB], which is initialised to {0, round(dtv1/dt), round(dtv2/dt)}.
+  int dtV[SpB] = {0, max(1, int(round(dtv1/dt)))};
+  // Note that the dtV vector is used to store the time-steps for the grazer and predator, respectively.
+  // and that the time-steps are rounded to the nearest integer value, with a minimum value of 1 (to avoid division by zero).
 
+  cout << "Values of dtV for the grazer is: " << dtV[1] << "\n";
   
 
   
@@ -278,25 +289,6 @@ int main(int argc, char *argv[])
   // This is done to avoid overwriting of files.
   string path_to_folder = frame_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Veq_" + veq.str();
   recursive_dir_create(path_to_folder);
-
-  /** OLD METHOD FOR CREATING FRAME FOLDER
-  stringstream foldername;
-	foldername << "../Data/Rietkerk/Frames/Stochastic/2Sp/" << ast.str() << "-" << est.str() << "_dP_" << dPo.str() << "/";
-	// Creating a string stream instance to store the values of the parameters in the file name.
-	// This is done to avoid overwriting of files.
-
-	struct stat info2;
-	if( stat( foldername.str().c_str(), &info2 ) != 0 )
-	{
-		cout << "Cannot access " << foldername.str() << ". Creating directory." << endl;
-		const int dir_err = system(("mkdir " + foldername.str()).c_str());
-		if (-1 == dir_err)
-		{
-			printf("Error creating directory!n");
-			exit(1);
-		}
-	}
-  */
   
   path_to_folder = prelim_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Veq_" + veq.str() +"/TimeSeries";
   recursive_dir_create(path_to_folder);
@@ -305,7 +297,8 @@ int main(int argc, char *argv[])
 
   //first_order_critical_exp_delta_stochastic(div, t_max, a_start, a_end, c, gmax, alpha, d, rW, W0, D, K, sigma, dt, dx, dP, r, g);
   //first_order_critical_exp_delta_stochastic_2Sp(div, t_max, a_start, a_end, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR,dt, dx, dP, r, g);
-  first_order_critical_exp_delta_stochastic_2Sp(div, t_max, a_start, a_end, a_c, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR, chigh, scaling_factor, dt, dx, dP, r, g, -1, Vstar);
+  //first_order_critical_exp_delta_stochastic_2Sp(div, t_max, a_start, a_end, a_c, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR, chigh, scaling_factor, dt, dx, dP, r, g, -1, Vstar);
+  first_order_critical_exp_delta_stochastic_MultiSp(div, t_max, a_start, a_end, a_c, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR, dtV, scaling_factor, dt, dx, dP, r, g, -1, Vstar);
   //tupac_percolationDornic_2D(vector<vector<double>> &Rho, vector <double> &t_meas, auto &Rh0,
 	 //double t_max, double a[], double b[], double c[], double D[], double sigma[], double dt, double dx, int r,  int g)
 

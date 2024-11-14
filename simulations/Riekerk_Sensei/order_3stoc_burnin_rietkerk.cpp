@@ -4,6 +4,12 @@ int main(int argc, char *argv[])
 {
   increase_stack_limit(1024L); //Increase stack limit to 1024 MB.
 
+  #if defined(INIT) && INIT != 2
+    string error_string = "ERROR: The initial condition MUST be set to 2 (Burn-in).\n";
+    cout << error_string; cerr << error_string;
+    exit(1);
+  #endif
+
   string preFIX; // Prefix for the output files
   string input_preFIX= "HEXBLADE"; // Prefix for the input files
   string input_frame_subdir; // Subdirectory for the input frames.
@@ -13,33 +19,36 @@ int main(int argc, char *argv[])
   double a_start, a_end; double r; double dP; // Kick for high initial state
   int g, div;
 
-  //c= 10; d =0.25; gmax= 0.05; alpha =0.2; W0= 0.2; rW = 0.2; // From Bonachela et al 2015
-  /**
-  dx= 0.2 ; //From Bonachela et al 2015 (in m)
-  d0 = 0.001; d1=0; d2 = 0.001; d3= 0.1; //From Bonachela et al 2015 (in m^2/day)
-  k0= 0; k1 = 5; k2 =5;
-  s0 = sqrt(0.025); // ~ D/(dx)^2 (in g^{0.5}/(m day))
-  */
-
   // Using units of mass = kg, length = km, time = hr.
   // ASSUMING MASS OF  GRAZER = 20 kg, MASS OF PREDATOR = 100 kg.
   c = 10000; gmax = 0.05*pow(10, -3.0)/24.0; d = 0.25/24.0; alpha =0.2/24.0; W0 = 0.2; rW = 0.2/24.0; // From Bonachela et al 2015
 
   //double p0i = 0.5; double p0j= p0i/200; double p0j= 2.25; double p0m= 8; // In g/m^2
 
-  double k0, k1, k2; double d0, d1, d2, d3, d4; double s0, s1, s2; double v1, v2;//Slightly 
+  double k0, k1, k2; double d0, d1, d2, d3, d4; double s0, s1, s2; double v1, v2;  double dtv1, dtv2;
+  
+  // Diffusion coefficient allometries for consumer species:
+  //General allometry: ln(D (in km^2/hr)) = 0.3473*ln(M) -4.15517, where M is mass in kg of general consumer.
+  //Grazer allometry: ln(D (in km^2/hr)) = 0.5942*ln(M) -6.3578, where M is mass in kg of grazer.
+  //Predator allometry: ln(D (in km^2/hr)) = 0.6072*ln(M) -4.3289, where M is mass in kg of predator.
   
   dx= 0.1 ; //From Bonachela et al 2015 (in km)
-  d0 = 0.00025/24.0; d1=0.0298; d2= 0.05221; d3 = 0.00025/24.0; d4= 0.025/24.0; //From Bonachela et al 2015 (in km^2/hr)
+  //d0 = 0.00025/24.0; d1=0.0298; d2= 0.05221; d3 = 0.00025/24.0; d4= 0.025/24.0; //From Bonachela et al 2015 (in km^2/hr) and general D allometry.
+  d0 = 0.00025/24.0; d1=0.01028; d2= 0.215965; d3 = 0.00025/24.0; d4= 0.025/24.0; //From Bonachela et al 2015 (in km^2/hr) and specific D allometries.
   k0= 0; k1 = 5; k2 =5000;
   s0 = sqrt(d0/(dx*dx)); // ~ D0/(dx)^2 (in kg^{0.5}/(km hr))
   s1 = 1; // ~ D/(dx)^2 (in kg^{0.5}/(km hr))
-  s2 = 3; // ~ D/(dx)^2 (in kg^{0.5}/(km hr))
+  //s2 = 3; // ~ D/(dx)^2 (in kg^{0.5}/(km hr))
+  s2 = 10; // ~ D/(dx)^2 (in kg^{0.5}/(km hr))
   
   // Allometric scaling for velocity: 
   // v (m/hr) = 43.706*M^1.772*(1 - e^{-14.27*(M)^(-1.865)}), where M is mass in kg.
   v1 = 0.45427; //In km/hr
   v2 = 0.40587; //In km/hr
+
+  //Time-scale of advection.
+  dtv1 = 0.11817455; //In hr, based on relation ln(dtv_grazer) = 0.2596*ln(M) + 1.8106, where M is mass in kg, and dtv_grazer is in min.
+  dtv2 = 0.765270868; //In hr, based on relation ln(dtv_predator) = 0.7*ln(M) + 0.6032, where M is mass in kg, and dtv_predator is in min.
 
   double D[Sp] ={d0, d1, d2, d3, d4}; //Diffusion coefficients for species.
   double K[3] ={k0, k1, k2}; //Diffusion coefficients for species.
@@ -237,6 +246,11 @@ int main(int argc, char *argv[])
   Gstar = mm/((em -mm*hjm)*ajm); //Steady state for grazer.
   double Vstar_veg = mj/((ej -mj*hij)*aij); //Steady state for vegetation (Veg) IFF there is NO predator.
   //Gstar = mm/((em -mm*hjm)*ajm); //Steady state for grazer.
+
+  // Next, create the integer array dtV[SpB], which is initialised to {0, round(dtv1/dt), round(dtv2/dt)}.
+  int dtV[SpB] = {0, max(1, int(round(dtv1/dt))), max(1, int(round(dtv2/dt)))};
+
+  cout << "Values of dtV for the grazer and predator are: " << dtV[1] << " and " << dtV[2] << " respectively.\n";
   
 
   ///** CORRECT MFT INITIALISATIONS
@@ -393,14 +407,6 @@ int main(int argc, char *argv[])
 	// If R < R_c, then the first Sp elements of c_high and c_low are passed to init_randconstframe() to initialise the frame.
 	// If R >= R_c, then the last Sp elements of c_high and c_low are passed to init_randconstframe() to initialise the frame.
 
-
-
-
-  //add_two(3.14, 1.78);
-  cout << maxis(3.14, 1.78) <<endl;
-  int go =8;
-  add_three(1,2,go);
-
   //D2Vec_Double Rho_0(Sp, vector<double> (g*g, 1.0));
   // Rho_0 is 2D [Spx(L*L)] vector initialised to 1.00.
 
@@ -485,7 +491,7 @@ int main(int argc, char *argv[])
 	}
   */
  
-  first_order_critical_exp_delta_stochastic_3Sp(div, t_max, a_start, a_end, a_c, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR, chigh, scaling_factor, dt, dx, dP, r, g, Gstar);
+  first_order_critical_exp_delta_stochastic_MultiSp(div, t_max, a_start, a_end, a_c, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR, dtV, scaling_factor, dt, dx, dP, r, g, Gstar);
 
   return 0;
 }

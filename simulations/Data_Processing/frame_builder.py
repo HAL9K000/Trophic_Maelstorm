@@ -66,13 +66,19 @@ a_vals = []
 #Path(out_dir + 'Combined/').mkdir(parents=True, exist_ok=True)
 #Path(out_dir + 'Singular/').mkdir(parents=True, exist_ok=True)
 
-hex_list= [['#D8F3DC', '#B7E4C7', '#95D5B2', '#74C69D', '#57CC99', '#38A3A5', '#006466', '#0B525B', '#1B4332'], 
-           ['#B7094C', '#A01A58', '#892B64', '#723C70', '#5C4D7D', '#455E89', '#2E6F95', '#1780A1', '#0091AD'], 
-           ['#B80068', "#BB0588", "#CC00AA", "#CC00CC", "#BC00DD", "#B100E8", "#A100F2", "#8900F2", '#6A00F4'],
+hex_list= [['#D8F3DC', '#B7E4C7', '#95D5B2', '#74C69D', '#57CC99', '#38A3A5', '#006466', '#0B525B', '#235842', '#1B4332'], 
+           ['#B7094C', '#A01A58', '#892B64', '#723C70', '#5C4D7D', '#455E89', '#2E6F95', '#1780A1', '#1987a9', '#0091AD'], 
+           ['#B80068', "#BB0588", "#CC00AA", "#CC00CC", "#BC00DD", "#B100E8", "#A100F2", "#8900F2", '#802fe2', '#6A00F4'],
+           ["#eebba0", "#eaac8b", "#e88c7d", "#e77c76", "#e56b6f", "#b56576", "#915f78", "#6d597a", "#355070", "#283c55"],
+           ["#ffff3f" ,"#eeef20", "#dddf00", "#d4d700", "#bfd200", "#aacc00", "#80b918", "#55a630", "#2b9348", "#007f5f"],
+           ["#80ffdb", "#72efdd", "#64dfdf", "#56cfe1", "#48bfe3", "#4ea8de", "#5390d9", "#5e60ce", "#6930c3", "#7400b8"],
+           ["#e3f2fd", "#bbdefb", "#90caf9", "#64b5f6", "#42a5f5", "#2196f3", "#1e88e5", "#1976d2", "#1565c0", "#0d47a1"],
+           ["#e8b2c3", "#ffc4d6", "#ffa6c1", "#ff87ab", "#ff5d8f" ,"#ff4f84", "#ff447d", "#ff3d78", "#ff3471", "#ff2a6a"],
+           ["#e6f2ff", "#ccdcff", "#b3beff", "#9a99f2", "#8b79d9", "#805ebf", "#6f46a6", "#60308c", "#511f73", "#431259"]
            ["#c4fff9", "#9ceaef", "#68d8d6", "#3dccc7", "#07beb8"], 
            ['#CAF0F8', '#0096C7']]
 
-float_list = [0, 0.025, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 1]
+float_list = [0, 0.025, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.85, 1]
 vmax =[500, 35, 40]
 
 def set_figsize(SPB):
@@ -991,7 +997,7 @@ def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseri
         # We are interested in the AVG columns for each species.
         # Note that the number of columns can vary for each a and T value, as R_max can vary, so we need to handle this.
         # Data has columns for each species given by {var}, of the form:
-        # t   AVG[{var}]_SURV   ...   AVG[{var}]_ALL   ...   AVG[{var}]   ...
+        # AVG[{var}]_ALL ... VAR[{var}]_ALL ...   AVG[{var}]_SURV   ...  VAR[{var}]_SURV   ... t ... {var}
         # where {var} is one of the species names. The dataframe is multi-indexed by Prefix, a, R, Tmax,
         # where R = -1 for the mean values.
         if data.empty:
@@ -1102,8 +1108,24 @@ def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseri
         input("Press F to Continue...")
 
 
+'''# Summary Description of analyse_PRELIMS_TRAJECTORYdata(...)
+This function analyses the trajectory data for each species and creates plots for each species for each Prefix, a value and TS (Time Series) value.
+These plots are trajectory plots (for each individual replicate) of the various species (designated by the x_label, y_label) over time with the hue and the size of the points given by
+the hue_label and size_label respectively.
+
+NOTE: This function assumes that the data is stored in the meanfilename in the following format (which is the format output by the get_PRELIM_EQdata(...) function):
+AVG[{var}]_ALL ... VAR[{var}]_ALL ...   AVG[{var}]_SURV   ...  VAR[{var}]_SURV   ... t ... {var}
+where {var} is one of the species names. The dataframe is multi-indexed by Prefix, a, R, Tmax, which when read in correspond to the first four columns of the data.
+The multi-index R = -1 corresponds to the mean values. If the data is not found, the function will call get_PRELIM_EQdata(...) to generate the data.
+
+By plotting the {var} columns given by the x_label, y_label, hue_label and size_label, we can create a trajectory plot for each species for each Prefix, a value, TS and R value.
+The hue_label and size_label are optional, and if not provided, the hue and size of the points will be set to the same value for all points.
+Additionally, trajectories for indivudual replicates are plotted both as distinct plots and as a combined plot for all replicates (with R >= 0) in all cases.
+In other words, mean trajectory data IS NOT plotted, only individual replicate data unless plot_mean_trajectory is set to True.
+'''
+
 def analyse_PRELIMS_TRAJECTORYdata(indir, out_dir, prefixes=[], a_vals=[], tseries_vals =[], x_label = ["<<G(x; t)>_x>_r"], y_label = ["<<Pr(x; t)>_x>_r"], 
-        hue_label = ["<<P(x; t)>_x>_r"], size_label = [], T_window = [200, 5000], meanfilename = "Mean_TSERIES_T_{TS}_dP_{dP}_Geq_{Geq}.csv", a_scaling = 1):
+        hue_label = ["<<P(x; t)>_x>_r"], size_label = [], T_window = [200, 5000], meanfilename = "Mean_TSERIES_T_{TS}_dP_{dP}_Geq_{Geq}.csv", plot_mean_trajectory= False, a_scaling = 1):
     
     readfilename =  meanfilename.format(Pre="PREFIX", g="g", dP="dP", Geq="Geq", a="a", TS="TS")
     if len(prefixes) == 0:
@@ -1146,8 +1168,110 @@ def analyse_PRELIMS_TRAJECTORYdata(indir, out_dir, prefixes=[], a_vals=[], tseri
         print(data.columns)
         print(data.index)
 
+        # Next we need to filter the data to only include the T values (given by the "t" column) in the T_window.
+        # If T_window is not provided, we will use the entire range of T values.
+        # If no "t" column values fit the T_window, we will skip the Prefix.
+        if T_window is not None:
+            # Slice the data using data["t"] to get the T values.
+            data_t = data["t"]
+            # Get the T values that are within the T_window.
+            T_vals = data_t[(data_t >= T_window[0]) & (data_t <= T_window[1])].unique().to_list()
+            if len(T_vals) == 0:
+                print(f"No T values found in the T range {T_window}. Skipping....")
+                continue
+            # Filter the data to only include the T values in T_vals.
+            data = data[data["t"].isin(T_vals)]
+            if data.empty:
+                print(f"No data found for {Pre} in the T range {T_window}. Skipping....")
+                continue
+        # Otherwise no filtering is needed.
+        # Get the list of a values and T values from the data.
+        a_scaled_vals = data.index.get_level_values('a').unique().to_list()
+        #Force a to be represented in decimal form rather than scientific notation (so 0.00001 is 0.00001 rather than 1e-5).
+        tseries_vals = data.index.get_level_values('Tmax').unique().to_list()
+        Rvals = data.index.get_level_values('R').unique().to_list()
+        prelim_data_maxR = max(Rvals)
+        print(a_scaled_vals, tseries_vals)
+        for a_scaled in a_scaled_vals:
+            #a = int(a) if float(a).is_integer() else a
+            #Force a to be represented in decimal form rather than scientific notation.
             
+            for TS in tseries_vals:
+                if T_window is None:
+                    savepngdir = out_dir + f"{Pre}/Trajectories/L_{g}/a_{a_scaled}/dP_{dP}/Geq_{Geq}/T_0_T_{TS}/"
+                else:
+                    savepngdir = out_dir + f"{Pre}/Trajectories/L_{g}/a_{a_scaled}/dP_{dP}/Geq_{Geq}/T_{T_window[0]}_{T_window[1]}/"
+                Path(savepngdir).mkdir(parents=True, exist_ok=True)
+                # Get maximum R value for given a and TS values, and iterate over all R values.
+                maxR = data.loc[(slice(None), a_scaled, slice(None), TS), :].index.get_level_values('R').max()
+                fig_combined, axs_combined = plt.subplots(1, len(x_label), figsize = set_figsize(len(x_label)))
+                for R in range(0, maxR +1):
+                    # Get the data for the given a, TS and R values.
+                    data_R = data.loc[(slice(None), a_scaled, R, TS), :]
+                    if data_R.empty:
+                        print(f"No data found for {Pre} at a = {a_scaled}, R = {R}, T = {TS}. Skipping....")
+                        continue
+                    # Plotting for a fixed a value, Tmax value species and Prefix for all R and t values.
+                    fig, axs = plt.subplots(1, len(x_label), figsize = set_figsize(len(x_label)))
+                    for s in range(len(x_label)):
+                        # Plotting the trajectory for the given species.
+                        ax = axs[s] if len(x_label) > 1 else axs
+                        # Plotting the trajectory for the given species.
+                        sea.scatterplot(data = data_R, x = x_label[s], y = y_label[s], hue = hue_label[s], size = size_label[s], palette= hex_list[R], ax = ax, alpha = 0.75)
+                        ax.set_title(f"IndividualTrajectory for {Pre} at a = {a_scaled}, R = {R}, T = {TS}")
+                        ax.set_xlabel(x_label[s])
+                        ax.set_ylabel(y_label[s])
+                        ax.legend()
 
+                        # Plotting the trajectory for the given species for all R values in the same plot.
+                        ax_combined = axs_combined[s] if len(x_label) > 1 else axs_combined
+                        sea.scatterplot(data = data_R, x = x_label[s], y = y_label[s], hue = hue_label[s], size = size_label[s], palette= hex_list[R], ax = ax_combined, alpha = 0.75)
+                        ax_combined.set_xlabel(x_label[s]); ax_combined.set_ylabel(y_label[s])
+                    
+                    # End of s loop
+
+                    fig.suptitle(f"Individual Trajectory for {Pre} at a = {a_scaled}, R = {R}, T = {TS}")
+                    plt.savefig(savepngdir + f"IndivTrajectory_a_{a_scaled}_R_{R}_T_{TS}.png")
+                    #plt.show()
+                    plt.close()
+                # End of R loop
+                # Add mean trajectory plot if plot_mean_trajectory is set to True (corresponds to R = -1)
+                if plot_mean_trajectory:
+                    # Plotting the mean trajectory for the given species.
+                    fig, axs = plt.subplots(1, len(x_label), figsize = set_figsize(len(x_label)))
+                    for s in range(len(x_label)):
+                        # Plotting the trajectory for the given species.
+                        ax = axs[s] if len(x_label) > 1 else axs
+                        # Plotting the trajectory for the given species.
+                        sea.scatterplot(data = data.loc[(slice(None), a_scaled, -1, TS), :], x = x_label[s], y = y_label[s], hue = hue_label[s], size = size_label[s], ax = ax, alpha = 0.75)
+                        ax.set_title(f"Mean Trajectory for {Pre} at a = {a_scaled}, T = {TS}")
+                        ax.set_xlabel(x_label[s])
+                        ax.set_ylabel(y_label[s])
+                        ax.legend()
+                    # End of s loop
+                    fig.suptitle(f"Mean Trajectory for {Pre} at a = {a_scaled}, T = {TS}")
+                    plt.savefig(savepngdir + f"IndivTrajectory_a_{a_scaled}_R_-1_T_{TS}.png")
+                    #plt.show()
+                    plt.close()
+                # End of plot_mean_trajectory loop
+                # Plotting the combined trajectory for the given species for all R values in the same plot.
+                fig_combined.suptitle(f"Combined Trajectory for {Pre} at a = {a_scaled}, T = {TS}")
+                plt.savefig(savepngdir + f"CombinedTrajectory_a_{a_scaled}_T_{TS}.png")
+                #plt.show()
+                plt.close()
+            # End of TS loop
+            # Use home_video function to create a video of the plots for each a value.
+            video_tvals = [0] + tseries_vals if T_window is None else [T_window[0], T_window[1]]
+            home_video(out_dir, out_dir, prefixes=[f"{Pre}/Trajectories"], a_vals= [a_scaled], T_vals=video_tvals, maxR= prelim_data_maxR, minR= -1,
+                          pngformat= "IndivTrajectory_a_{a}_R_{R}_T_{T}.png", pngdir= "{Pre}/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{Tmin}_T_{Tmax}/",
+                            videoname = f"IndivTrajectory_{Pre}_Tmax_{video_tvals[-1]}.mp4", video_relpath= "{Pre}/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{Tmin}_T_{Tmax}/Videos/")
+
+        # End of a loop
+        # Use home_video function to create a video of the individual trajectory plots for all a.
+        #video_tvals = [0] + tseries_vals if T_window is None else [T_window[0], T_window[1]]
+        #home_video(out_dir, out_dir, prefixes=[f"{Pre}/Trajectories"], a_vals= a_scaled_vals, T_vals=video_tvals, maxR= prelim_data_maxR, minR= -1,
+        #           pngformat= "IndivTrajectory_a_{a}_R_{R}_T_{T}.png", pngdir= "{Pre}/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{Tmin}_T_{Tmax}/", 
+        #           videoname = f"IndivTrajectory_{Pre}_Tmax_{video_tvals[-1]}.mp4", video_relpath= "{Pre}/Videos/{amin}-{amax}/")
 
 
 def analyse_FRAME_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tavg_window_index = [-100000, 0], filename = "MEAN_STD_Surviving_Runs.txt"):

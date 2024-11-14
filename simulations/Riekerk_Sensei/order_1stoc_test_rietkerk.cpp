@@ -136,10 +136,11 @@ int main(int argc, char *argv[])
   set_global_system_params(dt, dx); //Set the global parameters for the simulation.
   cout << "Global parameters set, with dt/2.0 = " << dt2 << " and dx*dx = " << dx2 <<  " and 1/(dx*dx) = " << dx1_2 << "\n";
 
-    // Equations for MFT E Eqilibrium values  as functions of a (Rainfall).
-
+  // Next, create the integer array dtV[SpB], which is initialised to {0}.
+  int dtV[SpB] = {0}; // Vegetation does not advect.
   
-
+  
+  // Equations for MFT E Eqilibrium values  as functions of a (Rainfall).
   double mV = c/d; double cV =  -rW*Wstar*c/d; //V* = (c/d)*(R - rW*Wstar);
   double mW = Wstar; double cW = 0;
   double mW_Prev = 1/rW; double cW_Prev = 0.0;
@@ -171,10 +172,8 @@ int main(int argc, char *argv[])
 
   recursive_dir_create("../Data/Rietkerk/Stochastic/"+ std::to_string(SpB) +"Sp");
 
-  first_order_critical_exp_delta_stochastic_3Sp(div, t_max, a_start, a_end, a_c, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR, chigh, scaling_factor, dt, dx, dP, r, g, Wstar);
+  first_order_critical_exp_delta_stochastic_MultiSp(div, t_max, a_start, a_end, a_c, c, gmax, alpha, rW, W0, D, v, K, sigma, A, H, E, M, pR, dtV, scaling_factor, dt, dx, dP, r, g, Wstar);
   
   //first_order_critical_exp_delta_stochastic(div, t_max, a_start, a_end, c, gmax, alpha, d, rW, W0, D, K, sigma, dt, dx, dP, r, g);
-
-
   return 0;
 }

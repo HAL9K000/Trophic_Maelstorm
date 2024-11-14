@@ -4,6 +4,12 @@ int main(int argc, char *argv[])
 {
   increase_stack_limit(1024L); //Increase stack limit to 1024 MB.
 
+  #if defined(INIT) && INIT != 2
+    string error_string = "ERROR: The initial condition MUST be set to 2 (Burn-in).\n";
+    cout << error_string; cerr << error_string;
+    exit(1);
+  #endif
+
   string preFIX; // Prefix for the output files
   string input_preFIX= ""; // Prefix for the input files
   string input_frame_subdir; // Subdirectory for the input frames.

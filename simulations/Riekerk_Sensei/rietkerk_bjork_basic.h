@@ -132,6 +132,9 @@ typedef std::vector<std::vector <std::vector <int>>> D3Vec_Int;
 typedef std::vector<std::vector <std::vector <std::vector <double>>>> D4Vec_Double;
 typedef std::vector<std::vector <std::vector <std::vector <int>>>> D4Vec_Int;
 
+typedef std::vector<std::vector<std::pair<double, double>>> D2Vec_Pair_Double;
+typedef std::vector<std::vector<std::pair<int, int>>> D2Vec_Pair_Int;
+
 typedef std::vector<double> Vec_Double;
 typedef std::vector<int> Vec_Int;
 
@@ -338,9 +341,9 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 		double rW, double W0, double (&D)[Sp], double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t,double dt,double dx, int g);
 void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double c, double gmax, double alpha, double rW, double W0, 
 	double (&D)[Sp], double v[], double (&K)[3], double sigma[], double a_st, double a_end, double a_c, double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], 
-	double chigh[], double clow[], double dt, double dx, double dP, int r, int g, double Gstar  = -1.0,  double Vstar = -1.0 );
-void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double a_start, double a_end, double a_c,  double c, double gmax, double alpha,
+	int (&dtV)[SpB], double clow[], double dt, double dx, double dP, int r, int g, double Gstar  = -1.0,  double Vstar = -1.0 );
+void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, double a_start, double a_end, double a_c,  double c, double gmax, double alpha,
 	double rW, double W0,  double (&D)[Sp], double v[], double (&K)[3], double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[],
-	double ch[], double clo[], double dt, double dx, double dP, int r,  int g,double Gstar  = -1.0,  double Vstar = -1.0);
+	int (&dtV)[SpB], double clo[], double dt, double dx, double dP, int r,  int g,double Gstar  = -1.0,  double Vstar = -1.0);
 
 #endif

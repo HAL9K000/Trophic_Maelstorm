@@ -823,14 +823,11 @@ void init_burnin_wrapper(D2Vec_Double &Rho_dt, double a, double a_c, double dP, 
 		exit(5);
 	}
 
-	
 	init_exprtk_readCSVcolumns_frame(Rho_dt, const_species, initcsv_parendir, csv_filename_pattern, initcsv_columns, a, a_c, L, r, c_spread);
 
 	vector<double> temp_vec= {Rho_dt[0].begin(),Rho_dt[0].end()}; //Rho_dt for species 's'
 	double init_veg_num = occupied_sites_of_vector(temp_vec, L*L); //Finds number of occupied at given t.
 	vector<double>().swap(temp_vec); //Flush temp_vec out of memory.
-
-	
 
 	if(init_veg_num == 0.0)
 	{
@@ -4177,7 +4174,7 @@ void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec
 
 void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double c, double gmax, double alpha, double rW, double W0, 
 	double (&D)[Sp], double v[], double (&K)[3], double sigma[], double a_st, double a_end, double a_c, double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], 
-	double chigh[], double clow[], double dt, double dx, double dP, int r, int g, double Gstar /* =-1.*/, double Vstar /* = -1.*/)
+	int (&dtV)[SpB], double clow[], double dt, double dx, double dP, int r, int g, double Gstar /* =-1.*/, double Vstar /* = -1.*/)
 {
 	double epsilon = 1.0e-12; //Small number to avoid division by zero.
 	double perc =0.015; //Percentage of high density patches.
@@ -4298,6 +4295,9 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 
 		D2Vec_Double gamma(SpB, vector<double> (g*g, 0.0)); //Stores gamma for each species at each site.
 
+		// 2D vector of pairs of dim: SpBx(L*l), called v. Stores the velocity of each species at each site.
+		D2Vec_Pair_Double v_eff(SpB, std::vector<std::pair<double, double>>(g*g, {0.0, 0.0}));
+
 		// 2D vectors of dim: Sx(L*l). Used for RK4 integration (of linear terms) of Rho_dt , after Dornic update.
 		D2Vec_Double K1(Sp, vector<double> (g*g, 0.0)); D2Vec_Double K2(Sp, vector<double> (g*g, 0.0));
     	D2Vec_Double K3(Sp, vector<double> (g*g, 0.0)); D2Vec_Double K4(Sp, vector<double> (g*g, 0.0));
@@ -4316,7 +4316,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		#elif defined(INIT) && INIT == 2
 			// BURN-IN FRAME INITIALISATION (EXPRTK)
 
-			init_burnin_wrapper(Rho_dt, a, a_c, dP, perc, clow, g, j);
+			init_burnin_wrapper(Rho_dt, a, a_c, dP, perc,  g, j, clow);
 
 			vector<double> temp_vec= {Rho_dt[0].begin(),Rho_dt[0].end()}; //Rho_dt for species 's'
 			double init_veg_num = occupied_sites_of_vector(temp_vec, g*g); //Finds number of occupied at given t.
@@ -4329,11 +4329,6 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				<< "  with a_value:\t" << a << "\t and Replicate:\t" << j << " CONSIDER RE-RUNNING OVER A DIFFERENT RANGE.\n"; 
 				cout << m1_1.str(); cerr << m1_1.str();
 			}
-
-			stringstream m1_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
-			m1_1 << "Initial Conditions: BURN-IN # Active Veg sites:\t"<< init_veg_num << " for Thread Rank:\t " << omp_get_thread_num() 
-			<< "  with a_value:\t" << a << "\t and Replicate:\t" << j << "\n"; 
-			cout << m1_1.str(); cerr << m1_1.str();
 		#else
 			// DEFAULT FRAME INITIALISATION (RANDOM MFT BASED SPECKLES)
 			init_exprtk_randbiMFTframe(Rho_dt, g*g, a, a_c, dP, perc, clow); // Returns a frame with random speckles of high and low density.
@@ -4373,8 +4368,6 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 
 		// **/
 		
-
-		
 		//*/
 
 		for(int i=0; i < g*g; i++)
@@ -4387,8 +4380,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		}
 		
 		stringstream m1_2;     //To make cout thread-safe as well as non-garbled due to race conditions.
-    	m1_2 << "Initial Conditions:\t Per:\t" << perc  << "\t C_High[0], C_High[1], C_High[2]:\t " << chigh[0] << "," << chigh[1] << "," << chigh[2]   
-		<< "\t C_Lo[0], C_Lo[1], C_Lo[2]:\t " << clow[0] << "," << clow[1] << "," << clow[2] << ",\t R: " << a << "\n"; //cout << m1.str();
+    	m1_2 << "Initial Conditions:\t Per:\t" << perc << "\t C_Lo[0], C_Lo[1], C_Lo[2]:\t " 
+		<< clow[0] << "," << clow[1] << "," << clow[2] << ",\t R: " << a << "\n"; //cout << m1.str();
 		if(omp_get_thread_num()== 1)
 			cout << m1_2.str();  
 		errout.open(thr, std::ios_base::app); errout << m1.str(); errout.close(); 
@@ -4425,16 +4418,16 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				vector<double>().swap(temp_alt); //Flush temp out of memory.0
 
 				// FRAME SAVING
-				if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 60000 && t <= 150000 || t >= 200 && t <= 12000 
+				if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 60000 && t <= 150000 || t >= 50 && t <= 12000 
 					|| t== 0)
 				{
 					//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
 					
-					stringstream L, tm ,d3, p1, rini, gm, a1, a2, Dm0, Dm1, Dm2, alph, w0t, aij, hij, dix, dimitri, sig0, sig1, geq;
+					stringstream L, tm ,d3, p1, rini, gm, a1, a2, Dm0, Dm1, Dm2, alph, w0t, aij, hij, dix, dimitri, sig0, sig1, geq, veq;
 
   					L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; dix << setprecision(2) << dx;
   					rini << j; Dm0 << D[0]*pow(10.0, 7.0); Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2]; 
-					a1 << a_st; a2  << a_end; sig0 << sigma[0]; sig1 << sigma[1]; dimitri  << dP; geq << setprecision(5) << Gstar;
+					a1 << a_st; a2  << a_end; sig0 << sigma[0]; sig1 << sigma[1]; dimitri  << dP; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
 					//gm << setprecision(3) << gmax; w0t << setprecision(3) << W0; alph << setprecision(3) << alpha; aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1]; 
 					// Three replicates are over.
 
@@ -4447,6 +4440,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					// Creating a file instance called output to store output data as CSV.
 					if(Gstar != -1)
 						parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
+					else if(Vstar != -1)
+						parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str();
 					else
 						parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
 					
@@ -4536,14 +4531,16 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					   rho_rep_avg_var_temp[i][0] = t_meas[i];
 
 					//Finally save to file.
-					stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, geq, jID; // cgm, sig0;
+					stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, geq, veq, jID; // cgm, sig0;
 					a1 << a_st; a2 << a_end;
 					L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(5) << a; dimitri << dP;
-					rini << j; Dm << setprecision(4) << D[2]; geq << setprecision(5) << Gstar;// cgm << c*gmax; sig0 << sigma[0]; 
+					rini << j; Dm << setprecision(4) << D[2]; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
 
 					string parendir= "";
 					if(Gstar != -1)
 						parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str() + "/TimeSeries";
+					else if(Vstar != -1)
+						parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str() + "/TimeSeries";
 					else
 						parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/TimeSeries";
 
@@ -4704,11 +4701,11 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			if(t == 0 || t >= t_meas[index-1] -dt/2.0 && t < t_meas[index-1] +dt/2.0)// && index >= tot_iter -9 &&  index <= tot_iter)
 			{
 				// Saving gamma values to file at given time points.
-				stringstream L, tm ,d3, p1, rini, a1, a2, Dm1, Dm2, dix, dimitri, geq;
+				stringstream L, tm ,d3, p1, rini, a1, a2, Dm1, Dm2, dix, dimitri, geq, veq;
 
   				L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; dix << setprecision(2) << dx;
   				rini << j; Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2];
-				a1 << a_st; a2  << a_end; dimitri  << dP; geq << setprecision(5) << Gstar;
+				a1 << a_st; a2  << a_end; dimitri  << dP; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
 
 				string filenamePattern = gamma_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_" + p1.str()  + "_D1_"+ Dm1.str() + "_D2_"+ Dm2.str() + "_dx_"+ dix.str() + "_R_";
 				
@@ -4716,6 +4713,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				// Creating a file instance called output to store output data as CSV.
 				if(Gstar != -1)
 					parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
+				else if(Vstar != -1)
+					parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str();
 				else
 					parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
 
@@ -4775,11 +4774,11 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					  	<< " \n and Rho_t[0][i]: " << Rho_dt[0][i] << " and Rho_t[1][i]: " << Rho_dt[1][i] << " and Rho_t[2][i]: " << Rho_dt[2][i]<< "\n"; cout << m5_3.str();
 						cerr << m5_3.str();
 
-						stringstream L, tm ,d3, p1, rini, a1, a2, Dm1, Dm2, dix, dimitri, geq;
+						stringstream L, tm ,d3, p1, rini, a1, a2, Dm1, Dm2, dix, dimitri, geq, veq;
 
   						L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; dix << setprecision(2) << dx;
   						rini << j; Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2];
-						a1 << a_st; a2  << a_end; dimitri  << dP; geq << setprecision(5) << Gstar;
+						a1 << a_st; a2  << a_end; dimitri  << dP; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
 
 						string ErrGamfilenamePattern = "/ERROR_GAMMA_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str()
 						+ "_a_" + p1.str()  + "_D1_"+ Dm1.str() + "_D2_"+ Dm2.str() + "_dx_"+ dix.str() + "_R_";
@@ -4788,6 +4787,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						// Creating a file instance called output to store output data as CSV.
 						if(Gstar != -1)
 							parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
+						else if(Vstar != -1)
+							parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str();
 						else
 							parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
 
@@ -4800,17 +4801,26 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 
 					//Next sampling the advection vector from v[s].
 					//unif = uniform_real_distribution<double>(0.0, 1.0);
-					double ran = unif(rng);
-					double vx = v[s]*cos(2*PI*ran); double vy = v[s]*sin(2*PI*ran); //Advection vector.
-					double vx_abs = vx*sgn(vx); double vy_abs = vy*sgn(vy); //Absolute value of advection vector.
+					// Sampling the advection vector from v[s], every dtV[s] time steps.
+					if(dtV[s] == 1 || counter % dtV[s] == 0)
+					{
+						double ran = unif(rng);
+						//double vx = v[s]*cos(2*PI*ran); double vy = v[s]*sin(2*PI*ran); //Advection vector.
+						v_eff[s][i].first = v[s]*cos(2*PI*ran); v_eff[s][i].second = v[s]*sin(2*PI*ran); //Advection vector (vx, vy).
+					}
+
+					//double vx = v_eff[s][i].first; double vy = v_eff[s][i].second; //Advection vector.
+					double vx_abs = v_eff[s][i].first*sgn(v_eff[s][i].first); double vy_abs = v_eff[s][i].second*sgn(v_eff[s][i].second); //Absolute value of advection vector.
 
 					//RECALL: dx1_2 = 1/(dx2); dxb2 = dx/2.0;
-					diff_eff[s].first = (D[s] -(dxb2)*(vx_abs*(1 - dt*dx1*vx_abs)))*dx1_2;
-					diff_eff[s].second = (D[s] -(dxb2)*(vy_abs*(1 - dt*dx1*vy_abs)))*dx1_2;
-					/** CORRECT DsC VERSION 
+
+					//diff_eff[s].first = (D[s] -(dxb2)*(vx_abs*(1 - dt*dx1*vx_abs)))*dx1_2;
+					//diff_eff[s].second = (D[s] -(dxb2)*(vy_abs*(1 - dt*dx1*vy_abs)))*dx1_2;
+
+					///** CORRECT DsC VERSION 
 					diff_eff[s].first = (D[s] -(dxb2)*(gamma[s][i]*vx_abs*(1 - dt*dx1*gamma[s][i]*vx_abs)))*dx1_2;
 					diff_eff[s].second = (D[s] -(dxb2)*(gamma[s][i]*vy_abs*(1 - dt*dx1*gamma[s][i]*vy_abs)))*dx1_2;
-					*/
+					//*/
 					//diff_coefficient[s] = (D[s] -(dx/2.0)*(v[s]*(1 - dt*vdx[s])))/(dx2);
 					// Advection leads to excess diffusion, hence the correction term.
 
@@ -4835,7 +4845,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					// Advection corrected diffusion term.
 					double alpha_i = gamma[s][i]*(diff_eff[s].second*(DRho[s][nR2[i][0][0]] + DRho[s][nR2[i][0][1]]) 
 												+ diff_eff[s].first*(DRho[s][nR2[i][1][0]] + DRho[s][nR2[i][1][1]])) 
-									+dx1*(1-gamma[s][i])*(vx_abs*DRho[s][nR2[i][1][sgn_index(vx)]]+ vy_abs*DRho[s][nR2[i][0][sgn_index(vy)]]);
+									+dx1*(1-gamma[s][i])*(vx_abs*DRho[s][nR2[i][1][sgn_index(v_eff[s][i].first)]]+ vy_abs*DRho[s][nR2[i][0][sgn_index(v_eff[s][i].second)]]);
 					
 					if(alpha_i == 0 && DRho[s][i] == 0) 
 					{
@@ -4884,7 +4894,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 						stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
 						m6 << "YOU HIT ROCK BOTTOM WITH: Rho*"<< s <<"[t,i]\t" << Rho_dt[s][i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
 						<< " at time:\t:" << t << " with Rho"<< s <<"(t-dt,i):   " << DRho[s][i] << "\t and alpha_i:\t" << alpha_i << 
-						"\t ,GAMMA ENTRY:\t" << gru << "\t and (DX, DY):  [" << diff_eff[s].first << " , " << diff_eff[s].second <<  " ]" <<"\n"; 
+						"\t ,GAMMA ENTRY:\t" << gru << "\t (DX, DY):  [" << diff_eff[s].first << " , " << diff_eff[s].second <<  " ]"
+						"\t and (VX, VY):  [" << v_eff[s][i].first << " , " << v_eff[s][i].second <<  " ]" <<"\n";
 						cout << m6.str(); cerr << m6.str();
 						exit(3);
 					}
@@ -4998,11 +5009,11 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				m6_1 << "Saving error frames and exiting program .... \n"; cout << m6_1.str(); cerr << m6_1.str();
 
 				// SAVING ERROR Rho_dt, DRho, and gamma vectors TO FILE
-				stringstream L, tm ,d3, p1, rini, gm, a1, a2, Dm0, Dm1, Dm2, alph, w0t, aij, hij, dix, dimitri, sig0, sig1, geq;
+				stringstream L, tm ,d3, p1, rini, gm, a1, a2, Dm0, Dm1, Dm2, alph, w0t, aij, hij, dix, dimitri, sig0, sig1, geq, veq;
 
 				L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; dix << setprecision(2) << dx;
 				rini << j; Dm0 << D[0]*pow(10.0, 7.0); Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2]; 
-				a1 << a_st; a2  << a_end; sig0 << sigma[0]; sig1 << sigma[1]; dimitri  << dP; geq << setprecision(5) << Gstar;
+				a1 << a_st; a2  << a_end; sig0 << sigma[0]; sig1 << sigma[1]; dimitri  << dP; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
 				//gm << setprecision(3) << gmax; w0t << setprecision(3) << W0; alph << setprecision(3) << alpha; aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1]; 
 				// Three replicates are over.
 
@@ -5011,6 +5022,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				// Creating a file instance called output to store output data as CSV.
 				if(Gstar != -1)
 					frame_parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
+				else if(Vstar != -1)
+					frame_parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str();
 				else
 					frame_parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
 
@@ -5054,6 +5067,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				string prelim_parendir= "";
 				if(Gstar != -1)
 					prelim_parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str() + "/TimeSeries";
+				else if(Vstar != -1)
+					prelim_parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str() + "/TimeSeries";
 				else
 					prelim_parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/TimeSeries";
 
@@ -5111,15 +5126,17 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 
 		if((j+1)%2 == 1 || (j+1)%2 == 0)
 		{	//Start logging at every multiple of 2
-			stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, rini_prev, Dm, cgm,  sig0, geq, jID;
+			stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, rini_prev, Dm, cgm,  sig0, geq, veq, jID;
 			
 			a1 << a_st; a2 << a_end;
   			L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << setprecision(5) << a; dimitri << dP;
-  			rini << j; Dm << setprecision(4) << D[2]; cgm << c*gmax; sig0 << sigma[0]; geq << setprecision(5) << Gstar;
+  			rini << j; Dm << setprecision(4) << D[2]; cgm << c*gmax; sig0 << sigma[0]; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
 
 			string parendir ="";
 			if(Gstar != -1)
 				parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
+			else if(Vstar != -1)
+				parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str() + "/TimeSeries";
 			else
 				parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
 
@@ -5159,8 +5176,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 }
 
 
-void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double a_start, double a_end, double a_c,  double c, double gmax, double alpha,
-	double rW, double W0,  double (&D)[Sp], double v[], double (&K)[3], double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], double ch[], double clo[],
+void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, double a_start, double a_end, double a_c,  double c, double gmax, double alpha,
+	double rW, double W0,  double (&D)[Sp], double v[], double (&K)[3], double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], int (&dtV)[SpB], double clo[],
 	double dt, double dx, double dP, int r,  int g, double Gstar /*= -1.*/, double Vstar /*= -1.*/)
 {
 	//init_fullframe(Rho_0, g*g); //Returns Rho_0 with a full initial frame filled with ones.
@@ -5265,7 +5282,7 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 		 * Namely CExpRho_a is structured as:
 		 * | 	a		|    t 		|     <<Rho1(t)>>x,r			|    Var[<Rho1(t)>x],r    |
 		**/
-		rietkerk_Dornic_2D_MultiSp(CExpRho_a, t_measure, t_max, a_space[i], c, gmax, alpha, rW, W0, D, v, K , sigma, a_start, a_end, a_c, A,H,E,M, pR, ch, clo, dt, dx, dP, r, g, Gstar);
+		rietkerk_Dornic_2D_MultiSp(CExpRho_a, t_measure, t_max, a_space[i], c, gmax, alpha, rW, W0, D, v, K , sigma, a_start, a_end, a_c, A,H,E,M, pR, dtV, clo, dt, dx, dP, r, g, Gstar);
 		//RK4_Wrapper_2D(CExpRho_a, t_measure, t_max, a_space[i], c, gmax, alpha, d, rW, W0, D, K , a_start, a_end, dt, dx, dP, r, g);
 		//expanded_percolationDornic_2D(CExpRho_a, t_measure, Rho_0,  t_max, a_space[i], b, c, D, sigma, dt, dx, r, g);
         //crtexp_DP_Basic(grid_size, comp_data, p_space[i], r_init, length);
@@ -5305,28 +5322,30 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 	//Store a uniformly distributed random number between 0 and 1 (rounded to 3 decimal places).
 	double id = round(unif(rng)* 1000.0) / 1000.0; //Random number between 0 and 1.
 	//Round to 3 decimal places.
-	stringstream L, coco, tm ,d3, p1, p2, rini, Dm0, Dm1, aij, hij, cgm, alph, dix, dimitri, Sig0, geq, ID;
+	stringstream L, coco, tm ,d3, p1, p2, rini, Dm0, Dm1, aij, hij, cgm, alph, dix, dimitri, Sig0, geq, veq, ID;
 
 	//double Gstar = M[2]/((E[2] -M[2]*H[1][2])*A[1][2]); // MFT estimate of Grazer density at coexistence.
 
   	L << g; tm << t_max; d3 << setprecision(3) << dt; p1 << a_start; p2  << a_end; rini << r; 
 	alph << alpha; cgm << c*gmax; coco << setprecision(4) << c;
   	Dm0 << setprecision(3) << D[0]; Dm1 << setprecision(3) << D[1]; Sig0 << sigma[0]; dix << setprecision(2) << dx; 
-	aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1]; geq << setprecision(5) << Gstar;
+	aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1]; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
 	ID << id;
 
-	ofstream output_1stdp;
-  // Creating a file instance called output to store output data as CSV.
-	output_1stdp.open(stat_prefix + L.str() 
-	+ "_T_" + tm.str() + "_dt_" + d3.str() + "_D1_"+ Dm1.str() +
-	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + 
-	"_Geq_"+ geq.str() /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv");
+	string savefile = stat_prefix + L.str()+ "_T_" + tm.str() + "_dt_" + d3.str() + "_D1_"+ Dm1.str() + "_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str();
+	if(Gstar != -1)
+		savefile += "_Geq_" + geq.str() /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv";
+	else if(Vstar != -1)
+		savefile += "_Veq_" + veq.str() /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv";
+	else
+		savefile += /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv";
 
-	cout << "Save file name: " <<endl;
-	cout << stat_prefix + L.str() 
-	+ "_T_" + tm.str() + "_dt_" + d3.str() + "_D1_"+ Dm1.str() + "_S0_" + Sig0.str() +
-	"_a1_"+ p1.str() + "_a2_"+ p2.str() + "_dx_"+ dix.str() + 
-	"_cgmax_"+ cgm.str() + "_Geq_"+ geq.str() /* + "_ID_" + ID.str() */ + "_R_"+ rini.str() + ".csv" <<endl;
+	ofstream output_1stdp;
+  	// Creating a file instance called output to store output data as CSV.
+	output_1stdp.open(savefile);
+
+	cout << "Save file name: \n";
+	cout << savefile <<endl;
 
 	// Output =  | 	a		|    t 		|     <<Rho(t)>>x,r			|    Var[<Rho(t)>x],r    |
 
@@ -5349,6 +5368,3 @@ void first_order_critical_exp_delta_stochastic_3Sp(int div, double t_max, double
 	}
 	output_1stdp.close();
 }
-
-
-

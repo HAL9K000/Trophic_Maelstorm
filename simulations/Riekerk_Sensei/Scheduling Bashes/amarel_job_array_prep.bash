@@ -68,7 +68,7 @@ cat << EOF > ${2}_array.sh
 #SBATCH --mail-type=TIME_LIMIT_80
 #SBATCH --mail-type=TIME_LIMIT_90
 #SBATCH --mail-type=END
-#SBATCH --mail-user=xXx@uni.gov
+#SBATCH --mail-user=kh832@sebs.rutgers.edu
 
 # Path to the input file containing the arguments
 init_file=$1
