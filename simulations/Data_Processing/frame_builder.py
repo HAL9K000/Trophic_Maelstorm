@@ -28,11 +28,13 @@ The script is divided into the following sections:
 
 # Importing the required libraries
 import os
+import sys
 import math
 import pandas as pan
 import numpy as np
 import seaborn as sea
 import matplotlib.pyplot as plt
+import matplotlib.lines as mlines
 import cv2
 import shutil
 import argparse
@@ -40,24 +42,32 @@ import glob
 import regex as re
 import fnmatch
 from pathlib import Path
+import adjustText as adjT
+
+os.environ["OMP_NUM_THREADS"] = '7' # To avoid KMeans memory leak
 
 import matplotlib.ticker as mtick
 import matplotlib.colors as mcolours
 from matplotlib.collections import LineCollection
+from sklearn.cluster import KMeans
 
 
 # User inputs.
-SPB = 1; # Number of species in the model
-in_dir = f"../Data/Remote/DP/Reorg_Frames/{SPB}Sp/DDParam_MFT/" # FOR DP
-out_dir = f"../../Images/{SPB}Sp/DPParam_MFT/" # FOR DP
+SPB = 2; # Number of species in the model
+#in_dir = f"../Data/Remote/DP/Reorg_Frames/{SPB}Sp/DDParam_MFT/" # FOR DP
+#out_dir = f"../../Images/{SPB}Sp/DPParam_MFT/" # FOR DP
 
-#in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/ASCALE_20_100_NEWMFTEQ_INIT/"
-#out_dir = f"../../Images/{SPB}Sp/ASCALE_20_100_NEWMFTEQ/"
+in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/ASCALE_1g_LOC_DsC_FD/"
+out_dir = f"../../Images/{SPB}Sp/ASCALE_1g_LOC_DsC_FD/"
+#in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/StdParam_MFT/"
+#out_dir = f"../../Images/{SPB}Sp/StdParam_MFT/"
 Path(out_dir).mkdir(parents=True, exist_ok=True)
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 
-#g = 128;  dP = 10000; Geq = 0.19208; R_max= -1;
-g = 128;  dP = 1; Geq = 0 ; R_max= -1; #0.0032013
+g = 128;  dP = 10000; Geq = 2.2786 ; R_max= -1; #4.802    0.19208   0.096039         #0.2991     7.4774
+#g = 128;  dP = 1; Geq = 0 ; R_max= -1; #0.0032013  
+# Geq (for LOC case) 2.2007 0.088027 [2 SP] 2.2786 0.091143
+# Geq (for small ratio case) 3.0029 0.12012 [2 SP] 4.1569 0.16627
 T_vals =[]; TS_vals =[];
 a_vals = []    
 
@@ -65,8 +75,8 @@ a_vals = []
 #Path(out_dir + 'Videos/').mkdir(parents=True, exist_ok=True)
 #Path(out_dir + 'Combined/').mkdir(parents=True, exist_ok=True)
 #Path(out_dir + 'Singular/').mkdir(parents=True, exist_ok=True)
-
-hex_list= [['#D8F3DC', '#B7E4C7', '#95D5B2', '#74C69D', '#57CC99', '#38A3A5', '#006466', '#0B525B', '#235842', '#1B4332'], 
+hex_list= [['#D8F3DC', '#B7E4C7', '#95D5B2', '#74C69D', '#57CC99', '#38A3A5', '#006466', '#0B525B', '#235842', '#1B4332'],
+            #['#DDBEA9', '#FFE8D6', '#D8F3DC', '#95D5B2', '#57CC99', '#38A3A5', '#006466', '#0B525B', '#235842', '#1B4332'], 
            ['#B7094C', '#A01A58', '#892B64', '#723C70', '#5C4D7D', '#455E89', '#2E6F95', '#1780A1', '#1987a9', '#0091AD'], 
            ['#B80068', "#BB0588", "#CC00AA", "#CC00CC", "#BC00DD", "#B100E8", "#A100F2", "#8900F2", '#802fe2', '#6A00F4'],
            ["#eebba0", "#eaac8b", "#e88c7d", "#e77c76", "#e56b6f", "#b56576", "#915f78", "#6d597a", "#355070", "#283c55"],
@@ -74,12 +84,19 @@ hex_list= [['#D8F3DC', '#B7E4C7', '#95D5B2', '#74C69D', '#57CC99', '#38A3A5', '#
            ["#80ffdb", "#72efdd", "#64dfdf", "#56cfe1", "#48bfe3", "#4ea8de", "#5390d9", "#5e60ce", "#6930c3", "#7400b8"],
            ["#e3f2fd", "#bbdefb", "#90caf9", "#64b5f6", "#42a5f5", "#2196f3", "#1e88e5", "#1976d2", "#1565c0", "#0d47a1"],
            ["#e8b2c3", "#ffc4d6", "#ffa6c1", "#ff87ab", "#ff5d8f" ,"#ff4f84", "#ff447d", "#ff3d78", "#ff3471", "#ff2a6a"],
-           ["#e6f2ff", "#ccdcff", "#b3beff", "#9a99f2", "#8b79d9", "#805ebf", "#6f46a6", "#60308c", "#511f73", "#431259"]
-           ["#c4fff9", "#9ceaef", "#68d8d6", "#3dccc7", "#07beb8"], 
-           ['#CAF0F8', '#0096C7']]
+           ["#e6f2ff", "#ccdcff", "#b3beff", "#9a99f2", "#8b79d9", "#805ebf", "#6f46a6", "#60308c", "#511f73", "#431259"]]
+           #["#c4fff9", "#9ceaef", "#68d8d6", "#3dccc7", "#07beb8"]]
 
 float_list = [0, 0.025, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.85, 1]
 vmax =[500, 35, 40]
+cbar_width = 0.02  # Width of each colorbar
+cbar_gap = 0.0025    # Gap between successive colorbars
+
+def redirect_todevnull():
+    # Redirects the stdout and stderr to /dev/null
+    old_stdout = sys.stdout; old_stderr = sys.stderr
+    sys.stdout = open(os.devnull, "w"); sys.stderr = open(os.devnull, "w");
+    return old_stdout, old_stderr
 
 def set_figsize(SPB):
     #Sets the figure size based on the number of species in the model.
@@ -230,12 +247,12 @@ def home_video(file_parendir, out_dir, prefixes, a_vals, T_vals, maxR, minR = 0,
                 
                 for R in range(minR, maxR):
                     try:
-                        img = cv2.imread(file_parendir +pngdir.format(s=0, Pre=Pre, g=g, dP=dP, Geq=Geq, a=a, T=T, R=R) 
-                                         + pngformat.format(s=0, L=g, dP=dP, Geq=Geq,  a=a, T=T, R=R))
+                        img = cv2.imread(file_parendir +pngdir.format(s=0, Pre=Pre, g=g, dP=dP, Geq=Geq, a=a, T=T, R=R, Tmin = min_T, Tmax = max_T)
+                                         + pngformat.format(s=0, g=g, dP=dP, Geq=Geq,  a=a, T=T, R=R, Tmin = min_T, Tmax = max_T))
                         img_array.append(img)
-                    except:
+                    except FileNotFoundError:
                         print(f"Image not found for a = {a}, T = {T}, R = {R}, Pref = {Pre}, in Path: \n"  + pngdir.format(s=0, Pre=Pre, L=g, dP=dP, Geq=Geq, a=a, T=T, R=R) 
-                                         + pngformat.format(s=0, L=g, dP=dP, Geq=Geq,  a=a, T=T, R=R) + " \n Skipping....")
+                                         + pngformat.format(s=0, g=g, dP=dP, Geq=Geq,  a=a, T=T, R=R) + " \n Skipping....")
                         continue
                 # End of R loop
             # End of T loop
@@ -289,7 +306,7 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, minR =0, plt
     print(f"Processing data for {PREFIX}...")
     #global a_vals, T_vals
     
-    if a_vals == []:
+    if input_avals == []:
         try:
             with open(in_dir + PREFIX + "/a_vals.txt", 'r') as f:
                 a_vals = [float(line.strip()) for line in f]
@@ -301,8 +318,9 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, minR =0, plt
     for a in a_vals:
         # Convert a and T to int format if they are integers.
         a = int(a) if float(a).is_integer() else a
-        if T_vals == []:
+        if input_tvals == []:
             try:
+                print(f"Reading T_vals.txt for {PREFIX}, L= {g}, dP= {dP}, a = {a}...")
                 with open(in_dir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_vals.txt", 'r') as f:
                     T_vals = [float(line.strip()) for line in f]
             except FileNotFoundError:
@@ -341,6 +359,23 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, minR =0, plt
 
                 # Extracting the data columns
                 data = data.iloc[:, 2:]
+                # Check if second species is present in the data (i.e. the second column is not 0 for all rows)
+                if SPB ==2 and data.iloc[:, 1].sum() == 0:
+                    print(f"Skipping a = {a}, T = {T}, R = {R} as second species is absent.")
+                    continue
+                # If SPB = 3, check if second and third species are present in the data.
+                '''
+                if SPB == 3 and (data.iloc[:, 1].sum() == 0 or data.iloc[:, 2].sum() == 0):
+                    print(f"Skipping a = {a}, T = {T}, R = {R} as second/third species is absent.")
+                    continue
+                #'''
+                # If SPB = 3, check if second species are present in the data.
+                '''
+                if SPB == 3 and (data.iloc[:, 1].sum() == 0):
+                    print(f"Skipping a = {a}, T = {T}, R = {R} as second species is absent.")
+                    continue
+                #'''
+
                 fig, axs = plt.subplots(1, SPB, figsize = set_figsize(SPB))
                 ''' # Individual plots as opposed to combined ones.
                 for s in range(SPB):
@@ -359,7 +394,7 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, minR =0, plt
                 for s in range(SPB):
                     ax = axs[s] if SPB > 1 else axs
                     data_Sp = np.array(data.iloc[:, s]).reshape(g, g)
-                    ax = sea.heatmap(data_Sp , ax=ax, cmap=get_continuous_cmap(hex_list[s], float_list),  cbar=True)
+                    ax = sea.heatmap(data_Sp , ax=ax, vmin=0, cmap=get_continuous_cmap(hex_list[s], float_list),  cbar=True)
                     ax.set_title(r'$\rho_%g(t = %g)$,' % (s, T))
                     ax.xaxis.set(major_locator=mtick.MultipleLocator(g / 16), major_formatter = mtick.FormatStrFormatter('%g'))
                     ax.yaxis.set(major_locator=mtick.MultipleLocator(g / 16), major_formatter = mtick.FormatStrFormatter('%g'))
@@ -662,7 +697,6 @@ def get_PRELIM_EQdata(indir, PREFIX, a_vals, tseries_vals, a_scale =1,
             except FileNotFoundError:
                 print(f"Mean data not found for a = {a}, TS = {TS}. Skipping this a-value....")
                 continue
-
             selected_files = glob.glob(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/TimeSeries/TSERIES_T_{TS}_*.csv")
             # First get maxR for this a and TS value
             try:
@@ -747,7 +781,6 @@ def analyse_FRAME_timeseriesData(indir, out_dir, prefixes=[], a_vals=[], T_vals 
 
     init_a_vals = a_vals; init_T_vals = T_vals
     
-
     for Pre in prefixes:
         
         data = get_FRAME_EQdata(indir, Pre, init_a_vals, [], filename)
@@ -980,7 +1013,7 @@ def analyse_FRAME_POTdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], fi
 
 def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseries_vals =[],
                                    meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"], a_scaling = 1):
-    savefilename = re.sub(r'\.csv$', '', meanfilename.format(Pre="PREFIX", g="g", dP="dP", Geq="Geq", a="a", TS="TS"))
+    savefilename = re.sub(r'\.csv$', '', meanfilename.format(Pre="PREFIX", g="g", dP="dP", Geq="Geq", a="a", TS=tseries_vals[0]))
     if len(prefixes) == 0:
         prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(indir, '*/'))]
     combined_data = pan.DataFrame()
@@ -1120,14 +1153,17 @@ The multi-index R = -1 corresponds to the mean values. If the data is not found,
 
 By plotting the {var} columns given by the x_label, y_label, hue_label and size_label, we can create a trajectory plot for each species for each Prefix, a value, TS and R value.
 The hue_label and size_label are optional, and if not provided, the hue and size of the points will be set to the same value for all points.
-Additionally, trajectories for indivudual replicates are plotted both as distinct plots and as a combined plot for all replicates (with R >= 0) in all cases.
-In other words, mean trajectory data IS NOT plotted, only individual replicate data unless plot_mean_trajectory is set to True.
+Additionally, trajectories for indivudual replicates are plotted both as distinct plots and as a combined plot for all replicates in [minR, maxR] (with R >= 0) in all cases.
+
+ALSO NOTE: maxR= -1 will plot all encountered R values in data, while minR= -1 will additionally plot the mean values across all R values.
 '''
 
-def analyse_PRELIMS_TRAJECTORYdata(indir, out_dir, prefixes=[], a_vals=[], tseries_vals =[], x_label = ["<<G(x; t)>_x>_r"], y_label = ["<<Pr(x; t)>_x>_r"], 
-        hue_label = ["<<P(x; t)>_x>_r"], size_label = [], T_window = [200, 5000], meanfilename = "Mean_TSERIES_T_{TS}_dP_{dP}_Geq_{Geq}.csv", plot_mean_trajectory= False, a_scaling = 1):
+def analyse_PRELIMS_TRAJECTORYdata(indir, out_dir, prefixes=[], a_vals=[], tseries_vals =[],  x_label = ["<<G(x; t)>_x>_r"], y_label = ["<<Pr(x; t)>_x>_r"],
+        hue_label = ["<<P(x; t)>_x>_r"], size_label = [], maxR=-1, minR=0, T_window = [200, 5000], meanfilename = "Mean_TSERIES_T_{TS}_dP_{dP}_Geq_{Geq}.csv", plot_mean_trajectory= False, a_scaling = 1):
     
-    readfilename =  meanfilename.format(Pre="PREFIX", g="g", dP="dP", Geq="Geq", a="a", TS="TS")
+    # Set a white grid background for the plots.
+    sea.set_style("darkgrid")
+    
     if len(prefixes) == 0:
         prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(indir, '*/'))]
     combined_data = pan.DataFrame()
@@ -1135,63 +1171,158 @@ def analyse_PRELIMS_TRAJECTORYdata(indir, out_dir, prefixes=[], a_vals=[], tseri
     colours = [hex_list[i][-1] for i in range(len(hex_list))]
 
     init_a_vals = a_vals; init_TS_vals = tseries_vals;
-    include_col_labels = ["t"] + x_label + y_label + hue_label + size_label
+    include_col_labels = x_label + y_label + hue_label + size_label
+    print(f"include_col_labels = {include_col_labels}")
 
     for Pre in prefixes:
+        readfilename =  meanfilename.format(Pre=Pre, g=g, dP=dP, Geq=Geq, TS = tseries_vals[0])#, TS =tseries_vals[0])
         readcsvdir = out_dir + f"{Pre}/TimeSeries/"
         # We are interested in the AVG columns for each species.
         # Note that the number of columns can vary for each a and T value, as R_max can vary, so we need to handle this.
         # Data has columns for each species given by {var}, of the form:
         # t   AVG[{var}]_SURV   ...   AVG[{var}]_ALL   ...   AVG[{var}]   ...
-        # where {var} is one of the species names. The dataframe is multi-indexed by Prefix, a, R, Tmax,
+        # where {var} is one of the species names. The dataframe is multi-indexed by Prefix, a, R, TS_val,
         # where R = -1 for the mean values.
         #Check if the file exists
         if not os.path.exists(readcsvdir + readfilename):
             print(f"File {readcsvdir + readfilename} not found. Generating data for {Pre}....")
-            data = get_PRELIM_EQdata(indir, Pre, init_a_vals, init_TS_vals, a_scaling, meanfilename = meanfilename, include_col_labels= include_col_labels)
+            data = get_PRELIM_EQdata(indir, Pre, init_a_vals, init_TS_vals, a_scaling, include_col_labels= include_col_labels)
             if data.empty:
                 print(f"No data found for {Pre}. Skipping....")
                 continue
         else:
             # Data has columns for each species given by {var}, of the form:
             # t   AVG[{var}]_SURV   ...   AVG[{var}]_ALL   ...   AVG[{var}]   ...
-            # where {var} is one of the species names. The dataframe is multi-indexed by Prefix, a, R, Tmax,
+            # where {var} is one of the species names. The dataframe is multi-indexed by Prefix, a, R, TS_val,
             # where R = -1 for the mean values.
-            data = pan.read_csv(readcsvdir + readfilename, header = [0, 1, 2, 3], index_col = [0, 1, 2, 3])
-
+            data = pan.read_csv(readcsvdir + readfilename, header = 0, index_col = [0, 1, 2, 3])
+        '''
         print("====================================================================")
         print(f"Data for {Pre}:")
         print("====================================================================\n")
         #print(data.info())
         print(data.head())
         print(data.tail())
+        print(f"Shape = {data.shape}")
         print(data.columns)
         print(data.index)
+        print("====================================================================\n")
+        '''
 
         # Next we need to filter the data to only include the T values (given by the "t" column) in the T_window.
         # If T_window is not provided, we will use the entire range of T values.
         # If no "t" column values fit the T_window, we will skip the Prefix.
         if T_window is not None:
-            # Slice the data using data["t"] to get the T values.
-            data_t = data["t"]
-            # Get the T values that are within the T_window.
-            T_vals = data_t[(data_t >= T_window[0]) & (data_t <= T_window[1])].unique().to_list()
-            if len(T_vals) == 0:
-                print(f"No T values found in the T range {T_window}. Skipping....")
-                continue
-            # Filter the data to only include the T values in T_vals.
-            data = data[data["t"].isin(T_vals)]
-            if data.empty:
+            
+            # Filter the MultiIndex dataframe to include only rows where the "t" column values are in the T_window.
+            # The index is multi-indexed by Prefix, a, R, TS_val, so we need to filter by the "t" column values.
+            #data.groupby(level=0).filter(lambda x: x['t'].between(T_window[0], T_window[-1]).any())
+            #data.groupby(level=0).filter(lambda x: (x["t"] >= T_window[0]) & (x["t"] <= T_window[-1])).any()
+            #filtered_data = data.groupby(level=0).filter(lambda x: ((x["t"] >= T_window[0]) & (x["t"] <= T_window[-1])).any())
+            #filtered_data =  data.loc[(slice(None), slice(None), slice(None), slice(None)), :].loc[(data["t"] >= T_window[0]) & (data["t"] <= T_window[1])]
+
+            data_reset = data.reset_index()
+            print(data_reset.index)
+            print(data_reset.columns)
+            # Filter rows based on the condition for column "t"
+            filtered_data = data_reset[(data_reset["t"] >= T_window[0]) & (data_reset["t"] <= T_window[1])]
+            # Next, restore the MultiIndex for the filtered data.
+            filtered_data.set_index(["Prefix", "a", "R", "Tmax"], inplace = True)
+            if filtered_data.empty:
                 print(f"No data found for {Pre} in the T range {T_window}. Skipping....")
                 continue
+        
+        # Next create a new column called "Hue" which will be the hue for the scatterplot.
+        # If hue_label is not provided, we will set the hue to be the same for all points.
+        # If hue_label is provided, we wil bin the values in the hue_label column into 10 bins and assign a hue to each bin.
+        # If size_label is not provided, we will set the size to be the same for all points.
+
+        if len(hue_label) > 0:
+            # If hue_label is provided, we will bin the values in the hue_label column into 10 bins and assign a hue to each bin.
+            # If the hue_label column is not found, we will set the hue to be the same for all points.
+            if hue_label[0] in filtered_data.columns:
+                # First find the maximum and minimum values in the hue_label column.
+                #max_hue = filtered_data[hue_label[0]].max(); min_hue = filtered_data[hue_label[0]].min()
+                # Drop all rows with NaN values in the hue_label column.
+                kmeans = KMeans(n_clusters=10).fit(filtered_data[hue_label[0]].dropna().values.reshape(-1, 1))
+                bin_centers = np.sort(kmeans.cluster_centers_.flatten())
+
+                print(f"Clustered Bin Centers For {hue_label[0]} = {bin_centers}")
+                bin_edges = np.sort([bin_centers[i] - (bin_centers[i+1] - bin_centers[i])/2 for i in range(len(bin_centers)-1)] + [bin_centers[-1] - (bin_centers[-1] - bin_centers[-2])/2] + [bin_centers[-1] + (bin_centers[-1] - bin_centers[-2])/2])
+                # Next set all negative bin_edges to 0+ index(bin_edges).
+                #print(f"Bin Edges For {hue_label[0]} = {bin_edges}")
+                # Find minimum positive bin_edge (this is done to avoid negative bin_edges which are more likely to occur when the replicate is nearly flat.
+                min_bin_edge = min([b for b in bin_edges if b > 0])
+                bin_edges[np.where(bin_edges < 0)] = np.where(bin_edges < 0)/(1 + np.sum(np.where(bin_edges < 0))) * min_bin_edge
+                print(f"Bin Edges For {hue_label[0]} = {bin_edges}")
+                # If the hue_label column is found, we will bin the values into 10 bins and assign a hue to each bin.
+                filtered_data["Hue"] = pan.cut(filtered_data[hue_label[0]], bins = bin_edges, labels = [bin_centers[i] for i in range(len(bin_centers))])
+                #filtered_data["Hue"] = pan.cut(filtered_data[hue_label[0]], bins = 10, labels = [ min_hue + i*(max_hue - min_hue)/10 for i in range(10)])
+            else:
+                # If the hue_label column is not found, we will set the hue to be the same for all points.
+                filtered_data["Hue"] = 1
+        else:
+            # If hue_label is not provided, we will set the hue to be the same for all points.
+            filtered_data["Hue"] = 1
+
+        # Next create a new column called "Size(size_label)" which will be the size for the individual points of the scatterplot.
+        # If size_label is not provided, we will set the size to be the same for all points.
+        # If size_label is provided, we will bin the values in the size_label column into 6 bins and assign a size to each bin.
+        if len(size_label) > 0:
+            if size_label[0] in filtered_data.columns:
+                # First find the maximum and minimum values in the size_label column.
+                kmeans = KMeans(n_clusters=6).fit(filtered_data[size_label[0]].values.reshape(-1, 1))
+                bin_centers = np.sort(kmeans.cluster_centers_.flatten())
+                bin_centers = np.array([50*round(b/50) for b in bin_centers])
+                print(f"Clustered Bin Centers For {size_label[0]} = {bin_centers}")
+                # Get the extent of the bin_centers.
+                # Get the bins from the bin_centers.
+                bin_edges = np.sort([bin_centers[i] - (bin_centers[i+1] - bin_centers[i])/2 for i in range(len(bin_centers)-1)] + [bin_centers[-1] - (bin_centers[-1] - bin_centers[-2])/2] + [bin_centers[-1] + (bin_centers[-1] - bin_centers[-2])/2])
+                # Use the above bins to bin the values in the size_label column into 6 bins and assign a size to each bin.
+                bin_edges[0] = 0 if bin_edges[0] < 0 else bin_edges[0]
+                # Set non-unique bin_edges to be unique.
+                bin_edges = np.unique(bin_edges)
+                filtered_data[f"Size({size_label[0]})"] = pan.cut(filtered_data[size_label[0]], bins = bin_edges, labels = [bin_centers[i] for i in range(len(bin_edges)-1)])
+            else:
+                # If the size_label column is not found, we will set the size to be the same for all points.
+                filtered_data[f"Size({size_label[0]})"] = 1
+        else:
+            # If size_label is not provided, we will set the size to be the same for all points.
+            filtered_data[f"Size({size_label[0]})"] = 1
+
+        # Next drop all columns that do not match the x_label, y_label, hue_label and size_label.
+        filtered_data = filtered_data[[*x_label, *y_label, *hue_label, *size_label, "Hue", f"Size({size_label[0]})"]]
+
+        print("====================================================================")
+        print(f"Data for {Pre}: AFTER FILTERING")
+        print("====================================================================\n")
+        #print(data.info())
+        print(filtered_data.head())
+        print("____________________________________________________________________\n")
+        print(filtered_data.tail())
+        print("____________________________________________________________________\n")
+        #Get data shape
+        print(f"Shape = {filtered_data.shape}")
+        print(filtered_data.columns)
+        print("____________________________________________________________________\n")
+        print(filtered_data.index)
+
+        # Save the data to a csv file.
+        savecsvdir = out_dir + f"{Pre}/Trajectories/"
+        Path(savecsvdir).mkdir(parents=True, exist_ok=True)
+        filtered_data.to_csv(savecsvdir + f"{Pre}_Trajectories_T_{T_window[0]}_{T_window[1]}.csv")
         # Otherwise no filtering is needed.
         # Get the list of a values and T values from the data.
-        a_scaled_vals = data.index.get_level_values('a').unique().to_list()
+        a_scaled_vals = filtered_data.index.get_level_values('a').unique().to_list()
         #Force a to be represented in decimal form rather than scientific notation (so 0.00001 is 0.00001 rather than 1e-5).
-        tseries_vals = data.index.get_level_values('Tmax').unique().to_list()
-        Rvals = data.index.get_level_values('R').unique().to_list()
+        tseries_vals = filtered_data.index.get_level_values('Tmax').unique().to_list()
+        Rvals = filtered_data.index.get_level_values('R').unique().to_list()
+        if minR not in Rvals:
+            print(f"WARNING: minR = {minR} not found in R values of encountered data. Setting minR = -1.")
+            minR = -1
         prelim_data_maxR = max(Rvals)
-        print(a_scaled_vals, tseries_vals)
+        Rmin = -1 if plot_mean_trajectory else min(min(Rvals)+1, minR)
+        print(a_scaled_vals, tseries_vals, Rmin, prelim_data_maxR)
         for a_scaled in a_scaled_vals:
             #a = int(a) if float(a).is_integer() else a
             #Force a to be represented in decimal form rather than scientific notation.
@@ -1200,14 +1331,20 @@ def analyse_PRELIMS_TRAJECTORYdata(indir, out_dir, prefixes=[], a_vals=[], tseri
                 if T_window is None:
                     savepngdir = out_dir + f"{Pre}/Trajectories/L_{g}/a_{a_scaled}/dP_{dP}/Geq_{Geq}/T_0_T_{TS}/"
                 else:
-                    savepngdir = out_dir + f"{Pre}/Trajectories/L_{g}/a_{a_scaled}/dP_{dP}/Geq_{Geq}/T_{T_window[0]}_{T_window[1]}/"
+                    savepngdir = out_dir + f"{Pre}/Trajectories/L_{g}/a_{a_scaled}/dP_{dP}/Geq_{Geq}/T_{T_window[0]}_T_{T_window[1]}/"
                 Path(savepngdir).mkdir(parents=True, exist_ok=True)
                 # Get maximum R value for given a and TS values, and iterate over all R values.
-                maxR = data.loc[(slice(None), a_scaled, slice(None), TS), :].index.get_level_values('R').max()
+                Rmax = data.loc[(slice(None), a_scaled, slice(None), TS), :].index.get_level_values('R').max()
+                if maxR != -1:
+                    Rmax = min(Rmax, maxR)
+                if Rmax < maxR:
+                    print(f"WARNING: Encountered maxR = {Rmax} < Provided maxR = {maxR}. Setting maxR  = {Rmax}.")
+                    Rmax = min(Rmax, maxR)
                 fig_combined, axs_combined = plt.subplots(1, len(x_label), figsize = set_figsize(len(x_label)))
-                for R in range(0, maxR +1):
+                print(f"Working on trajectories for {Pre} at a = {a_scaled}, T = {TS}, Rmax = {Rmax}....")
+                for R in range(Rmin, Rmax +1):
                     # Get the data for the given a, TS and R values.
-                    data_R = data.loc[(slice(None), a_scaled, R, TS), :]
+                    data_R = filtered_data.loc[(slice(None), a_scaled, R, TS), :]
                     if data_R.empty:
                         print(f"No data found for {Pre} at a = {a_scaled}, R = {R}, T = {TS}. Skipping....")
                         continue
@@ -1217,59 +1354,135 @@ def analyse_PRELIMS_TRAJECTORYdata(indir, out_dir, prefixes=[], a_vals=[], tseri
                         # Plotting the trajectory for the given species.
                         ax = axs[s] if len(x_label) > 1 else axs
                         # Plotting the trajectory for the given species.
-                        sea.scatterplot(data = data_R, x = x_label[s], y = y_label[s], hue = hue_label[s], size = size_label[s], palette= hex_list[R], ax = ax, alpha = 0.75)
-                        ax.set_title(f"IndividualTrajectory for {Pre} at a = {a_scaled}, R = {R}, T = {TS}")
-                        ax.set_xlabel(x_label[s])
-                        ax.set_ylabel(y_label[s])
-                        ax.legend()
+                        sea.scatterplot(data = data_R, x = x_label[s], y = y_label[s], hue = "Hue", size = f"Size({size_label[0]})",  
+                                        sizes=(150,25),
+                                        palette= hex_list[R % len(hex_list)], ax = ax, alpha = 0.75)
+                        # Annotate each point with the time value.
+                        # Set the y axis to log scale.
+                        ax.set_yscale('log') #;ax.set_xscale('log')
+                        print(f"Working on smart annotations at R= {R}...")
+                        txts = []; sysout, syserr = redirect_todevnull();
+                        for i in range(data_R.shape[0]):
+                            # Get the time value for each point to 1 decimal place.
+                            txt = f"{data_R['t'].iloc[i]:.1f}"
+                            x = data_R[x_label[s]].iloc[i]; y = data_R[y_label[s]].iloc[i];
+                            txts.append(ax.text(x, y, txt, fontsize = 'x-small', color = 'darkslategrey', alpha = 0.4))
+                            #ax.annotate(txt, (data_R[x_label[s]].iloc[i], data_R[y_label[s]].iloc[i]), fontsize = 'x-small', color = 'grey', alpha = 0.25)
+                        adjT.adjust_text(txts, arrowprops=dict(arrowstyle="->", color='darkslategrey', lw=0.5, alpha = 0.4))
+                        sys.stdout = sysout; sys.stderr = syserr    
+                        #ax.set_title(f"Individual Trajectory for {Pre} at a = {a_scaled}, R = {R}, T = {TS}")
+                        ax.set_xlabel(x_label[s]); ax.set_ylabel(y_label[s])
+                        
+                        # Only show 10% of the legend items.
+                        handles, labels = ax.get_legend_handles_labels()
+                        
+                        formatted_labels = [f"{float(lbl):.2f}" if lbl.replace('.', '', 1).isdigit() else lbl for lbl in labels]
+                        
+                        # Replace f"Size({size_label[0]})" with f"{size_label[0]}" in the formatted labels.
+                        formatted_labels = [lbl.replace(f"Size({size_label[0]})", f"{size_label[0]}") for lbl in formatted_labels]
+                        print(f"Formatted Labels = {formatted_labels}")
+                        '''
+                        #print(f"Handles = {handles}")
+                        hue_labels = formatted_labels[: 12] # Ten bins for the hue values.
+                        hue_handles = handles[: 12]
+                        size_labels = formatted_labels[12:] # Remaining labels for the size values.
+                        # Convert the size labels to float values.
+                        size_labels = np.array([float(lbl) for lbl in size_labels])
+                        size_handles = handles[12:]
+                        #print(f"Hue Labels = {hue_labels},\n Hue Handles = {hue_handles}")
+                        # Define custom size labels
+                        desired_size_labels = np.linspace(data_R[size_label[s]].min(), data_R[size_label[s]].max(), 6, dtype=int).tolist()
+                        print(f"Desired Size Labels = {desired_size_labels}")
+                        desired_size_handles = [size_handles[np.argmin(np.abs(size_labels - d))] for d in desired_size_labels]
+                        # Create size handles based on the size labels (these are matplotlib.lines.Line2D objects)
+                        #size_handles = [mlines.Line2D([], [], marker='o', linestyle='',  markersize= int(3*size/size_labels[0]),  label=f"{s}", color='gray') for size in size_labels]
+                        #print(f"Size Handles = {desired_size_handles}")
 
+                        
+                        handles = hue_handles + desired_size_handles; labels = hue_labels + desired_size_labels
+
+                        print(f"Handles = {handles}, \n Labels = {labels}")
+                        '''
+                        #ax.legend(handles[::int(len(handles)/10)], formatted_labels[::int(len(formatted_labels)/10)], fontsize = 'x-small',
+                        ax.legend(handles, formatted_labels, fontsize = 'x-small',
+                                  loc = 'upper right', bbox_to_anchor=(1.1, 1.0), borderaxespad=0.)
+
+                       
                         # Plotting the trajectory for the given species for all R values in the same plot.
                         ax_combined = axs_combined[s] if len(x_label) > 1 else axs_combined
-                        sea.scatterplot(data = data_R, x = x_label[s], y = y_label[s], hue = hue_label[s], size = size_label[s], palette= hex_list[R], ax = ax_combined, alpha = 0.75)
+                        sea.scatterplot(data = data_R, x = x_label[s], y = y_label[s], hue = "Hue", size = size_label[s], palette= hex_list[R % len(hex_list)], 
+                                        ax = ax_combined, alpha = 0.75, legend= False)
                         ax_combined.set_xlabel(x_label[s]); ax_combined.set_ylabel(y_label[s])
+                        # Set the y axis to log scale.
+                        ax_combined.set_yscale('log') #ax_combined.set_xscale('log')
+                        
+                        # Get the current position of the axis
+                        pos = ax_combined.get_position(); 
+                        # Designing the colourbars for the hue values.
+                        cbar_width = 0.015; cbar_gap = 0.003;
+                        # To ensure cbars fit within the figure, set the left position of the cbar as follows
+                        fixed_left_pos =  1 - (cbar_width + cbar_gap) * max(Rmax+1, len(hex_list))
+                        # Creating colourbars for the hue values, only for the total number of distinct palettes available.
+                        if R < len(hex_list):
+                            sm = plt.cm.ScalarMappable(cmap=get_continuous_cmap(hex_list[R], float_list))
+                            sm.set_array([])
+                            # Manually define the colorbar position (normalize to figure size)
+                            
+                            left_pos_R = fixed_left_pos + R * (cbar_width + cbar_gap)  # Adjust left position for each colorbar
+                            cbar_ax = fig_combined.add_axes([left_pos_R, pos.y0, cbar_width, pos.height])  # [left, bottom, width, height]
+                            cbar = fig_combined.colorbar(sm, ax=ax_combined, orientation='vertical', cax=cbar_ax)
+
+                            # Don't set labels for the colourbar.
+                            cbar.ax.tick_params(size=0);cbar.set_ticks([]);
+                            if R == Rmax or R == len(hex_list) - 1:
+                                # For the last cbar, set the ticks and labels.
+                                cbar.set_ticks([0, 1]); cbar.set_ticklabels([f"{float_list[0]:d}", f"{float_list[-1]:d}"])
+                                # Finally, adjust the position of the axis to ensure all cbars within the figure.
+                                axcomb_width = fixed_left_pos + cbar_width;
+                                # Update the axis position to constrain it within the desired width
+                                ax_combined.set_position([pos.x0, pos.y0, axcomb_width - pos.x0, pos.height])
+
                     
                     # End of s loop
-
-                    fig.suptitle(f"Individual Trajectory for {Pre} at a = {a_scaled}, R = {R}, T = {TS}")
-                    plt.savefig(savepngdir + f"IndivTrajectory_a_{a_scaled}_R_{R}_T_{TS}.png")
+                    if T_window is not None:
+                        video_tvals = [T_window[0], T_window[1]]
+                    else:
+                        video_tvals = [0 , TS]
+                    
+                    if R == -1:
+                        fig.suptitle(f"Mean Trajectory for {Pre} at a = {a_scaled}, R = {R}, T = [{video_tvals[0]}, {video_tvals[1]}]")
+                    else:
+                        fig.suptitle(f"Individual Trajectory for {Pre} at a = {a_scaled}, R = {R}, T = [{video_tvals[0]}, {video_tvals[1]}]")
+                    
+                    plt.savefig(savepngdir + f"IndivTrajectory_a_{a_scaled}_R_{R}_T_{video_tvals[-1]}.png")
                     #plt.show()
                     plt.close()
                 # End of R loop
-                # Add mean trajectory plot if plot_mean_trajectory is set to True (corresponds to R = -1)
-                if plot_mean_trajectory:
-                    # Plotting the mean trajectory for the given species.
-                    fig, axs = plt.subplots(1, len(x_label), figsize = set_figsize(len(x_label)))
-                    for s in range(len(x_label)):
-                        # Plotting the trajectory for the given species.
-                        ax = axs[s] if len(x_label) > 1 else axs
-                        # Plotting the trajectory for the given species.
-                        sea.scatterplot(data = data.loc[(slice(None), a_scaled, -1, TS), :], x = x_label[s], y = y_label[s], hue = hue_label[s], size = size_label[s], ax = ax, alpha = 0.75)
-                        ax.set_title(f"Mean Trajectory for {Pre} at a = {a_scaled}, T = {TS}")
-                        ax.set_xlabel(x_label[s])
-                        ax.set_ylabel(y_label[s])
-                        ax.legend()
-                    # End of s loop
-                    fig.suptitle(f"Mean Trajectory for {Pre} at a = {a_scaled}, T = {TS}")
-                    plt.savefig(savepngdir + f"IndivTrajectory_a_{a_scaled}_R_-1_T_{TS}.png")
-                    #plt.show()
-                    plt.close()
-                # End of plot_mean_trajectory loop
+                if T_window is not None:
+                    video_tvals = [T_window[0], T_window[1]]
+                    fig_combined.suptitle(f"Combined Trajectory for {Pre} at a = {a_scaled}, R = {R}, T = [{T_window[0]}, {T_window[1]}]")
+                else:
+                    video_tvals = [0 , TS]
+                    fig_combined.suptitle(f"Combined Trajectory for {Pre} at a = {a_scaled}, R = {R}, T = [0, {TS}]")
+                
                 # Plotting the combined trajectory for the given species for all R values in the same plot.
-                fig_combined.suptitle(f"Combined Trajectory for {Pre} at a = {a_scaled}, T = {TS}")
-                plt.savefig(savepngdir + f"CombinedTrajectory_a_{a_scaled}_T_{TS}.png")
+                plt.savefig(savepngdir + f"CombinedTrajectory_a_{a_scaled}_T_{video_tvals[-1]}.png")
                 #plt.show()
                 plt.close()
+
+                # Use home_video function to create a video of the plots for each a value.
+                video_tvals = [0] + tseries_vals if T_window is None else [T_window[0], T_window[1]]
+                home_video(out_dir, out_dir, prefixes=[f"{Pre}/Trajectories"], a_vals= [a_scaled], T_vals=video_tvals, maxR= Rmax, minR= Rmin,
+                          pngformat= "IndivTrajectory_a_{a}_R_{R}_T_{Tmax}.png", pngdir= "{Pre}/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{Tmin}_T_{Tmax}/",
+                            videoname = f"IndivTrajectory_{Pre}_Tmin_{video_tvals[0]}_Tmax_{video_tvals[-1]}.mp4", video_relpath= "{Pre}/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/Videos/")
+                
             # End of TS loop
-            # Use home_video function to create a video of the plots for each a value.
-            video_tvals = [0] + tseries_vals if T_window is None else [T_window[0], T_window[1]]
-            home_video(out_dir, out_dir, prefixes=[f"{Pre}/Trajectories"], a_vals= [a_scaled], T_vals=video_tvals, maxR= prelim_data_maxR, minR= -1,
-                          pngformat= "IndivTrajectory_a_{a}_R_{R}_T_{T}.png", pngdir= "{Pre}/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{Tmin}_T_{Tmax}/",
-                            videoname = f"IndivTrajectory_{Pre}_Tmax_{video_tvals[-1]}.mp4", video_relpath= "{Pre}/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{Tmin}_T_{Tmax}/Videos/")
+            
 
         # End of a loop
         # Use home_video function to create a video of the individual trajectory plots for all a.
         #video_tvals = [0] + tseries_vals if T_window is None else [T_window[0], T_window[1]]
-        #home_video(out_dir, out_dir, prefixes=[f"{Pre}/Trajectories"], a_vals= a_scaled_vals, T_vals=video_tvals, maxR= prelim_data_maxR, minR= -1,
+        #home_video(out_dir, out_dir, prefixes=[f"{Pre}/Trajectories"], a_vals= a_scaled_vals, T_vals=video_tvals, maxR= prelim_data_maxR, minR= Rmin,
         #           pngformat= "IndivTrajectory_a_{a}_R_{R}_T_{T}.png", pngdir= "{Pre}/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T_{Tmin}_T_{Tmax}/", 
         #           videoname = f"IndivTrajectory_{Pre}_Tmax_{video_tvals[-1]}.mp4", video_relpath= "{Pre}/Videos/{amin}-{amax}/")
 
@@ -1414,7 +1627,7 @@ def analyse_FRAME_EQdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tav
 def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], Tavg_window_index = [-100000, 0], meanfilename = "Mean_TSERIES_T_{TS}.csv",
                            var_labels= [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"], a_scaling =1):
 
-    savefilename = re.sub(r'\.csv$', '', meanfilename.format(Pre="PREFIX", g="g", dP="dP", Geq="Geq", a="a", TS="TS"))
+    
     if len(prefixes) == 0:
         prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(indir, '*/'))]
     combined_data = pan.DataFrame()
@@ -1422,6 +1635,8 @@ def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], 
     colours = [hex_list[i][-1] for i in range(len(hex_list))]
     include_col_labels = ["t"] + var_labels
     for Pre in prefixes:
+
+        savefilename = re.sub(r'\.csv$', '', meanfilename.format(Pre= Pre, g= g, dP= dP, Geq= Geq, TS= TS_vals[0]))
 
         savedir = out_dir + f"{Pre}/PhaseDiagrams/"
         Path(savedir).mkdir(parents=True, exist_ok=True)
@@ -1491,6 +1706,12 @@ def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], 
         fig, axs = plt.subplots(1, len(var_labels), figsize = set_figsize(len(var_labels)))
         for TS in TSvals_list:
             Tavg_TS = Tavg.loc[(slice(None), slice(None), slice(None), slice(None), slice(None), TS), :]
+            # For all entries where "AVG[<<P(x; t)>_x>_r]_SURV" is 0, set corresponding 
+            # "AVG[<<G(x; t)>_x>_r]_ALL", "AVG[<<G(x; t)>_x>_r]_SURV",  "AVG[<<G(x; t)>_x>_r]", VAR[<<G(x; t)>_x>_r]_SURV, VAR[<<G(x; t)>_x>_r]_ALL, VAR[<<G(x; t)>_x>_r] to 0.
+            #Tavg_TS.loc[Tavg_TS["AVG[" + var_labels[0] + "]_SURV"] == 0, ["AVG[" + var_labels[1] + "]_ALL", "AVG[" + var_labels[1] + "]_SURV", "AVG[" + var_labels[1] + "]", "VAR[" + var_labels[1] + "]_SURV", "VAR[" + var_labels[1] + "]_ALL", "VAR[" + var_labels[1] + "]"]] = 0
+
+            # Set ALL ENTRIES of Tavg_TS with a < 0.0018 to 0.
+            #Tavg_TS.loc[Tavg_TS.index.get_level_values('a') < 0.0018, :] = 0
             for s in range(len(var_labels)):
 
                 # First plot scatter plots of Surviving and All replicates for each species.
@@ -1506,14 +1727,14 @@ def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], 
                     Rmax = Tavg_TS.loc[(slice(None), Tavg_TS_all.index.get_level_values('a')[i], slice(None), slice(None), slice(None), TS), :].index.get_level_values('R').max() + 1;
                     txt = f"{100*Rsurv/Rmax:.1f} %"
 
-                    ax.annotate(txt, (Tavg_TS_all.index.get_level_values('a')[i], Tavg_TS_all["AVG[" + var_labels[s] + "]_SURV"][i]), fontsize = 'x-small', color = 'grey', alpha = 0.5)
+                    ax.annotate(txt, (Tavg_TS_all.index.get_level_values('a')[i], Tavg_TS_all["AVG[" + var_labels[s] + "]_SURV"][i]), fontsize = 'x-small', color = 'grey', alpha = 0.35)
                 # Infill variance for surviving replicates
                 err = 2*np.sqrt(Tavg_TS_all["VAR[" + var_labels[s] + "]_SURV"])
                 ax.fill_between(Tavg_TS_all.index.get_level_values('a'), Tavg_TS_all["AVG[" + var_labels[s] + "]_SURV"] - err,
                                 Tavg_TS_all["AVG[" + var_labels[s] + "]_SURV"] + err, color = colours[s], alpha = 0.25)
             
                 # Plotting mean of all replicates ( with _ALL in the name)
-                ax.scatter(Tavg_TS_all.index.get_level_values('a'), Tavg_TS_all["AVG[" + var_labels[s] + "]_ALL"], label = r"$\mu_{all}(\rho_{%g})$" %(s), color = colours[s], s = 15, alpha = 0.75, marker = 'D', facecolor = 'none')
+                ax.scatter(Tavg_TS_all.index.get_level_values('a'), Tavg_TS_all["AVG[" + var_labels[s] + "]_ALL"], label = r"$\mu_{all}(\rho_{%g})$" %(s), color = colours[s], s = 15, alpha = 0.8, marker = 'D', facecolor = 'none')
 
                 # Plotting mean of individual replicates (ignoring R = -1 entries)
                 for R in Tavg_TS.index.get_level_values('R').unique():
@@ -1523,11 +1744,18 @@ def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], 
                     Tavg_TS_R = Tavg_TS.loc[(slice(None), slice(None), R, slice(None), slice(None), TS), :]
                     ax.scatter(Tavg_TS_R.index.get_level_values('a'), Tavg_TS_R[var_labels[s]], color ="grey", s = 15, alpha = 0.35)
                 # End of R loop
-
+                ax.set_ylim(bottom = -0.05); #ax.set_xlim(right= 0.014)
                 ax.set_title(r" $ \langle \langle \rho_{%g}(x, t) \rangle_{x} \rangle_{t} $" % (s))
                 ax.set_xlabel(r'R $(mm/hr)$')
                 ax.set_ylabel(r" $ \langle \langle \rho_{%g}(x, t) \rangle_{x} \rangle_{t} $" % (s))
                 ax.legend()
+
+                # Add vertical line at a = 0.0018
+                #ax.axvline(x = 0.0018, color = 'red', linestyle = '--', alpha = 0.5)
+
+                # Add a red dot for the mean of all replicates (with _ALL in the name) at a = 0.000201 and a = 0.0025.
+                #ax.scatter([0.000201, 0.0025], [Tavg_TS_all.loc[(slice(None), 0.000201, -1, slice(None), slice(None), TS), "AVG[" + var_labels[s] + "]_ALL"], 
+                #            Tavg_TS_all.loc[(slice(None), 0.0025, -1, slice(None), slice(None), TS), "AVG[" + var_labels[s] + "]_ALL"]], color = 'gold', s = 15, alpha = 0.9) 
             # End of s loop
             Twin_min = Tavg_TS_all.index.get_level_values("Twin_min").min(); Twin_max = Tavg_TS_all.index.get_level_values("Twin_max").max()
             fig.suptitle(r"$\mu$ and $\sigma$ of" + f" Species For {Pre}, dP = {dP}, Geq = {Geq} B/W {Twin_min} -- {Twin_max}")
@@ -1661,7 +1889,7 @@ def get_combined_df(combined_data, indir, compare_key, compare_vals, prefixes, i
 def multiplot_PRELIMS_CompareEQ(indir, out_dir, compare_list, prefixes =[], meanfilename = "guess",
                                  var_labels= [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"]):
     
-    colours = [hex_list[i][i-6] for i in range(len(hex_list))]# for j in range(0, len(hex_list[i]), 2)]
+    colours = [hex_list[i][abs(5-i)] for i in range(len(hex_list))]# for j in range(0, len(hex_list[i]), 2)]
     
     # Get the list of keys and values from the compare_list dictionary.
     keys = list(compare_list.keys())
@@ -1770,7 +1998,7 @@ def multiplot_PRELIMS_CompareEQ(indir, out_dir, compare_list, prefixes =[], mean
                             if R == -1: 
                                 continue # Skip R = -1 entries (which represent the mean values)
                             Tavg_TSPreval_R = Tavg_TSval.loc[( Pre, slice(None), R, slice(None), slice(None), TS, val), :]
-                            ax.scatter(Tavg_TSPreval_R.index.get_level_values('a'), Tavg_TSPreval_R[var_labels[s]], color ="grey", s = 15, alpha = 0.2)
+                            ax.scatter(Tavg_TSPreval_R.index.get_level_values('a'), Tavg_TSPreval_R[var_labels[s]], color ="grey", s = 15, alpha = 0.125)
                         # End of R loop
                     # End of Pre loop
                     ax.set_title(r" $ \langle \langle \rho_{%g}(x, t) \rangle_{x} \rangle_{t} $" % (s))
@@ -1778,7 +2006,8 @@ def multiplot_PRELIMS_CompareEQ(indir, out_dir, compare_list, prefixes =[], mean
                     ax.set_ylabel(r" $ \langle \langle \rho_{%g}(x, t) \rangle_{x} \rangle_{t} $" % (s))
                     # Set lower limit of y-axis to 0.
                     ax.set_ylim(bottom = -200)
-                    ax.legend()
+                    #Set the legend in the lower right corner.
+                    ax.legend(loc = 'lower right')
                 # End of s loop 
             # End of val loop
             Twin_min = Tavg_TSval_all.index.get_level_values("Twin_min").min(); Twin_max = Tavg_TSval_all.index.get_level_values("Twin_max").max()
@@ -1789,14 +2018,6 @@ def multiplot_PRELIMS_CompareEQ(indir, out_dir, compare_list, prefixes =[], mean
             plt.close()
         # End of TS loop
     # End of compare_key loop
-
-
-
-
-                
-
-
-
 
 
 
@@ -1837,10 +2058,14 @@ def recursive_copydir(src, dst, include_filetypes = ["*.txt"],
 
 #
 recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filetypes =["*.png", "*.jpg", "*.jpeg", "*.mp4"], symlinks=False)
-a_vals = [1.65, 1.675, 1.7, 20] #0.026, 0.034, 0.0415, 0.042, 0.05, 0.052] #, 0.057 , 0.06] #0.051, 0.053, 0.055]; 
-a_scaling = 0.001
-#T_vals= [0, 251.13, 331.1, 436.48, 575.41, 758.56, 831.71, 999.9, 1202.19, 1445.4, 1737.78, 2089.23, 2511.85, 3019.94, 3630.77, 4365.13, 5247.99, 6309.49, 6918.23, 7585.71, 8317.54, 9120.1, 9999.99]
-T_vals=[91201];
+a_vals = [0.042, 0.05, 0.052]  #1.75, 1.8, 20] #0.026, 0.034, 0.0415, 0.042, 0.05, 0.052] #, 0.057 , 0.06] #0.051, 0.053, 0.055]; 
+a_scaling = 1 #0.001
+#T_vals= [0, 63.03, 109.56, 144.54, 190.52, 251.13, 331.1, 436.48, 575.41, 758.56, 831.71, 999.9, 1202.19, 1445.4, 1737.78, 2089.23, 2511.85, 3019.94, 3630.77, 4365.13, 5247.99, 6309.49, 6918.23, 7585.71, 8317.54, 9120.1, 9999.99]
+#T_vals=[0, 63095.7, 69182.9, 75857.7, 83176.3, 91201, 99999.9, 109647, 120226, 131826, 144544, 158489, 173780, 190546, 208930, 229087];
+# TVALS WHEN DT= 0.1
+#T_vals=[0, 63095.7, 69183, 75857.7, 83176.3, 91201, 100000, 109647, 120226, 131826, 144544, 158489, 173780, 190546];
+# TVALS WHEN DT= 0.12
+T_vals=[];#0, 63095.6, 69183, 75857.6, 83176.3, 91201, 100000, 109647, 120226, 131826, 144544, 158489, 173780, 190546];
 #[0, 33, 47.85, 68.75, 99.55, 144.1, 208.45, 250.8, 301.95, 363, 436.15, 524.7, 600.05, 649.99, 700.04, 749.98, 800.03, 849.97, 900.02, 949.96, 1000.01, 1049.95, 1100, 1150.05, 1199.99, 1250.04, 1299.98, 1350.03, 1399.97, 1450.02, 1499.96, 1584.55, 1737.45, 1905.2, 7585.6] 
 #[0, 144.54, 190.52, 251.13, 331.1, 436.48, 575.41, 758.56, 831.71, 999.9, 1202.19, 1445.4, 1737.78, 2089.23, 2511.85, 3019.94, 3630.77, 4365.13, 5247.99, 6309.49, 6918.23, 7585.71, 9120.1, 9999.99, 10964.7, 91201, 63095.7, 69183.1, 75857.7, 91201,  99999.9, 10964.3, 120226, 131826, 144544, 158489]
 # 3SP INIT [0, 575.3, 758.45, 911.9, 1096.15, 1317.8, 1584.55, 1905.2, 2290.75, 2753.85, 3311, 3980.7, 4786.1, 5754.1, 6309.05, 6917.9, 7585.6, 8317.1, 9120.1, 9999.55, 91201, 99999.9, 10964.3, 120226, 131826, 144544, 158489]
@@ -1848,7 +2073,15 @@ T_vals=[91201];
 #T_vals=[0, 63095.7, 69182.9, 75857.7, 83176.3, 91201, 99999.9, 109647, 120226, 131826, 144544, 158489, 173780, 190546, 208930]
 #T_vals= [158489, 173780, 190546, 208930, 229087, 251189, 275423, 301995, 331131, 363078]
 #prefixes = ["DIC-DDM1-NREF-0.5LI", "DIC-DDM5-NREF-0.5LI", "DIC-DDM10-NREF-0.5LI", "DIC-DDM5-NREF-1.1HI"]
-prefixes = [ "DiC-B6-UNITY"]
+#prefixes = ["DsC-HXL2010-UA125A0-5E2UNI", "DsCGm-HXL2010-UA125A0-5E2UNI", "DsCGm-HXR03015-UA125A0-5E2UNI",  "DsC-HXR03015-UA125A0-5E2UNI"]
+#"DsC-HXR03015-UA125A0-5E2UNI", "DsC-HXR2010-UA125A0-5E2UNI", "DsC-HXL03015-UA125A0-5E2UNI", "DsC-HXL2010-UA125A0-5E2UNI", "DsC-HXC03015-UA125A0-5E2UNI", "DsC-HXC2010-UA125A0-5E2UNI", "DsCGm-HXR03015-UA125A0-5E2UNI", "DsCGm-HXL03015-UA125A0-5E2UNI", "DsCGm-HXL2010-UA125A0-5E2UNI", "HX03002-UA125A0-1UNI",  "HX03002-UA125A0-5E2UNI"]
+
+#"HX03002-UA125A125-1UNI",  "HX03002-UA125A125-5E2UNI", "DsCX-TST-HX03002-UA125A125-5E2UNI" ]
+#"DisC-UA125A125-1UNI", "DsC-UA125A125-1UNI", "DsCX-TST-HX2001-UA125A125-5E2UNI" ]
+#"DsC-UA0A0-S1DTUNI", "DsCX-TST-UA0A0-S1DTUNI",  "DsC-UA125A0-S1DTUNI", "DsC-UA125A0-S1DT5E2UNI", "DsCX-TST-UA125A0-S1DTUNI", "DsC-UA125A125-S1DTUNI", "DsC-UA125A125-S1DT5E2UNI", "DsCX-TST-UA125A125-S1DTUNI" ]
+#"B6-UA0A0-1UNI", "B6-UA125A0-1UNI", "B6-UA125A125-1UNI"]
+#"DPB6-HX2001-UA0A0-1UNI", "DPB6-UA0A0-REGPRG-1UNI",  "DPB6-HX2001-UA125A0-1UNI", "DPB6-UA125A0-REGPRG-1UNI", "DPB6-UA125A125-REGPRG-1UNI"]
+#"B6-HX2001-UA0", "B6-HX2005-UA0", "B6-HX2001-UA125", "B6-HX2005-UA125"]
 #"RTK-UA125-LOPRG-1UNI", "RTK-UA125-REGPRG-1UNI" ]
 #"RTK-UA125A0-REGPRG-1UNI", "RTK-UA125A0-REGPRG-5E2UNI",  "RTK-UA125A0-LOPRG-1UNI", "RTK-UA125A0-LOPRG-5E2UNI"]
 #"HX1001-UA125A0-5E2UNI", "HX1005-UA125A0-5E2UNI", "HX2001-UA125A0-5E2UNI", "HX2005-UA125A0-5E2UNI", "HX3001-UA125A0-5E2UNI"]           
@@ -1858,7 +2091,21 @@ prefixes = [ "DiC-B6-UNITY"]
 #"DiC-B6-MFTEQ"]#"DiC-STD"]#,"DiC-S7LI", "DiC-0.1LI"]
 #prefixes = ["COR-DDM5-NREF-0.5HI", "COR-DDM10-NREF-0.5HI", "COR-DDM1-NREF-0.5HI"]
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
-TS_vals = [91201]  #36307.7]#, 131826] #190546] #57544] #69183.1] # #[229087] #[208930] #91201]  #[190546]; #[109648];
+
+# PREFIXES FOR SMALL BODY SIZE METAPOPLN
+
+#LOCUSTS
+#prefixes = ["DsCW10-HXR2010-UA0A0", "DsCW10-HXR2010-UA125A0", "DsC-HXR2010-UA0A0",  "DsC-HXR2010-UA125A0",
+#            "DsCW10-HXR03015-UA0A0", "DsCW10-HXR03015-UA125A0", "DsC-HXR03015-UA0A0",  "DsC-HXR03015-UA125A0" ]
+#prefixes = ["DsCW10-HXR2010-UA125", "DsCW10-HXR03015-UA125", "DsC-HXR2010-UA125"]
+#["DsCW10-HXR2010-UA125A125", "DsC-HXR2010-UA125A125"]#  "DsCW10-HXR03015-UA125A125", "DsC-HXR03015-UA125A125"]
+
+
+# GENERIC SMALL MAMMAL
+#prefixes = ["DsC-HXR03015-UA0-1UNI", "DsC-HXR2010-UA0-1UNI"] #"DsC-HXR03015-UA0-1UNI",
+prefixes = ["DsC-HXR03015-UA0A0-1UNI", "DsC-HXR2010-UA0A0-1UNI", "DsC-HXR03015-UA125A0-1UNI", "DsC-HXR2010-UA125A0-1UNI"] #"DsC-HXR03015-UA0-1UNI",
+
+TS_vals = [190546]  #33113.1] 36307.7]#, 131826] #190546] #57544] #69183.1] # #[229087] #[208930] #91201]  #[190546]; #[109648];
 #a_vals = []#0.034, 0.048, 0.054]; 
 #T_vals = []#0, 91201, 190546, 208930, 229087]
 
@@ -1872,19 +2119,19 @@ print(f"in_dir: {in_dir} \nout_dir: {out_dir}")
 input("Press F to pay respects...")
 print("\n\n__________________________________________________________________________________________\n\n")
 
-#''' FOR VIDEOS OF ALL REPLICATES
+''' FOR VIDEOS OF ALL REPLICATES
 for Pre in prefixes:
-    frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= 20, plt_gamma= False, delpng = False)
+    frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= -1, plt_gamma= False, delpng = False)
     print(f"Done with making frames for {Pre}")
     for a in a_vals:
         print(f"Making video for {Pre} at a = {a} \n\n")
-        home_video(out_dir, out_dir, [Pre], [a], T_vals= T_vals, maxR= 20, 
+        home_video(out_dir, out_dir, [Pre], [a], T_vals, maxR= -1, 
                    pngformat= "CombinedImg/BioConc_a_{a}_T_{T}_n_{R}.png", pngdir= "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/",
                      maxR_txtdir = "{Pre}/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/maxR.txt", videoname = "guess",
                      video_relpath= "{Pre}/Videos/Conc/{a}/{Tmin}-{Tmax}/")
 #'''
 
-''' FOR VIDEOS OF INDIVIDUAL REPLICATES
+#''' FOR VIDEOS OF INDIVIDUAL REPLICATES
 for Pre in prefixes:
     for R in range(0, 3):
         frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= R+1, minR= R, plt_gamma= False, delpng = False)
@@ -1916,19 +2163,21 @@ for Pre in prefixes:
 #analyse_timeseriesData(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "MEAN_REPLICATES.txt")
 if SPB == 3:
     variable_labels = [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"]
-    Tavg_win_index = [150000, 200000] #[100000, 240000]
+    Tavg_win_index = [160000, 200000]; Traj_win_index =[1000, 35000]; #[100000, 240000]
     # Window for averaging over last Tavg_win_index values of T (if negative, then average over last |Tavg_win_index| values of T)
     # If Tavg_win_index[0] < 0 and Tavg_win_index[1] <= 0, then average over last Tavg_win_index[0] + Tmax to Tavg_win_index[1] + Tmax values of T.
     # If Tavg_win_index[1] >= Tavg_win_index[0] >= 0, then average over last Tavg_win_index[0] to Tavg_win_index[1] values of T.
 elif SPB == 2:
-    variable_labels = [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r","<<W(x; t)>_x>_r" , "<<O(x; t)>_x>_r"]; Tavg_win_index = [150000, 200000]#[150000, 240000] #[50000, 100000] #
+    variable_labels = [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r"]; Tavg_win_index = [160000, 200000]; Traj_win_index =[1000, 10000];#[150000, 240000] #[50000, 100000] #
 elif SPB == 1:
-    variable_labels = ["<<P(x; t)>_x>_r"]; Tavg_win_index = [70000, 100000] #[65000, 100000]
+    variable_labels = ["<<P(x; t)>_x>_r"]; Tavg_win_index = [71000, 100000]; Traj_win_index =[200, 5000]; #[65000, 100000]
 
 #analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels, a_scaling= a_scaling)
 #analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = Tavg_win_index, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels, a_scaling= a_scaling)
-
-
+'''
+for a in a_vals:
+    analyse_PRELIMS_TRAJECTORYdata(in_dir, out_dir, prefixes, [a], TS_vals, size_label = ["t"], maxR= 10, minR=0, T_window = Traj_win_index, meanfilename = "Mean_TSERIES_T_{TS}_dP_{dP}_Geq_{Geq}.csv", a_scaling= a_scaling, x_label= ["<<P(x; t)>_x>_r"], y_label= ["<<G(x; t)>_x>_r"], hue_label=[])
+#'''
 #analyse_FRAME_POTdata(in_dir, out_dir, prefixes, a_vals, T_vals, find_minima= True, filename = "Pot_Well.csv", 
 #                          minimafilename = "LOCAL_MINIMA.csv", var_labels= [ "P(x; t)" , "G(x; t)", "Pr(x; t)"])
 

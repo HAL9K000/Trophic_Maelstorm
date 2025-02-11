@@ -66,6 +66,43 @@ def find_timerange(files, a, indx, min_t = None, max_t = None):
         return T_vals
     return T_vals[indx:] if indx < 0 else T_vals[:indx]
 
+'''# Summary of the function gen_interpolated_df(...)
+gen_interpolated_df(df1, df2, compare_col) generates an interpolated dataframe of df2 with respect to df1, based on the values in compare_col_label.
+The function first checks if compare_col_label is an existing column in both df1 and df2. If it is not, the function will return an error (None).
+
+Next the function will do the follows:
+1.) It will create a Pandas dataframe with the same columns as df2 called df_interpolate, with df_interpolate[compare_col_label] = df1[compare_col_label].
+1.) It will iterate over all the columns in df2, barring compare_col_label, and will 
+generate a cubic spline interpolation of each such column in df2 with respect to compare_col_label.
+2.) It will use the cubic spline interpolation to evaluate the interpolated values of each column in df2 
+at the values of compare_col_label in df1 (stored in df_interpolate[compare_col_label]).
+3.) These interpolated values will be stored in the corresponding columns in df_interpolate.
+4.) The function will return df_interpolate.
+5.) If the function encounters an error while generating the cubic spline interpolation, it will return None.
+'''
+def gen_interpolated_df(df1, df2, compare_col_label):
+    
+    # Check if compare_col_label is an existing column in both df1 and df2. If it is not, return an error.
+    if compare_col_label not in df1.columns or compare_col_label not in df2.columns:
+        return None
+    # Create a Pandas dataframe with the same columns as df2 called df_interpolate.
+    df_interpolate = pan.DataFrame(columns= df2.columns)
+    # Set df_interpolate[compare_col_label] = df1[compare_col_label].
+    df_interpolate[compare_col_label] = df1[compare_col_label]
+    interpolate_cols = [col for col in df2.columns if col != compare_col_label]
+    # Iterate over all the columns in df2, barring compare_col_label.
+    for col in interpolate_cols:
+        # Generate a cubic spline interpolation of each such column in df2 with respect to compare_col_label.
+        try:
+            cs = CubicSpline(df2[compare_col_label], df2[col])
+        except Exception as e:
+            print("Error: Could not generate cubic spline interpolation for column " + col + " with error message: \n" + str(e))
+            return None
+        # Evaluate the interpolated values of each column in df2 at the values of compare_col_label in df1.
+        df_interpolate[col] = cs(df1[compare_col_label])
+    return df_interpolate
+
+
 def find_vals(files, reg_search_patterns, vals, dir=""):
     # Recursively iterate over reg_search_patterns and find all values in files that match the pattern.
     # Append the values to vals.
@@ -708,9 +745,15 @@ def gen_missing_zero_Prelims(files, pathtodir, T_vals, ext="csv", dt =None, comp
 # where {var} is one of the species names in include_col_labels (excluding "t").
 # The optional argument dt is used to generate a logarithmically spaced time range from 0 to t_max, with time-stamps spaced by dt,
 # if the time values in the files are all zero.
+# The optional argument handle_nonstandard_time is used to handle non-standard time value conflicts in the files.
+# It has THREE VALID OPTIONS:
+# 1. If handle_nonstandard_time = "error", the function will return an error if the time values in the files are not standardised.
+# 2. If handle_nonstandard_time = "skip", the function will skip files with non-standardised time values.
+# 3. If handle_nonstandard_time = "interpolate", the function will interpolate (using cubic splines) the time values in the files to generate a standardised time range.
+This will be done by calling the function gen_INTERPOLATED_filedata(...) with the files and include_col_labels.
 '''
 def gen_MEAN_INDVL_Prelimsfiledata(files, pathtodir="", ext="csv", tmax =None, dt =None, include_col_labels= ["t",  "<<P(x; t)>_x>_r" , 
-                                        "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r", "<<W(x; t)>_x>_r", "<<O(x; t)>_x>_r"]):
+                                        "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r", "<<W(x; t)>_x>_r", "<<O(x; t)>_x>_r"], handle_nonstandardtime_fileconflicts = "error"):
     
     # Read the first file in files.
     if(ext == "csv"):
@@ -763,13 +806,37 @@ def gen_MEAN_INDVL_Prelimsfiledata(files, pathtodir="", ext="csv", tmax =None, d
 
         # First check if the columns in df are the same as col_labels. If not, return an error.
         if not all([col in df.columns for col in col_labels]):
-            print("Error: Columns in file " + pathtodir + "/" + file + " are not standardised.")
+            print("Error: Columns in file " +  file + " are not standardised.")
             return None
         
         # Also check if the time values in the files are the same. If not, return an error.
-        if not all(df["t"] == pooled_df["t"]) and not all(df["t"] == 0):
-            print("Error: Time values in file " + pathtodir + "/" + file + " are not standardised.")
-            return None
+        #if not all(df["t"] == pooled_df["t"]) and not all(df["t"] == 0):
+        if not (df["t"].reset_index(drop=True).equals(pooled_df["t"].reset_index(drop=True))) and not all(df["t"] == 0):
+            print("Error: Time values in file " +  file + " are not standardised.")
+            if handle_nonstandardtime_fileconflicts == "error":
+                return None
+            elif handle_nonstandardtime_fileconflicts == "skip":
+                print("Skipping file " + pathtodir + "/" + file + " due to non-standardised time values.")
+                continue
+            elif handle_nonstandardtime_fileconflicts == "interpolate":
+                print("WARNING: Interpolating time values in file to generate a standardised time range.")
+                df = gen_interpolated_df(pooled_df, df, "t")
+                if df is None:
+                    print("Error: Interpolation failed for file " +  file + ". Skipping file.")
+                    continue
+                else:
+                    print("Interpolation successful for file.")
+
+                    #First set all values in df < abs(1e-6) to 0 (to avoid negative values in the interpolated data).
+                    df = df.applymap(lambda x: 0 if x < 1e-6 and x > -1e-6 else x)
+                    # Save the interpolated file to disk as pathtodir + "/INTERPOLATED_" + file.
+                    # First get the filename by removing the pathtodir from file.
+                    filename = file.split(pathtodir + "/")[1]
+                    df.to_csv(pathtodir + "/INTERPOLATED_" + filename, index=False)
+            else:
+                print("Error: Invalid option for handle_nonstandard_time. Please choose from 'error', 'skip' or 'interpolate'.")
+                return None
+            
         
         Rstr = re.findall(r'R_[\d]+', file)[0]
         

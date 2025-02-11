@@ -8,7 +8,9 @@
                 "D:/cygwin64/lib/gcc/x86_64-pc-cygwin/11/include/c++/**",
                 "D:/cygwin64/usr/local/lib/gcc/x86_64-pc-cygwin/12.1.0/include/**",
                 "D:/cygwin64/usr/include/**",
-                "D:/cygwin64/home/koust/gcc-12.1.0/**"
+                "D:/cygwin64/home/koust/gcc-12.1.0/**",
+                "//wsl.localhost/Mint/usr/local/cuda-12.6/include",
+                "//wsl.localhost/Mint/usr/local/cuda-12.6/lib64"
             ],
             "defines": [
                 "_DEBUG",

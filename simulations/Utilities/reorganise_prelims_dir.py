@@ -249,7 +249,7 @@ def post_process(prefixes= []):
 
                 # Elementwise average, variance and surviving runs for each value of T in subdirpath using gen_MEAN_INDVL_Prelimsfiledata()
 
-                df_avgtimeseries = gen_MEAN_INDVL_Prelimsfiledata(selectedfiles, subdirpath, "csv", tmax =t, dt= dt)
+                df_avgtimeseries = gen_MEAN_INDVL_Prelimsfiledata(selectedfiles, subdirpath, "csv", tmax =t, dt= dt, handle_nonstandardtime_fileconflicts= "interpolate")
                 try:
                     if df_avgtimeseries is not None:
                         df_avgtimeseries.to_csv(subdirpath + f"/MEAN_TSERIES_T_{t}.csv", index=False, header=True)
