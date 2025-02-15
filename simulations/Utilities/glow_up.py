@@ -11,8 +11,15 @@ import copy
 import warnings
 
 import scipy.stats as stats
+import scipy.fftpack as fft
+from scipy.signal import find_peaks
 from scipy.interpolate import CubicSpline
 from scipy.interpolate import InterpolatedUnivariateSpline
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
+
+import secrets
+rng = np.random.default_rng(secrets.randbits(128))
 
 '''
 This script contains a set of utility functions that can be used to read and write text files, read and write csv files,
@@ -134,7 +141,7 @@ def savetxt_to_dir(data, savedir, savefilename, header = None, index = False, se
     try:
         # Check if data is a dataframe or an array (or list-like object).
         if isinstance(data, pan.DataFrame):
-            data.to_csv(savedir + "/" + savefilename, header = header, index = index, sep = sep, fmt="%g")
+            data.to_csv(savedir + "/" + savefilename, header = header, index = index, sep = sep)
         else:
             np.savetxt(savedir + "/" + savefilename, data, delimiter = sep, fmt="%g")
 
@@ -357,6 +364,197 @@ def gen_MEAN_INDVL_Colsfiledata(files, pathtodir="", ext="csv", exclude_col_labe
     # Replace all NaNs with 0.
     df_pooled = df_pooled.fillna(0)
     return df_pooled
+
+''' # Summary of the function gen_FFT_PowerSpectra(...)
+    The function gen_FFT_PowerSpectra(files, pathtodir="", ext="csv", bin_mask= None, exclude_col_labels= ["a_c", "x", "L"],
+    Tmin= None, Tmax = None, L="infer" verbose= False) generates the FFT power spectra of the files in files.
+    It will read all files in files, and will generate the FFT power spectra for each matching column in the files for each file (replicate).
+    It will first resize each column in the files to a square matrix of size L x L, where L is the maximum length of the column in the files.
+    L is either provided as an argument or inferred from the maximum length of the column (as the square root of the maximum length of the column).
+    If bin_mask is provided, the function will use bin_mask to bin the data in each column before generating the FFT power spectra.
+    Valid bin_mask values are "read", "auto" or None. If bin_mask is "read", the function will assume the presence of a binarised mask 
+    for each file in files in <path_to_dir>/BIN_MASKS  and use this mask to bin the data in each column before generating the FFT power spectra.
+    If bin_mask is "auto", the function will generate a binarised mask for each file in files and use this mask to bin the data in each column 
+    as well as save the binarised mask in <path_to_dir>/BIN_MASKS. If bin_mask is None, the function will not bin the data in each column before doing the FFT.
+    The function will then generate the FFT power spectra for each column in the files for each file (replicate).
+    It will store the FFT power spectra in a dataframe with the following column structure:
+    "FREQ[{var}]", "POWER[{var}]_MEAN", "POWER[{var}]_R_0", ...., "POWER[{var}]_R_{R_max}"
+    where {var} is one of the species names NOT in exclude_col_labels.
+    The function will also generate the mean FFT power spectra across all files for each column in the files, which is stored in POWER[{var}]_MEAN.
+'''
+def gen_FFT_PowerSpectra(files, pathtodir="", ext="csv", bin_mask= None, exclude_col_labels= ["a_c", "x", "L"], 
+                         Tmin= None, Tmax = None, Lval="infer", binwidth=1, verbose= False):
+    
+    # Read the first file in files.
+    # If L is not provided, infer L from the maximum length of the column in the files.
+    if(ext == "csv"):
+        df = pan.read_csv(files[0], header=0)
+    else:
+        try:
+            df = pan.read_table(files[0], header=0)
+        except Exception as e:
+            print("Error: Non-standard extension for file " + pathtodir +"/" + files[0] + " with error message: \n" + str(e))
+            return None
+    
+    # Store column names in col_labels. Strip elements of any leading or trailing whitespaces.
+    col_labels = df.columns; col_labels = [col.strip() for col in col_labels]
+    col_labels = [col for col in col_labels if col not in exclude_col_labels];
+    # Remove exclude_col_labels from col_labels.
+    
+    # This dataframe will store the FFT power spectra for each column in the files for each file (replicate)
+    # This dataframe will store the mean FFT power spectra across all files for each column in the files.
+    df_fft_power = pan.DataFrame()
+
+    
+    Tval = re.search(r'T_[\d]+', files[0]).group(0).split("_")[1] if re.search(r'T_[\d]+', files[0]) else re.search(r'T_[\d]*[.][\d]+', files[0]).group(0).split("_")[1]
+    aval = re.search(r'a_[\d]*[.][\d]+' , files[0]).group(0).split("_")[1] if re.search(r'a_[\d]*[.][\d]+' , files[0]) else re.search(r'a_[\d]+' , files[0]).group(0).split("_")[1]
+    # Check if Tmin and Tmax are provided. If they are, only calculate KDE and potential well data for Tval in the range [Tmin, Tmax].
+    if Tmin is not None:
+        if float(Tval) < Tmin:
+            print(f"Skipping T = {Tval} and a = {aval} as it is not in the range [{Tmin}, {Tmax}].")
+            return None
+    if Tmax is not None:
+        if float(Tval) > Tmax:
+            print(f"Skipping T = {Tval} and a = {aval} as it is not in the range [{Tmin}, {Tmax}].")
+            return None
+    print(f"Generating FFT Power Spectra  for T = {Tval} and a = {aval}.")
+
+    # Iterate over all files in files in ascending order of R.
+    for file in sorted(files, key= lambda x: int(re.sub("R_", "", re.findall(r'R_[\d]+', x)[0]))):
+        Rstr = re.findall(r'R_[\d]+', file)[0]
+        #print(f"subdir: {pathtodir}, file: {file}, R: {Rstr}")
+        filename = file.split(pathtodir + "\\")[1]
+        # Read the file.
+        if(ext == "csv"):
+            df = pan.read_csv(file, header=0)
+
+        else:
+            try:
+                df = pan.read_table(file, header=0)
+            except Exception as e:
+                print("Error: Non-standard extension for file " + pathtodir +"/" + files[0] + " with error message: \n" + str(e))
+                return None
+        # Modify column names in df to remove leading and trailing whitespaces.
+        df.columns = [col.strip() for col in df.columns]
+        # Remove exclude_col_labels from df.
+        df = df[[col for col in df.columns if col not in exclude_col_labels]]
+        
+        # First check if the columns in df are the same as col_labels. If not, return an error.
+        if not all([col in df.columns for col in col_labels]):
+            print("Error: Columns in file " + pathtodir + "/" + file + " are not standardised.")
+            return None
+        
+        # Resize each column in the files to a square matrix of size L x L.
+        if Lval == "infer":
+            L = int(np.sqrt(max([len(df[col]) for col in col_labels])))
+        else:
+            L = Lval
+
+        if bin_mask == "read":
+            try:
+                # Bin mask is assumed to be in <path_to_dir>/BIN_MASKS with the same name as the file.
+                # It has column names as the same as the columns in the file, with each column 
+                # bearing a single threshold value (float b/w 0 and 1) for binarisation.
+                BINmask = pan.read_csv(pathtodir + "/BIN_MASKS/" + filename.split("." + ext)[0] + ".txt", header="infer", sep="\t")
+                BINmask.columns = [col.strip() for col in BINmask.columns]
+                # Remove exclude_col_labels from bin_mask.
+                BINmask = BINmask[[col for col in bin_mask.columns if col not in exclude_col_labels]]
+                # First check if the columns in bin_mask are the same as col_labels. If not, return an error.
+                if not all([col in bin_mask.columns for col in col_labels]):
+                    print(f"ERROR: Columns in binarised mask for file: {file} are not standardised. Proceeding without binarisation.")
+                    bin_mask = None
+            except Exception as e:
+                print("Error: Could not load binarised mask for file " + pathtodir + "/" + file + " with error message: \n" + str(e))
+                print("Proceeding without binarisation....")
+                bin_mask = None
+        elif bin_mask == "auto":
+            # We will create a binarised mask for each file in files and save it in <path_to_dir>/BIN_MASKS.
+                # The binarised mask will have column names as the same as the columns in the file, with each column
+                # bearing a single threshold value (float b/w 0 and 1) for binarisation.
+                # This threshold value will be determined using GMM clustering with 2 clusters.
+                thresholds =pan.DataFrame(columns= col_labels)
+                for col in col_labels:
+                    data = df[col].dropna().to_numpy(dtype=np.float64).reshape(-1, 1)
+                    # Normalise the data in each column by max value in the column.
+                    data /= data.max() if data.max() != 0.0 else 1.0
+                    gmm = GaussianMixture(n_components=2, covariance_type='full', random_state=rng.integers(0, 1000))
+                    gmm.fit(data)
+                    # Set threshold as the mean of the means of the two clusters.
+                    thresholds.loc[0, col] = np.mean(gmm.means_.flatten())
+                # Print all thresholds.
+                print(f"Thresholds for file {filename} are: \n" + str(thresholds))
+                # Save the binarised mask in <path_to_dir>/BIN_MASKS/.
+                savetxt_to_dir(thresholds, pathtodir + "/BIN_MASKS", filename.split("." + ext)[0] + ".txt", header = True, index = False, sep = "\t", overwrite = True, verbose = verbose)
+                # Assign the binarised mask to bin_mask.
+                BINmask = thresholds
+
+        kbins = np.arange(0.5, L//2 + 1, 1) # Bin the data in each column before generating the FFT power spectra.
+        kvals = 0.5*(kbins[1:] + kbins[:-1]) #k values at bin centers (1 , 2, 3, ... L//2)
+        # Store the k values in the dataframe at the start.
+        df_fft_power.insert(len(df_fft_power.columns), "k_" + Rstr, kvals)
+        for col in col_labels:
+            # Resize each column in the files to a square matrix of size L x L.
+            # Bin the data in each column before generating the FFT power spectra.
+            img_arr = df[col].to_numpy(dtype=np.float64); img_arr = np.resize(img_arr, (L, L))
+            #mean_arr = img_arr.mean(); var_arr = img_arr.var()
+            #print(f"Mean of {col} = {mean_arr}, Variance of {col} = {var_arr}, BEFORE NORMALISATION.")
+            # Normalise the data in each column by max value in the column.
+            img_arr /= img_arr.max() if img_arr.max() != 0.0 else 1.0
+            mean_arr = img_arr.mean(); var_arr = img_arr.var()
+
+            if var_arr == 0 and mean_arr == 0:
+                print(f"Warning: Homogenous 0 column {col} at a = {aval}, T = {Tval}, R = {Rstr}...")
+            if bin_mask == "read" or bin_mask == "auto":
+                try:
+                    # Binarise the data in each column in the file using the binarised mask.
+                    img_arr = np.where(BINmask[col].to_numpy(dtype=np.float64) > img_arr, 0, img_arr)
+                    # If bin
+                except Exception as e:
+                    print("Error: Could not binarise data in column " + col + " for file " + pathtodir + "/" + file + " with error message: \n" + str(e))
+                    print("Proceeding without binarisation....")
+            
+            if verbose:
+                print(f"Mean of {col} = {mean_arr}, Variance of {col} = {var_arr}, AFTER NORMALISATION.")
+                
+            #print(f"Mean of {col} = {mean_arr}, Variance of {col} = {var_arr}, AFTER NORMALISATION.")
+            # Reshape the column to a square matrix of size L x L , and subtract the mean from each element in the column.
+            
+
+            # Get mean, var and SD of each column in df.
+             #sd_col = np.sqrt(var_col)
+            # First subtract the mean from each column in df.
+            #df[col] = df[col].apply(lambda x: x - mean_col)
+            # Find 2D FFT of each column in df
+            img_fft = fft.fft2(img_arr)
+
+            # Calculate the power spectra of each column in df by performing the following steps:
+            # 1. Compute the 2D FFT of the column data.
+            # 2. Flatten the 2D FFT result to a 1D array.
+            # 3. Compute the Fourier amplitudes by taking the absolute value squared of the FFT result.
+            # 4. Bin the Fourier amplitudes based on the radial distance from the origin in frequency space.
+            # 5. Store the binned Fourier amplitudes as the power spectra for the column.
+            kfreqX =fft.fftfreq(L)*L; #kfreqY = fft.fftfreq(L)*L
+            kfreqX, kfreqY = np.meshgrid(kfreqX, kfreqX)
+            # Calculate the radial distance from the origin in frequency space
+            knrm = np.sqrt(kfreqX**2 + kfreqY**2)
+            knrm = knrm.flatten(); fourier_amplitudes = np.abs(img_fft**2)
+            fourier_amplitudes = fourier_amplitudes.flatten()
+            
+            Ampbins, _, _ = stats.binned_statistic(knrm, fourier_amplitudes, bins=kbins, statistic='mean')
+
+            # Store the FFT power spectra for each column in the files for each file at the END of the dataframe.
+            df_fft_power.insert(len(df_fft_power.columns), "POWER[" + col + "]_" + Rstr, Ampbins)
+        
+        # Done with all columns in col_labels for file.
+    # Done with all files in files.
+    
+    for i in range(len(col_labels)):
+        # Insert mean FFT power spectra and k-vals across all files for each column in the files in df_fft_power at the start.
+        df_fft_power.insert(i, "POWER[" + col_labels[i] + "]_MEAN", df_fft_power.filter(like= "POWER[" + col_labels[i] + "]_").mean(axis=1))
+    for i in range(len(col_labels)):  
+        df_fft_power.insert(i, "FREQ[" + col_labels[i] + "]", df_fft_power.filter(like= "k_").mean(axis=1))
+            
+    return df_fft_power
 
 
 ''' # Summary of the function quadratic_spline_roots(...)

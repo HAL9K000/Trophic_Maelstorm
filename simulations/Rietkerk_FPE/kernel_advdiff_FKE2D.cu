@@ -1,5 +1,9 @@
+#define DEFINE_CUDA_CONSTANTS // Define the CUDA constant arrays only once through this .cu file in the header file
+
 #include "rietkerk_bjork_basic.h"
 #include <cstdio>
+
+
 
 // AtomicAdd function analogue for double precision floating point numbers for devices with compute capability < 6.0
 #if __CUDA_ARCH__ < 600
@@ -21,6 +25,67 @@ __device__ double atomicAdd_Double(double* address, double val)
     return __longlong_as_double(old);
 }
 #endif
+
+cudaError_t copyToDeviceConstantMemory_AdvTerms(const int* sig_D_ScaledBounds, const int2* sigma_vD_ScBounds, 
+        const double* mu_vel_prefactor,  const int* size_gauss_D, const int* size_gauss_VXY)
+{
+    cudaError_t err;
+
+    err = cudaMemcpyToSymbol(d_sigD_ScaleBounds, sig_D_ScaledBounds, CuSpNV * sizeof(int), 0, cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) {
+    printf("cudaMemcpyToSymbol failed for d_sigD_ScaleBounds: %s\n", cudaGetErrorString(err)); return err;
+    }
+    else{
+        printf("d_sigD_ScaleBounds copied to constant memory with values:\n");
+        for(int i=0; i<CuSpNV; i++)
+            printf("%d\t", sig_D_ScaledBounds[i]);
+        }
+
+    err = cudaMemcpyToSymbol(d_sigvD_ScaleBounds, sigma_vD_ScBounds, CuSpNV * sizeof(int2), 0, cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) {
+    printf("cudaMemcpyToSymbol failed for d_sigvD_ScaleBounds: %s\n", cudaGetErrorString(err)); return err;
+    }
+    else{
+        printf("\nd_sigvD_ScaleBounds copied to constant memory with values:\n");
+        for(int i=0; i<CuSpNV; i++)
+            printf("[ %d , %d , %d ]\t", i, sigma_vD_ScBounds[i].x, sigma_vD_ScBounds[i].y);
+        
+    }
+
+    err = cudaMemcpyToSymbol(d_mu_vel_prefactor, mu_vel_prefactor, CuSpNV * sizeof(double), 0, cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) {
+    printf("cudaMemcpyToSymbol failed for d_mu_vel_prefactor: %s\n", cudaGetErrorString(err));
+    return err;
+    }
+    else{
+            printf("\nd_mu_vel_prefactor copied to constant memory with values:\n");
+            for(int i=0; i<CuSpNV; i++)
+                printf("%f\t", mu_vel_prefactor[i]);
+        }
+
+    err = cudaMemcpyToSymbol(d_size_gauss_D, size_gauss_D, CuSpNV * sizeof(int), 0, cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) {
+    printf("cudaMemcpyToSymbol failed for d_size_gauss_D: %s\n", cudaGetErrorString(err));
+    return err;
+    }
+    else{
+            printf("\nd_size_gauss_D copied to constant memory with values:\n");
+            for(int i=0; i<CuSpNV; i++)
+                printf("%d\t", size_gauss_D[i]);
+        }
+
+    err = cudaMemcpyToSymbol(d_size_gauss_VXY, size_gauss_VXY, CuSpNV * sizeof(int), 0, cudaMemcpyHostToDevice);
+    if (err != cudaSuccess) {
+        printf("cudaMemcpyToSymbol failed for d_size_gauss_VXY: %s\n", cudaGetErrorString(err)); return err;
+    }
+    else{
+            printf("\nd_size_gauss_VXY copied to constant memory with values:\n");
+            for(int i=0; i<CuSpNV; i++)
+                printf("%d\t", size_gauss_VXY[i]);
+        }
+
+    return cudaSuccess;
+}
 
 
 // CUDA kernel to update the concentration field

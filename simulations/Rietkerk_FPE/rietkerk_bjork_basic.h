@@ -82,15 +82,16 @@ namespace fs = std::filesystem;
 //------------------------- GLOBAL CONSTANTS --------------------------------------------------------------//
 
 
-// CUDA constants 
+// CUDA constants (actually defined in the .cu kernel files)
 #if defined(__CUDACC__) || defined(BARRACUDA)
+#ifdef DEFINE_CUDA_CONSTANTS
 __constant__ double CuA[CuSpNV] /** ={aij, ajm} */;
 __constant__ double CuH[CuSpNV] /** ={hij, hjm} */;
 __constant__ double CuE[CuSpNV] /** ={ej, em} */;
 __constant__ double CuM[CuSpNV] /** ={mj, mm} */;
 __constant__ double CuD[Sp] /** ={D0, D1, D2, D3, D4} */;
 __constant__ double CuK[3] /** ={K0, K1, K2} */;
-__constant__ double CuV[CuSpNV] /** ={v0, v1} */;
+ __constant__ double CuV[CuSpNV] /** ={v0, v1} */;
 
 __constant__ int d_sigD_ScaleBounds[CuSpNV] /** ={sigD_ScaleBounds[0], sigD_ScaleBounds[1]} */;
 __constant__ int2 d_sigvD_ScaleBounds[CuSpNV] /** ={sigvD_ScaleBounds[0], sigvD_ScaleBounds[1]} */;
@@ -99,6 +100,7 @@ __constant__ double d_mu_vel_prefactor[CuSpNV] /** ={mu_vel_prefactor[0], mu_vel
 __constant__ int d_size_gauss_D[CuSpNV]; __constant__ int d_size_gauss_VXY[CuSpNV];
 /** Stores the cumulative sizes of the Gaussian stencil for each species for the distance FKE
  * This is used to determine the size of the stencil (and thereby access it) for each species in the device kernel. */;
+#endif
 #endif
 
 
@@ -406,7 +408,13 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 void reportConstantMemory();
 // CUDA kernel to calculate the FKE for the Rietkerk-Dornic model for Multi-Species systems
 void launchAdvDiffKernel_MultiSp(double* Rho_t, double* Rho_tsar, double* gamma, std::pair<double, double> *v_eff,
-    double* gaussian_stencil_D,  double* gaussian_stencil_VXY, int L); 
+    double* gaussian_stencil_D,  double* gaussian_stencil_VXY, int L);
+
+#if defined(__CUDACC__) || defined(BARRACUDA)
+// Copy host data for advection terms to device constant memory
+cudaError_t copyToDeviceConstantMemory_AdvTerms(const int* sig_D_ScaledBounds, const int2* sigma_vD_ScBounds, const double* mu_vel_prefactor,  const int* d_size_gauss_D, const int* d_size_gauss_VXY);
+#endif
+
 
 #if defined(__CUDACC__)
 // AtomicAdd function analogue for double precision floating point numbers for devices with compute capability < 6.0

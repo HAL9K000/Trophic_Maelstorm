@@ -22,7 +22,11 @@ warnings.simplefilter(action='once', category=pan.errors.PerformanceWarning)
 
 '''
 This script reorganises the directory structure of the data files in the Rietkerk model.
-The original directory structure (filepaths) are as follows:
+The original directory structure (filepaths) are as follows if jID (unique ID assigned to each replicate) is present in the filename:
+root_dir/{PREFIX}*_dP_{dP}_Geq_{Geq}/FRAME_*_G_{g}_T_{T}_*_a_{a_val}_*_jID_{jID}_*_R_{R}.csv OR
+root_dir/{PREFIX}*_dP_{dP}_Veq_{Veq}/FRAME_*_G_{g}_T_{T}_*_a_{a_val}_*_jID_{jID}_*_R_{R}.csv
+
+The original directory structure (filepaths) are as follows if jID is not present in the filename:
 root_dir/{PREFIX}*_dP_{dP}_Geq_{Geq}/FRAME_*_G_{g}_T_{T}_*_a_{a_val}_*_R_{R}.csv OR
 root_dir/{PREFIX}*_dP_{dP}_Veq_{Veq}/FRAME_*_G_{g}_T_{T}_*_a_{a_val}_*_R_{R}.csv
 
@@ -33,8 +37,8 @@ out_dir/{PREFIX}/L_{g}_a_{a_val}/dP_{dP}/Geq_{Veq}/T_{T}/FRAME_T_{T}_a_{a_val}_R
 The script will:
 1. Find all immediate subdirectories in root_dir.
 2. For each subdirectory, find all unique values of a_val in the files in the subdirectory.
-3. For each value of a_val, find all unique values of T in the files in the subdirectory.
-4. For each value of T, copy all files in the subdirectory to the new directory structure in out_dir.
+3. For each value of a_val, find all unique values of T and jID (if present) in the files in the subdirectory.
+4. Looping over an ascending order of jID, for each value of T, copy all files in the subdirectory to the new directory structure in out_dir.
 5. If a file with the same name already exists in the new directory, rename the file to avoid conflicts.
 
 This script ASSUMES that the files in the original directory structure have the following format,
@@ -42,6 +46,7 @@ and WILL NOT WORK if the files are named differently:
 I. Contains "_G_{L}_T_{Time}_" in the filename, which is followed by
 II. "_a_{a_val}_" in the filename, which is followed by
 III. "_R_{R}.csv" in the filename.
+IV. "_jID_{jID}_" MAY OR MAY NOT be present in the filename.
 
 The script accepts the following arguments:
 1. prefixes: A list of prefixes to be used in the subdirectory names in out_dir.
@@ -55,17 +60,17 @@ The script accepts the following arguments:
 '''
 
 #prefixes =["DiC-NREF-1.1HI", "DiC-NREF-0.5LI", "DiC-NREF-0.1LI"]#, "DiC-NEW"]
-prefixes =["DiC-GAU-NREF"]
+prefixes =["HX03002-UA125A125-5E2UNI"]
 #prefixes =["", "DiC", "BURNIN", "DiC-BURNIN", "DDM-DiC", "DDM-DiC-BURNIN"]
 #root_dir = "../Data/Amarel/Rietkerk/Prelims/Stochastic/3Sp/"
-root_dir = "../Data/Remote/Rietkerk/Frames/Stochastic/2Sp/"
-out_dir_noprefix = "../Data/Remote/Rietkerk/Reorganised_Frames/Stoc/2Sp/AMPTEST_20_100/"
+root_dir = "../Data/Remote/Rietkerk/Frames/Stochastic/3Sp/"
+out_dir_noprefix = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/ASCALE_20_100_TRUEHEX/"
 
 #out_dir_noprefix = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_MFTNu/"
 
 dP = 10000
-Geq = "NA" # Optional. If Geq is not used in the subdirectory name, set Geq = "NA".
-Veq = 7.4774  # Optional. If Veq is not used in the subdirectory name, set Veq = "NA".
+Geq = 0.19208 # Optional. If Geq is not used in the subdirectory name, set Geq = "NA".
+Veq = "NA" # Optional. If Veq is not used in the subdirectory name, set Veq = "NA".
 L= [128]
 indx_vals_t = -25
 #Extract n largest values of T if indx_vals_t = -n, 
@@ -215,7 +220,7 @@ def post_process(prefixes= []):
             # Or one can calculate the spatial correlation of the files in the subdirectory.
             # Or one can calculate the spatial power spectrum of the files in the subdirectory.
 
-            # Find mean and standard deviation of each column in each file in files if the column values are non-zero.
+            '''# Find mean and standard deviation of each column in each file in files if the column values are non-zero.
             #Mean and Std Rho Density & Max Replicates
             df_surviving = gen_MEAN_SD_COLSfiledata(files, pathtodir=subdirpath, ext="csv", nonzero=True, add_counts= True)
             df_all = gen_MEAN_SD_COLSfiledata(files, pathtodir=subdirpath, ext="csv", nonzero=False, add_counts= True)
@@ -244,7 +249,7 @@ def post_process(prefixes= []):
                 print("Error: Could not write maxR to */" + os.path.basename(subdirpath) + "/maxR.txt with error message: \n" + str(e))
             
 
-            # Find Mean for each column in each file in files and the mean across all files for each column using gen_MEAN_INDVL_Colsfiledata.
+            '''# Find Mean for each column in each file in files and the mean across all files for each column using gen_MEAN_INDVL_Colsfiledata.
             # Save this df to a txt file in subdirpath.
             df_replicates = gen_MEAN_INDVL_Colsfiledata(files, pathtodir=subdirpath, ext="csv")
             try:
@@ -252,9 +257,22 @@ def post_process(prefixes= []):
                     df_replicates.to_csv(subdirpath + "/MEAN_REPLICATES.txt", sep="\t", index=False, header=True)
             except Exception as e:
                 print("Error: Could not write MEAN_REPLICATES to " + subdirpath + "/MEAN_REPLICATES.txt with error message: \n" + str(e))
-            #
+            #'''
+
+            # Finds the power spectrum of each column in each file using gen_FFT_PowerSpectra.
+            # Bin_mask : "auto" (use GMMs to find thresholds), "read" (read thresholds from files in savedir/BIN_MASKS/{files}.txt), 
+            # or None (no thresholding).
+            df_fft_power = gen_FFT_PowerSpectra(files, pathtodir=subdirpath, ext="csv", Tmin = 150000, Tmax = 250000, bin_mask= "auto", 
+                                                exclude_col_labels= ["a_c", "x", "L", "W(x; t)", "O(x; t)"], binwidth=1)
+            Path(subdirpath + "/FFT_PowerSpect").mkdir(parents=True, exist_ok=True)
+
+            try:
+                if df_fft_power is not None:
+                    df_fft_power.to_csv(subdirpath + "/FFT_PowerSpect/FFT_POWERspectra.csv", sep=",", index=False, header=True)
+            except Exception as e:
+                print("Error: Could not write FFT_PowerSpectra to " + subdirpath + "/FFT_PowerSpect/FFT_PowerSpectra.csv with error message: \n" + str(e))
             
-            # Find potential well data in files using gen_potential_well_data.
+            '''# Find potential well data in files using gen_potential_well_data.
             # Save the potential well data to a csv file in subdirpath/Pot_Well.
             # If evaluate_local_minima is True, also save the local minima data to a csv file in subdirpath/Pot_Well.
             df_kde, df_local_minima = gen_potential_well_data(files, pathtodir=subdirpath, ext="csv", 
@@ -317,8 +335,9 @@ def main():
     
         for g in L:
 
-            # In each selected subdir, all files are  of the form
-            # "FRAME_RAND*_G_{g}_T_{T}_dt_{dt}_a_{a_val}_*_R_{R}_*.csv"
+            # In each selected subdir, all files are  of the form 
+            # "FRAME_RAND*_G_{g}_T_{T}_dt_{dt}_a_{a_val}_*jiD_{jID}_*_R_{R}_*.csv" if the file contains jiD data.
+            # "FRAME_RAND*_G_{g}_T_{T}_dt_{dt}_a_{a_val}_*_R_{R}_*.csv" if the file does not contain jiD data.
 
             # First make a sorted list of a_val in each subdir.
 
@@ -382,82 +401,106 @@ def main():
                         print("Warning: 0 not in t_range. Adding 0 to t_range.")
                         t_range = [0] + t_range
 
+                    print(" For a = " + str(a) + " Found t_range: " + str(t_range))
+
+                    # Finding jID values in files which contain a_{a} in their name.
+                    jiD_range= [ re.findall(r'jID_[\d]+' , f)[0] if re.findall(r'jID_[\d]+' , f) else "jID_-1" for f in files
+                                if (re.findall(r'a_[\d]*[.][\d]+' , f) and  re.findall(r'a_[\d]*[.][\d]+' , f)[0] == "a_" + str(a))
+                                or (re.findall(r'a_[\d]+' , f) and  re.findall(r'a_[\d]+' , f)[0] == "a_" + str(a))]
+                    # Extract jiD values from jiD_range.
+                    jiD_vals = sorted([int(re.sub("jID_", "", j)) for j in jiD_range]); 
+                    # Remove duplicates from jiD_vals, and append -1 at the end to indicate possible frames with no jiD data.
+                    jiD_vals = np.unique(jiD_vals); jiD_vals = np.append(jiD_vals, -1)
+                    
+                    print("For a = " + str(a) + " Found jID_vals: " + str(jiD_vals))
+
                     print("Processing: " + savedir)
-
-                    for t in t_range:
-                        #Get all files in parent directory that begin with the above (but not subdirectories).
-                        selectedfiles = glob.glob(sub + "/*_G_" + str(g) + "_T_" + str(t) +"*_a_" + str(a) + "_*.csv")
-                        t_subdir = outdir + "/T_" + str(t) + "/"
-                        # Recursively create t_subdir (and parent directories) if it doesn't exist.
-                        Path(t_subdir).mkdir(parents=True, exist_ok=True)
-                        print("Processing t= " + str(t))
-                        
-                        # Copy all files in files to t_subdir, with new names and avoiding conflicts.
-                        # If a file with the same name exists in t_subdir, rename the file to avoid conflicts.
-                        # This renaming will be done by sending the conflicting file name to a function that will rename it.
-
-                        for source_file in selectedfiles:
-                            source_filename = os.path.basename(source_file)
-                            # Change source_filename as follows:
-                            # Source file name is of the form "FRAME_RAND*_G_{g}_T_{T}_dt_{dt}_a_{a_val}_*_R_{R}_*.csv"
-                            # Change it to "FRAME_T_{T}_a_{a_val}_R_{R}.csv"
-
-                            # First extract T, a_val, R from source_filename.
-                            T = t; a_val = a; R = int(re.findall(r'[\d]+' , source_filename)[-1])
-                            # Find filetype of source_filename, which are the characters before the first "_"
-                            filetype = source_filename.split("_")[0]
-                            # Now create new filename.
-                            out_filename = filetype + "_T_" + str(T) + "_a_" + str(a_val) + "_R_" + str(R) + ".csv"
-                            '''
-                            if re.search("GAMMA", source_filename):
-                                out_filename = "GAMMA_T_%g_a_%g" %(T, a_val) + "_R_" + str(R) + ".csv"
+                    
+                    for jiD in jiD_vals:    # Loop over jiD values first.
+                        for t in t_range:   # Loop over t values next.
+                            #Get all files in parent directory that begin with the above (but not subdirectories).
+                            if jiD != -1:
+                                selectedfiles = glob.glob(sub + "/*_G_" + str(g) + "_T_" + str(t) +"*_a_" + str(a) + "_jID_" + str(jiD) + "_*.csv")
                             else:
-                                out_filename = "FRAME_T_%g_a_%g" %(T, a_val) + "_R_" + str(R) + ".csv"
-                            '''
-                            outfile = t_subdir + out_filename
-                            #Check if outfile already exists.
-                            #fd_source = os.open(source_file, os.O_RDONLY);
-                            #print("Status of source file: " + str(os.fstat(fd_source)))
-                            if os.path.exists(outfile):
-                                print("Warning: File " + out_filename + " already exists, and conflicts with source file: "
-                                       + source_filename + ". Renaming file.")
-                                # First check if outfile is the same as source_file (this is done by looking at the attributes of the files (filesize etc)).
-                                # If they are the same, skip the file.
-                                for out_f in glob.glob(t_subdir + "*.csv"):
+                                # RECALL- A file with jiD = -1 indicates that the file does not contain unique jiD data.
+                                selectedfiles = [f for f in glob.glob(sub + "/*_G_" + str(g) + "_T_" + str(t) +"*_a_" + str(a) + "_*.csv") 
+                                                 if "jID" not in f]
+                            if len(selectedfiles) == 0:
+                                continue
+                            t_subdir = outdir + "/T_" + str(t) + "/"
+                            # If selectedfiles is empty, skip the loop over t.
+                            # Recursively create t_subdir (and parent directories) if it doesn't exist.
+                            Path(t_subdir).mkdir(parents=True, exist_ok=True)
 
-                                    if os.path.samefile(source_file, out_f):
-                                        print("WARNING!!!: File " + outfile + " is the same as " + source_file + ". Skipping file.")
-                                        continue
+                            print(f"Processing jID: {jiD} at t= {t}")
+                            #print("Processing t= " + str(t))
+                            
+                            # Copy all files in files to t_subdir, with new names and avoiding conflicts.
+                            # If a file with the same name exists in t_subdir, rename the file to avoid conflicts.
+                            # This renaming will be done by sending the conflicting file name to a function that will rename it.
 
-                                    fd_source = os.open(source_file, os.O_RDONLY);
-                                    fd_outfile = os.open(out_f, os.O_RDONLY);
-                                    if os.fstat(fd_source).st_ino == os.fstat(fd_outfile).st_ino:
-                                        print("WARNING!!!: File " + outfile + " is the same as " + source_file + ". Skipping file.")
-                                        continue
+                            for source_file in selectedfiles:
+                                source_filename = os.path.basename(source_file)
+                                # Change source_filename as follows:
+                                # Source file name is of the form "FRAME_RAND*_G_{g}_T_{T}_dt_{dt}_a_{a_val}_*_R_{R}_*.csv"
+                                # Change it to "FRAME_T_{T}_a_{a_val}_R_{R}.csv"
 
-                                    os.close(fd_source)
-                                    os.close(fd_outfile)
-                                    
-                                # If outfile already exists, rename it to avoid conflicts.
-                                max_R = max([int(re.findall(r'[\d]+' , f)[-1]) for f in glob.glob(t_subdir + filetype + "*.csv")])
-                                out_filename = filetype + "_T_" + str(T) + "_a_" + str(a_val) + "_R_" + str(max_R + 1) + ".csv"
+                                # First extract T, a_val, R from source_filename.
+                                T = t; a_val = a; R = int(re.findall(r'[\d]+' , source_filename)[-1])
+                                # Find filetype of source_filename, which are the characters before the first "_"
+                                filetype = source_filename.split("_")[0]
+                                # Now create new filename.
+                                out_filename = filetype + "_T_" + str(T) + "_a_" + str(a_val) + "_R_" + str(R) + ".csv"
+                                '''
+                                if re.search("GAMMA", source_filename):
+                                    out_filename = "GAMMA_T_%g_a_%g" %(T, a_val) + "_R_" + str(R) + ".csv"
+                                else:
+                                    out_filename = "FRAME_T_%g_a_%g" %(T, a_val) + "_R_" + str(R) + ".csv"
+                                '''
                                 outfile = t_subdir + out_filename
+                                #Check if outfile already exists.
+                                #fd_source = os.open(source_file, os.O_RDONLY);
+                                #print("Status of source file: " + str(os.fstat(fd_source)))
+                                if os.path.exists(outfile):
+                                    print("Warning: File " + out_filename + " already exists, and conflicts with source file: "
+                                        + source_filename + ". Renaming file.")
+                                    # First check if outfile is the same as source_file (this is done by looking at the attributes of the files (filesize etc)).
+                                    # If they are the same, skip the file.
+                                    for out_f in glob.glob(t_subdir + "*.csv"):
 
-                            # Copy source_file to outfile.
-                            try:
-                                shutil.copy2(source_file, outfile)
-                            except shutil.Error as e:
-                                print("Error: Could not copy file " + source_file + "\tto:\n" + outfile + "with error message: \n" + str(e))
-                                print("Skipping file.")
-                                continue
-                            except FileNotFoundError as e:
-                                print("Error: Could not find file " + source_file + "  with error message: \n" + str(e))
-                                print("Skipping file.")
-                                continue
-                        # This is the end of the loop over source_file in selectedfiles.
+                                        if os.path.samefile(source_file, out_f):
+                                            print("WARNING!!!: File " + outfile + " is the same as " + source_file + ". Skipping file.")
+                                            continue
 
-                    # This is the end of the loop over t in t_range.
+                                        fd_source = os.open(source_file, os.O_RDONLY);
+                                        fd_outfile = os.open(out_f, os.O_RDONLY);
+                                        if os.fstat(fd_source).st_ino == os.fstat(fd_outfile).st_ino:
+                                            print("WARNING!!!: File " + outfile + " is the same as " + source_file + ". Skipping file.")
+                                            continue
 
+                                        os.close(fd_source)
+                                        os.close(fd_outfile)
+                                        
+                                    # If outfile already exists, rename it to avoid conflicts.
+                                    max_R = max([int(re.findall(r'[\d]+' , f)[-1]) for f in glob.glob(t_subdir + filetype + "*.csv")])
+                                    out_filename = filetype + "_T_" + str(T) + "_a_" + str(a_val) + "_R_" + str(max_R + 1) + ".csv"
+                                    outfile = t_subdir + out_filename
+
+                                # Copy source_file to outfile.
+                                try:
+                                    shutil.copy2(source_file, outfile)
+                                except shutil.Error as e:
+                                    print("Error: Could not copy file " + source_file + "\tto:\n" + outfile + "with error message: \n" + str(e))
+                                    print("Skipping file.")
+                                    continue
+                                except FileNotFoundError as e:
+                                    print("Error: Could not find file " + source_file + "  with error message: \n" + str(e))
+                                    print("Skipping file.")
+                                    continue
+                            # This is the end of the loop over source_file in selectedfiles.
+
+                        # This is the end of the loop over t in t_range.
+                    # This is the end of the loop over jiD in jiD_vals.
                     #Create a t-vals.txt file in outdir.
                     test_txt_RW(outdir, "*/", "T", ["[\d]*[.][\d]+", "[\d]+"])
 
@@ -500,7 +543,7 @@ def main():
 
 
 set_frames_input()
-main()
+#main()
 post_process(prefixes)
 #dir = "\\\\?\\D:\\cygwin64\\home\\koust\\Code\\Trophic_Maelstorm\\simulations\\Data\\Remote\\Rietkerk\\Frames\\Stochastic\\3Sp\\DDM_DiC_BURNIN_0.025-0.065_dP_30000_Geq_4.802";
 #rename(dir, "_RANDDDMDiCBURNIN_ThreeSp_P_c_DP", "")

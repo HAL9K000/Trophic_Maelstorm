@@ -241,6 +241,7 @@ int main(int argc, char *argv[])
   cout << "Save directory for frames: " << frame_folder << "\n";
   cout << "Save directory for preliminary data: " << prelim_folder << "\n";
   cout << "Save directory for final data: " << stat_prefix << "\n";
+  cout << "=============================================================\n";
 
   set_global_FKE_params(D, v, dt_adv, dt_analytical, dx, g, 4); //Set the global parameters for system-wide and FKE movement parameters.
   cout << "Global parameters set, with dt/2.0 = " << dt2 << " and dx*dx = " << dx2 <<  " and 1/(dx*dx) = " << dx1_2 << "\n";

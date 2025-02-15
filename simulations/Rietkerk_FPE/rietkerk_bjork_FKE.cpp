@@ -212,7 +212,7 @@ void set_global_FKE_params(double (&D)[Sp], double (&v)[SpB], double (&dtAdv)[Sp
 
 	// Creating CUDA arrays for the global parameters.
 	#if defined(BARRACUDA)
-	double2 sigma_vD_ScBounds[Sp_NV];
+	int2 sigma_vD_ScBounds[Sp_NV];
 	vector<int> sig_D_GaussSize(Sp_NV, 0); vector<int> sig_vDXY_GaussSize(Sp_NV, 0);
 	// The size of the Gaussian terms for the distance FKE.
 	//These are set in a cumulative manner, 
@@ -249,10 +249,10 @@ void set_global_FKE_params(double (&D)[Sp], double (&v)[SpB], double (&dtAdv)[Sp
 
 		#if defined(BARRACUDA)
 			sigma_vD_ScBounds[(s-1)] = make_int2(int(CI*sigma_vx/dx), int(CI*sigma_vy/dx));
-			if(s > 2)
+			if(s >= 2)
 			{
-				sig_D_GaussSize[(s-1)] = sig_D_GaussSize[(s-2)] + sig_D_ScaledBounds[s] + 1;
-				sig_vDXY_GaussSize[(s-1)] = sig_vDXY_GaussSize[(s-2)] + sig_vD_ScaledBounds[s].first + 1;
+				sig_D_GaussSize[(s-1)] = sig_D_GaussSize[(s-2)] + sig_D_ScaledBounds[(s-1)] + 1;
+				sig_vDXY_GaussSize[(s-1)] = sig_vDXY_GaussSize[(s-2)] + sig_vD_ScaledBounds[(s-1)].first + 1;
 			}
 		#endif
 	}
@@ -262,35 +262,76 @@ void set_global_FKE_params(double (&D)[Sp], double (&v)[SpB], double (&dtAdv)[Sp
 	// Copy sig_D_ScaledBounds, sig_vD_ScaledBounds, mu_vel_prefactor from 1st index onwards to the device.
 	cudaError_t err;
 
+	err = copyToDeviceConstantMemory_AdvTerms(sig_D_ScaledBounds.data() + 1, sigma_vD_ScBounds, 
+	mu_vel_prefactor.data() + 1, sig_D_GaussSize.data(), sig_vDXY_GaussSize.data());
+	
+	if (err != cudaSuccess) {
+		cerr << "CUDA error in copyToDeviceConstantMemory_AdvTerms: " << cudaGetErrorString(err) << std::endl;
+		exit(EXIT_FAILURE);
+	}
+
+	/**  OLD APPROACH TO Copying the global parameters to the device memory for the CUDA kernels.
 	err = cudaMemcpyToSymbol(d_sigD_ScaleBounds, sig_D_ScaledBounds.data() + 1, CuSpNV*sizeof(int), 0, cudaMemcpyHostToDevice);
+	
+	cout << "Writing the following values to the device memory for sig_D_ScaleBounds: \n";
+	for (int s = 1; s < SpB; s++) 
+		cout << *(sig_D_ScaledBounds.data() + s) << "\t";
+	cout << "\n with CUDA status: " << cudaGetErrorString(err) << std::endl;
+
+	
 	if (err != cudaSuccess) {
 		cerr << "CUDA error in cudaMemcpyToSymbol for d_sigD_ScaleBounds: " << cudaGetErrorString(err) << std::endl;
 		exit(EXIT_FAILURE);
 	}
 
 	err = cudaMemcpyToSymbol(d_sigvD_ScaleBounds, sigma_vD_ScBounds, CuSpNV*sizeof(int2), 0, cudaMemcpyHostToDevice);
+
+	cout << "Writing the following values to the device memory for sig_vD_ScaleBounds: \n";
+	for (int s = 0; s < Sp_NV; s++) 
+		cout << "( " << sig_vD_ScaledBounds[s].first << "\t" << sig_vD_ScaledBounds[s].second << " )\t";
+	cout << "\n with CUDA status: " << cudaGetErrorString(err) << std::endl;
+	
 	if (err != cudaSuccess) {
 		cerr << "CUDA error in cudaMemcpyToSymbol for d_sigvD_ScaleBounds: " << cudaGetErrorString(err) << std::endl;
 		exit(EXIT_FAILURE);
 	}
 
+	cout << "Writing the following values to the device memory for mu_vel_prefactor: \n";
+	for (int s = 1; s < SpB; s++) 
+		cout << *(mu_vel_prefactor.data() + s) << "\t";
+	cout << "\n";
+
 	err = cudaMemcpyToSymbol(d_mu_vel_prefactor, mu_vel_prefactor.data() + 1, CuSpNV*sizeof(double), 0, cudaMemcpyHostToDevice);
+	cout << "CUDA status in cudaMemcpyToSymbol for d_mu_vel_prefactor: " << cudaGetErrorString(err) << std::endl;
 	if (err != cudaSuccess) {
-		cerr << "CUDA error in cudaMemcpyToSymbol for d_mu_vel_prefactor: " << cudaGetErrorString(err) << std::endl;
+	cerr << "CUDA error in cudaMemcpyToSymbol for d_mu_vel_prefactor: " << cudaGetErrorString(err) << std::endl;
 		exit(EXIT_FAILURE);
 	}
+
+	cout << "Writing the following values to the device memory for size_gauss_D: \n";
+	for (int s = 0; s < Sp_NV; s++) 
+		cout << sig_D_GaussSize[s] << "\t";
 
 	err = cudaMemcpyToSymbol(d_size_gauss_D, sig_D_GaussSize.data(), CuSpNV*sizeof(int), 0, cudaMemcpyHostToDevice);
+	cout << "CUDA status in cudaMemcpyToSymbol for d_size_gauss_D: " << cudaGetErrorString(err) << std::endl;
 	if (err != cudaSuccess) {
-		cerr << "CUDA error in cudaMemcpyToSymbol for d_size_gauss_D: " << cudaGetErrorString(err) << std::endl;
+	cerr << "CUDA error in cudaMemcpyToSymbol for d_size_gauss_D: " << cudaGetErrorString(err) << std::endl;
+		
 		exit(EXIT_FAILURE);
 	}
 
+	cout << "Writing the following values to the device memory for size_gauss_VXY: \n";
+	for (int s = 0; s < Sp_NV; s++) 
+		cout << sig_vDXY_GaussSize[s] << "\t";
+	cout << "\n";
+
 	err = cudaMemcpyToSymbol(d_size_gauss_VXY, sig_vDXY_GaussSize.data(), CuSpNV*sizeof(int), 0, cudaMemcpyHostToDevice);
+	cout << "CUDA status in cudaMemcpyToSymbol for d_size_gauss_VXY: " << cudaGetErrorString(err) << std::endl;
 	if (err != cudaSuccess) {
 		cerr << "CUDA error in cudaMemcpyToSymbol for d_size_gauss_VXY: " << cudaGetErrorString(err) << std::endl;
 		exit(EXIT_FAILURE);
 	}
+	*/
 
 	#endif
 
@@ -3364,7 +3405,16 @@ void rietkerk_DorFPE_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		exit(1);
 	}
 	
-	size_t stencilD_offset = 0; size_t stencilVXY_offset = 0; // Offset for the flattened Gaussian stencil arrays.
+	if(omp_get_thread_num()== 1) // Noting values Transferred to device!
+	{
+		stringstream m0;	//To make cout thread-safe as well as non-garbled
+		for(int s=1; s < SpB; s++)
+		{
+			m0 << "gaussian_stencil_D[" << s << "]:\t { " << gaussian_stencil_D[s].data() << " }\t and gaussian_stencil_VXY[" << s << "]:\t {" << gaussian_stencil_VXY[s].size() << " }\n";
+		}
+		cout << m0.str(); cerr << m0.str();
+	}
+	size_t stencilD_offset = 0; size_t stencilVXY_offset = 0;
 	for(int s=1; s < SpB; s++)
 	{
 		// Copy the Gaussian stencils for the diffusion and advection terms to the GPU device.
@@ -3768,7 +3818,9 @@ void rietkerk_DorFPE_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			{
 				stringstream m5_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
 				m5_1 << "STATUS UPDATE AT TIME [t, a, thr, j]\t" << t << " , " << a << " , " << omp_get_thread_num()  << " , " << j << "\t RK4 INTEGRATION OF REMAINDER TERMS DONE." 
-				<< "\n"; cout << m5_1.str(); cerr << m5_1.str();
+				<< "\n"; 
+				omp_get_thread_num() == 1 ? cout << m5_1.str() : cout << "";
+				cerr << m5_1.str();
 			}
 
 			#if defined(DEBUG)
@@ -3781,6 +3833,25 @@ void rietkerk_DorFPE_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			#endif
 			// Finally, update the movement terms of grazer and predator using advdiff_FKE_MultiSp()
 			#if SPB > 1
+
+
+			if(counter%40000 == 120)
+			{	
+				// Report average densities of all species at given time.
+				stringstream m5_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
+				m5_1 << "DEBUG UPDATE AT TIME [t, a, thr, j]\t" << t << " , " << a << " , " << omp_get_thread_num() << " , " << j << "\t AVERAGE DENSITIES BEFORE ADV/DIFF ARE: \n";
+				for(int s=0; s< SpB; s++)
+				{
+					vector <double> temp= {Rho_dt[s].begin(),Rho_dt[s].end()}; //Rho_dt for species 's'
+					Rhox_avg[s] = mean_of_vector(temp, g*g); //Finds spatial average of densities at given t.
+					double sd = standard_deviation_of_vector(temp, g*g); //Finds spatial average of densities at given t.
+					vector<double>().swap(temp); //Flush temp out of memory.
+					m5_1 << "Species " << s << ":\t" << Rhox_avg[s]  << " +/- " << sd << "\n";
+				}
+				omp_get_thread_num() == 1 ? cout << m5_1.str() : cout << ""; //
+				cerr << m5_1.str();
+
+			}
 				#if defined(BARRACUDA)
 					// Temporary code for CUDA implementation.
 					//Transfer Rho_dt, gamma and v_eff to device memory.
@@ -3817,6 +3888,24 @@ void rietkerk_DorFPE_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				}
 				advdiff_FKE_MultiSp(Rho_dt, Rho_tsar, gamma, v_eff, gaussian_stencil_D, gaussian_stencil_VXY, g);
 				#endif
+
+			if(counter%40000 == 120)
+			{	
+				// Report average densities of all species at given time.
+				stringstream m5_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
+				m5_1 << "DEBUG UPDATE AT TIME [t, a, thr, j]\t" << t << " , " << a << " , " << omp_get_thread_num() << " , " << j << "\t AVERAGE DENSITIES AFTER ADV/DIFF ARE: \n";
+				for(int s=0; s< SpB; s++)
+				{
+					vector <double> temp= {Rho_dt[s].begin(),Rho_dt[s].end()}; //Rho_dt for species 's'
+					Rhox_avg[s] = mean_of_vector(temp, g*g); //Finds spatial average of densities at given t.
+					double sd = standard_deviation_of_vector(temp, g*g); //Finds spatial average of densities at given t.
+					vector<double>().swap(temp); //Flush temp out of memory.
+					m5_1 << "Species " << s << ":\t" << Rhox_avg[s]  << " +/- " << sd << "\n";
+				}
+				omp_get_thread_num() == 1 ? cout << m5_1.str() : cout << "";
+				cerr << m5_1.str();
+
+			}
 			#endif
 
 			
