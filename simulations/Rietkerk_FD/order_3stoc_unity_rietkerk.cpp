@@ -11,18 +11,17 @@ int main(int argc, char *argv[])
   int g, div;
   // Using units of mass = kg, length = km, time = hr.
 
-  dx= 1 ; //From Bonachela et al 2015 (in km)
+  dx= 0.1 ; //From Bonachela et al 2015 (in km)
   
   double mGrazer; double mPredator; // Mass of grazer and predator in kg.
 
   // ASSUMING MASS OF  GRAZER = 20 kg, MASS OF PREDATOR = 100 kg.
-  //mGrazer = 20; mPredator = 100;
+  mGrazer = 20; mPredator = 100;
   // ASSUMING MASS OF  GRAZER = 1 g, MASS OF PREDATOR = 0.15 kg. 
   //(FOR DESERT LOCUST CASE, WITH GRAZER = 1g, PREDATOR (COMMON KERNEL) = 0.15 kg [Mullie et al 2021 10.1371/journal.pone.0244733])
   //mGrazer = 0.001; mPredator = 0.15;
 
-  // ASSUMING MASS OF  GRAZER = 150 g, MASS OF PREDATOR = 2 kg.
-  mGrazer = 0.15; mPredator = 2;
+  
 
   c = 10000; gmax = 0.05*pow(10, -3.0)/24.0; d = 0.25/24.0; alpha =0.2/24.0; W0 = 0.2; rW = 0.2/24.0; // From Bonachela et al 2015
 
@@ -31,6 +30,9 @@ int main(int argc, char *argv[])
   double k0, k1, k2; double d0, d1, d2, d3, d4; double s0, s1, s2; double v1, v2;  double dtv1, dtv2;
 
   k0= 0; k1 = 5; k2 =5000;
+
+  /** // ASSUMING MASS OF  GRAZER = 150 g, MASS OF PREDATOR = 2 kg.
+  mGrazer = 0.15; mPredator = 2;
   
   // Diffusion coefficient allometries for consumer species:
   //General allometry: ln(D (in km^2/hr)) = 0.3473*ln(M) -4.15517, where M is mass in kg of general consumer.
@@ -58,7 +60,8 @@ int main(int argc, char *argv[])
   dtv2 = (exp(1.8106)*pow(mPredator, 0.2596))/60.0; // 0.12199 In hr, based on relation ln(dtv_pred) = 0.2596*ln(M) + 1.8106, where M is mass in kg, and dtv_pred is in min.
   //*/
 
-  /** SPECIFIC MASS OF  GRAZER = 20 kg, MASS OF PREDATOR = 100 kg.  
+  ///** SPECIFIC MASS OF  GRAZER = 20 kg, MASS OF PREDATOR = 100 kg. 
+  mGrazer = 20; mPredator = 100;
   d0 = 0.00025/24.0; d1=0.0298; d2= 0.05221; d3 = 0.00025/24.0; d4= 0.025/24.0; s2 = 3; //From Bonachela et al 2015 (in km^2/hr) and general D allometry.
   //d0 = 0.00025/24.0; d1=0.01028; d2= 0.215965; d3 = 0.00025/24.0; d4= 0.025/24.0; s2 = 10; //From Bonachela et al 2015 (in km^2/hr) and specific D allometries.
   
@@ -75,12 +78,12 @@ int main(int argc, char *argv[])
   //Time-scale of advection.
   dtv1 = 0.11817455; //In hr, based on relation ln(dtv_grazer) = 0.2596*ln(M) + 1.8106, where M is mass in kg, and dtv_grazer is in min.
   dtv2 = 0.765270868; //In hr, based on relation ln(dtv_predator) = 0.7*ln(M) + 0.6032, where M is mass in kg, and dtv_predator is in min.
-  */
+  //*/
 
   double D[Sp] ={d0, d1, d2, d3, d4}; //Diffusion coefficients for species.
   double K[3] ={k0, k1, k2}; //Diffusion coefficients for species.
   double sigma[Sp] ={s0, s1, s2, 0, 0}; //Demographic stochasticity coefficients for species.
-  double v[Sp] ={0, v1, v2, 0, 0}; //Velocity of species.
+  double v[SpB] ={0, v1, v2}; //Velocity of species.
 
   /**
 
@@ -262,12 +265,13 @@ int main(int argc, char *argv[])
 
   cout << "Values of dtV for the grazer and predator are: " << dtV[1] << " and " << dtV[2] << " respectively.\n";
 
+  /** 
   for(int s=0; s < SpB; s++)
   {
     D[s]*= (dt/0.11); sigma[s] *= (dt/0.11);
     cout << "New scaled values of D[" << s <<"] = " << D[s] << "\t";
   }
-  cout << "\n";
+  cout << "\n"; */
   
 
   ///** CORRECT MFT INITIALISATIONS
@@ -372,8 +376,10 @@ int main(int argc, char *argv[])
     double scaling_factor[2*Sp] = {10, dP/dP, dP/(10.0*dP), 1,  1, 1, 1, 0.1*init_frac_pred, 1, 1};
     // USED FOR HOMOGENEOUS MFT BASED INITIAL CONDITIONS.
   #else
-    double scaling_factor[2*Sp] = {0, dP/dP, dP/(10.0*dP)*init_frac_pred, 1, 1, 5, 1, 0.1*init_frac_pred, 1, 1};
+    //double scaling_factor[2*Sp] = {0, dP/dP, dP/(10.0*dP)*init_frac_pred, 1, 1, 5, 1, 0.1*init_frac_pred, 1, 1};
     // USED FOR PERIODIC MFT BASED INITIAL CONDITIONS.
+    double scaling_factor[2*Sp] = {500, Gstar*10, 40, 4, 20, 500, Gstar*10, 40, 4, 10};
+    // NOTE: The ABOVE scaling_factor is used for Gaussian initial conditions for testing and is NOT MEANT FOR PRODUCTION RUNS.
   #endif
 
   //*/

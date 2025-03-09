@@ -60,11 +60,12 @@ The script accepts the following arguments:
 '''
 
 #prefixes =["DiC-NREF-1.1HI", "DiC-NREF-0.5LI", "DiC-NREF-0.1LI"]#, "DiC-NEW"]
-prefixes =["HX03002-UA125A125-5E2UNI"]
+prefixes =["HX2001-UA125A125-5E2UNI", "HX1005-UA125A0-5E2UNI"]
 #prefixes =["", "DiC", "BURNIN", "DiC-BURNIN", "DDM-DiC", "DDM-DiC-BURNIN"]
 #root_dir = "../Data/Amarel/Rietkerk/Prelims/Stochastic/3Sp/"
 root_dir = "../Data/Remote/Rietkerk/Frames/Stochastic/3Sp/"
-out_dir_noprefix = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/ASCALE_20_100_TRUEHEX/"
+#out_dir_noprefix = "../Data/Remote/Rietkerk/Reorg_Frames/1Sp/StdParam_MFT/"
+out_dir_noprefix = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/ASCALE_20_100_BRNIN/"
 
 #out_dir_noprefix = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_MFTNu/"
 
@@ -236,7 +237,7 @@ def post_process(prefixes= []):
             
             #'''
 
-            # Find max R in files.
+            '''# Find max R in files.
             Rvals=[]; find_vals(files, ["R_[\d]+"], Rvals) 
             # Assumes R is an integer and files are of the form "FRAME_T_{T}_a_{a_val}_R_{R}.csv"
             maxR = max([int(re.sub("R_", "", r)) for r in Rvals])
@@ -247,7 +248,7 @@ def post_process(prefixes= []):
                 f.close()
             except Exception as e:
                 print("Error: Could not write maxR to */" + os.path.basename(subdirpath) + "/maxR.txt with error message: \n" + str(e))
-            
+            #'''
 
             '''# Find Mean for each column in each file in files and the mean across all files for each column using gen_MEAN_INDVL_Colsfiledata.
             # Save this df to a txt file in subdirpath.
@@ -262,9 +263,12 @@ def post_process(prefixes= []):
             # Finds the power spectrum of each column in each file using gen_FFT_PowerSpectra.
             # Bin_mask : "auto" (use GMMs to find thresholds), "read" (read thresholds from files in savedir/BIN_MASKS/{files}.txt), 
             # or None (no thresholding).
-            df_fft_power = gen_FFT_PowerSpectra(files, pathtodir=subdirpath, ext="csv", Tmin = 150000, Tmax = 250000, bin_mask= "auto", 
-                                                exclude_col_labels= ["a_c", "x", "L", "W(x; t)", "O(x; t)"], binwidth=1)
+            df_fft_power = gen_FFT_PowerSpectra(files, pathtodir=subdirpath, ext="csv", Tmin = 150000, Tmax = 240000, bin_mask= "auto", 
+                                                exclude_col_labels= ["a_c", "x", "L", "W(x; t)", "O(x; t)"], binwidth=0.5)
             Path(subdirpath + "/FFT_PowerSpect").mkdir(parents=True, exist_ok=True)
+
+            print("Found FFT Power Spectra:")
+            #print(df_fft_power)
 
             try:
                 if df_fft_power is not None:
@@ -420,7 +424,7 @@ def main():
                         for t in t_range:   # Loop over t values next.
                             #Get all files in parent directory that begin with the above (but not subdirectories).
                             if jiD != -1:
-                                selectedfiles = glob.glob(sub + "/*_G_" + str(g) + "_T_" + str(t) +"*_a_" + str(a) + "_jID_" + str(jiD) + "_*.csv")
+                                selectedfiles = glob.glob(sub + "/*_G_" + str(g) + "_T_" + str(t) +"*_a_" + str(a) + "*_jID_" + str(jiD) + "_*.csv")
                             else:
                                 # RECALL- A file with jiD = -1 indicates that the file does not contain unique jiD data.
                                 selectedfiles = [f for f in glob.glob(sub + "/*_G_" + str(g) + "_T_" + str(t) +"*_a_" + str(a) + "_*.csv") 

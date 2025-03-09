@@ -488,7 +488,7 @@ def gen_FFT_PowerSpectra(files, pathtodir="", ext="csv", bin_mask= None, exclude
                 # Assign the binarised mask to bin_mask.
                 BINmask = thresholds
 
-        kbins = np.arange(0.5, L//2 + 1, 1) # Bin the data in each column before generating the FFT power spectra.
+        kbins = np.arange(1 - binwidth/2, L//2 + 1, binwidth) # Bin the data in each column before generating the FFT power spectra.
         kvals = 0.5*(kbins[1:] + kbins[:-1]) #k values at bin centers (1 , 2, 3, ... L//2)
         # Store the k values in the dataframe at the start.
         df_fft_power.insert(len(df_fft_power.columns), "k_" + Rstr, kvals)
@@ -550,7 +550,10 @@ def gen_FFT_PowerSpectra(files, pathtodir="", ext="csv", bin_mask= None, exclude
     
     for i in range(len(col_labels)):
         # Insert mean FFT power spectra and k-vals across all files for each column in the files in df_fft_power at the start.
-        df_fft_power.insert(i, "POWER[" + col_labels[i] + "]_MEAN", df_fft_power.filter(like= "POWER[" + col_labels[i] + "]_").mean(axis=1))
+        df_fft_power.insert(i, "POWER[" + col_labels[i] + "]_MEAN_ALL", df_fft_power.filter(like= "POWER[" + col_labels[i] + "]_").mean(axis=1))
+    for i in range(len(col_labels)):
+        # Insert mean FFT power spectra across all files for each NON-ZERO column in the files in df_fft_power at the start.
+        df_fft_power.insert(i, "POWER[" + col_labels[i] + "]_MEAN_SURV", df_fft_power.filter(like= "POWER[" + col_labels[i] + "]_").replace(0, np.nan).mean(axis=1))
     for i in range(len(col_labels)):  
         df_fft_power.insert(i, "FREQ[" + col_labels[i] + "]", df_fft_power.filter(like= "k_").mean(axis=1))
             

@@ -53,18 +53,20 @@ from sklearn.cluster import KMeans
 
 
 # User inputs.
-SPB = 2; # Number of species in the model
+SPB = 1; # Number of species in the model
 #in_dir = f"../Data/Remote/DP/Reorg_Frames/{SPB}Sp/DDParam_MFT/" # FOR DP
 #out_dir = f"../../Images/{SPB}Sp/DPParam_MFT/" # FOR DP
 
-in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/ASCALE_1g_LOC_DsC_FD/"
-out_dir = f"../../Images/{SPB}Sp/ASCALE_1g_LOC_DsC_FD/"
-#in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/StdParam_MFT/"
-#out_dir = f"../../Images/{SPB}Sp/StdParam_MFT/"
+#in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/ASCALE_1g_LOC_DsC_FD/"
+#out_dir = f"../../Images/{SPB}Sp/ASCALE_1g_LOC_DsC_FD/"
+in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/StdParam_MFT/"
+out_dir = f"../../Images/{SPB}Sp/StdParam_MFT/"
+#in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/ASCALE_20_100_BRNIN/"
+#out_dir = f"../../Images/{SPB}Sp/ASCALE_20_100_BRNIN/"
 Path(out_dir).mkdir(parents=True, exist_ok=True)
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 
-g = 128;  dP = 10000; Geq = 2.2786 ; R_max= -1; #4.802    0.19208   0.096039         #0.2991     7.4774
+g = 128;  dP = 10000; Geq = 5 ; R_max= -1; #4.802    0.19208   0.096039         #0.2991     7.4774
 #g = 128;  dP = 1; Geq = 0 ; R_max= -1; #0.0032013  
 # Geq (for LOC case) 2.2007 0.088027 [2 SP] 2.2786 0.091143
 # Geq (for small ratio case) 3.0029 0.12012 [2 SP] 4.1569 0.16627
@@ -567,6 +569,64 @@ def get_FRAME_EQdata(indir, PREFIX, a_vals, T_vals, filename = "MEAN_STD_Survivi
     return data
 
 
+
+
+def get_FRAME_FFTPOWdata(indir, PREFIX, a_vals, T_vals, a_scale=1, 
+                         include_col_labels= ["P(x; t)" , "G(x; t)", "Pr(x; t)"], filename = "FFT_POWERspectra.csv"):
+
+    a_vals, T_vals = auto_guess_avals_tvals(indir, PREFIX, a_vals, T_vals)
+    if a_vals == None:
+        print(f"No Avals found for {PREFIX} Exiting..."); return;
+    a_scaled_vals = [a*a_scale for a in a_vals]
+    print(f"List of a values: {a_vals}")
+    if (a_scale != 1):
+        print(f"List of scaled a values: {a_scaled_vals}")
+    print(f"List of T values: {T_vals}")
+    
+    # Create a multi-indexed DataFrame
+    #data = pan.MultiIndex.from_product([[PREFIX], a_vals, T_vals], names = ['Prefix', 'a', 'T'])
+    data = pan.DataFrame()
+
+    # Now populate the DataFrame with the data from the files
+    for a in a_vals:
+        for T in T_vals:
+            try:
+                # Read tab-delineated txt file
+                print(f"Reading FFT PS File at" + indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/FFT_PowerSpect/" + filename)
+                # Report files in the directory
+                print(os.listdir(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/FFT_PowerSpect/"))
+                #"..\Data\Remote\Rietkerk\Reorg_Frames\1Sp\StdParam_MFT\DiC-STD\L_128_a_0.048\dP_10000\Geq_5\T_91201\FFT_PowerSpect\FFT_POWERspectra.csv"
+                #"../Data/Remote/Rietkerk/Reorg_Frames/1Sp/StdParam_MFT/DiC-STD/L_128_a_0.048/dP_10000/Geq_5/T_91201/FFT_PowerSpect/FFT_POWERspectra.csv"
+                df = pan.read_csv(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/FFT_PowerSpect/" + filename, header= 0, encoding='utf-8')
+                print(f"Data for a = {a}, T = {T}:")
+                #data = pan.read_csv(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/" + filename, header= 0)
+                # Use the header row as the column names and the second row as the data
+
+                print(df.head())
+                print(df.columns)
+
+                df.columns = df.columns.astype(str); df.columns = df.columns.str.strip()
+                #print(f"Data for a = {a}, T = {T}:")
+                col_labels = include_col_labels.copy(); #col_labels.remove("t");
+                df = df[[col for col in df.columns if any([label in col for label in col_labels])] ]
+
+
+                df.index = pan.MultiIndex.from_tuples([(PREFIX, a*a_scale, T)]*len(df), names = ['Prefix', 'a', 'T'])
+
+                #'''#print(df.info())
+                print(df.head())
+                print(df.columns)#'''
+
+                #Assign the data df to the appropriate index in the data DataFrame
+                data = pan.concat([data, df], axis = 0).sort_index(axis = 0)
+                #print(data.columns)
+
+            except FileNotFoundError:
+                print(f"Data not found for a = {a}, T = {T}. Skipping....")
+                continue
+    return data
+                
+
 ''' # Summary Description of get_FRAME_POTdata(...) (called by analyse_POTdata(...))
 This function creates a multi-Indexed DataFrame with the potential data for each species.
 The indices are as follows:
@@ -915,6 +975,183 @@ def analyse_FRAME_timeseriesData(indir, out_dir, prefixes=[], a_vals=[], T_vals 
         # Use home_video function to create a video of the plots.
         home_video(out_dir, out_dir, ["TimeSeries/Combined"], a_vals, [Tmax], 1, pngformat= "TimeSeries_AllPrefixes_a_{a}_dP_{dP}_Geq_{Geq}.png", videoname = f"TimeSeries_All_T_{Tmax}.mp4")
     '''
+
+'''# Summary Description of analyse_FRAME_FFTPOWERdata(...)
+This function analyses the FFT POWER data for each species and creates plots for each species for each Prefix and a value, averaged over provided T values.
+It creates heatmaps of the power spectra for each species for each Prefix and a value, with frequency as the y-axis and a as the x-axis.
+NOTE: This function assumes that the data is stored in the FILENAME the following format:
+FREQ[{var1}] ... FREQ[{varN}]   POWER[{var1}]_MEAN_ALL ... POWER[{varN}]_MEAN_ALL POWER[{var1}]_MEAN_SURV ... POWER[{varN}]_MEAN_SURV k_R_0 ... POWER[{varN}]_R_{R_max}
+where {var} is one of the species names.
+It creates a Multi-Index DataFrame with Indices: Prefix, a, T, R and columns: FREQ[{var}], POWER[{var}]_MEAN_ALL, POWER[{var}]_MEAN_SURV, POWER[{var}]_R_{R_max}
+
+
+'''
+
+def analyse_FRAME_FFTPOWERdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tavg_window_index = [-100000, 0], filename = "FFT_POWERspectra.csv", a_scaling=1,
+                                 var_labels= [ "P(x; t)" , "G(x; t)", "Pr(x; t)"]):
+    
+    savefilename = re.sub(r'\.csv$', '', filename)
+    if len(prefixes) == 0:
+        prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(indir, '*/'))]
+    combined_data = pan.DataFrame()
+    sea.set_palette("husl")
+    colours = [hex_list[i][-1] for i in range(len(hex_list))]
+
+    
+
+    init_a_vals = a_vals; init_T_vals = T_vals
+    
+    if (Tavg_window_index[1] < Tavg_window_index[0]):
+        print(f"Invalid Tavg_window_index = {Tavg_window_index}. Swapping values...")
+        Tavg_window_index = [Tavg_window_index[1], Tavg_window_index[0]]
+    
+
+    for Pre in prefixes:
+
+        savedir = out_dir + f"{Pre}/FFT_PS/"
+        Path(savedir).mkdir(parents=True, exist_ok=True)
+        
+        data = get_FRAME_FFTPOWdata(indir, Pre, init_a_vals, init_T_vals, include_col_labels= var_labels, a_scale= a_scaling, filename = filename)
+        # We are interested in the AVG columns for each species.
+        # Note that the number of columns can vary for each a and T value, as R_max can vary, so we need to handle this.
+        # Data has columns for each species given by {var}, of the form:
+        # FREQ[{var1}] ... FREQ[{varN}]   POWER[{var1}]_MEAN_ALL ... POWER[{varN}]_MEAN_ALL POWER[{var1}]_MEAN_SURV ... POWER[{varN}]_MEAN_SURV 
+        # k_R_0 ... POWER[{varN}]_R_{R_max}
+        if data.empty:
+            print(f"No data found for {Pre}. Skipping....")
+            continue
+        print("====================================================================")
+        print(f"Data for {Pre}:")
+        print("====================================================================\n")
+        #print(data.info())
+        print(data.head())
+        print(data.tail())
+        print(data.columns)
+        print(data.index)
+        #print(data.describe())
+
+        # Find Tmax as the maximum value of T in the data.
+        Tmax = data.index.get_level_values('T').max()
+        Tmax = int(Tmax) if float(Tmax).is_integer() else Tmax
+        savecsvdir = out_dir + f"{Pre}/FFT_POWER/"
+        Path(savecsvdir).mkdir(parents=True, exist_ok=True)
+
+        # Save the data to a csv file.
+        data.to_csv(savedir + f"{savefilename}_dP_{dP}_Geq_{Geq}.csv")
+        #Concatenate the data to the combined data
+        combined_data = pan.concat([combined_data, data], axis = 0)
+
+        # Try determining number of species by counting all columns with _SURV in the name.
+        try:
+            num_species = len([col for col in data.columns if "_SURV" in col])
+        except IndexError:
+            print(f"No columns with _SURV found in the data. Not plotting data for Prefix {Pre}. Skipping....")
+            num_species = None
+            continue
+        
+        print(f"num_species = {num_species}")
+        Avals_scaled_list = sorted(data.index.get_level_values('a').unique().to_list())
+        print(Avals_scaled_list)
+        Tvals_list = sorted(data.index.get_level_values('T').unique().to_list())
+        Tmax = Tvals_list[-1]
+        if(Tavg_window_index[0] < 0 and Tavg_window_index[1] <= 0):
+            Twin_min = Tmax + Tavg_window_index[0]; Twin_max = Tmax + Tavg_window_index[1]
+        else:
+            Twin_min = Tavg_window_index[0]; Twin_max = Tavg_window_index[1]
+        Tavg = data
+
+        # Get log10 of the all the POWER[{var}]_MEAN_ALL and POWER[{var}]_MEAN_SURV columns.
+        for s in range(num_species):
+            Tavg["POWER[" + var_labels[s] + "]_MEAN_ALL"] = np.log10(Tavg["POWER[" + var_labels[s] + "]_MEAN_ALL"])
+            Tavg["POWER[" + var_labels[s] + "]_MEAN_SURV"] = np.log10(Tavg["POWER[" + var_labels[s] + "]_MEAN_SURV"])
+
+        # Remove rows with FREQ[{var}] > 30
+        Tavg = Tavg[Tavg["FREQ[" + var_labels[0] + "]"] <= 30]
+
+        # Iterating over the Pre, a indices, average over the last Tavg_window_index values of T and assign to new DataFrame.
+        ''' FIX THIS LATER
+        Tavg = pan.DataFrame()
+        for a in Avals_scaled_list:
+                
+                print(f"Averaging data for {Pre} at a = {a} for T in range {Twin_min} -- {Twin_max}:")
+                # Try averaging only if Twin_max is less than or equal to Tmax and Twin_min is greater than or equal to 0.
+                if  Twin_min < 0:
+                    print(f"Skipping averaging for {Pre} at a = {a} for T in range {Twin_min} -- {Twin_max}.")
+                    continue
+                # Average over the last Tavg_window_index values of t (for average surviving/all replicates) (R = -1)
+                Twin_data = data[(data.index.get_level_values('a') == a) & (data.index.get_level_values('T') >= Twin_min) 
+                                 & (data.index.get_level_values('T') <= Twin_max)]
+                df = Twin_data.groupby(['Prefix', 'a', 'T'])
+                if df.empty:
+                    print(f"No data found for {Pre} at a = {a} for T in range {Twin_min} -- {Twin_max}. Skipping....")
+                    continue
+                # Create a new Multi-index as {Prefix, a, Twin_min, Twin_max}
+                df.index = pan.MultiIndex.from_tuples([(Pre, a, Twin_min, Twin_max)]*len(df), names = ['Prefix', 'a', 'Tmin', 'Tmax'])
+
+                Tavg = pan.concat([Tavg, df], axis = 0).sort_index(axis = 0)
+            # End of a loop
+        
+        print(f"Data for {Pre} after averaging over {Tavg_window_index[0]} --- {Tavg_window_index[1]} values of T:")
+        print(Tavg.head())
+        print(Tavg.tail())
+        print(Tavg.columns)
+        print(Tavg.index)
+        '''
+        # Save the averaged data to a csv file.
+        Tavg.to_csv(savedir + f"{savefilename}_dP_{dP}_Geq_{Geq}_Tavg_{Twin_min}_{Twin_max}.csv")
+        # Use the data to create plots.
+
+        # Create a heatmap of the power spectra for each species for each Prefix and a value, with frequency as the y-axis and a as the x-axis.
+        # Do this using pcolor_mesh on {num_species} subplots, with a as the x-axis and frequency as the y-axis.
+        # For each species, plot the mean power spectra for all replicates and surviving replicates.
+        # The mean power spectra for individual replicates are not plotted.
+
+
+
+        fig_SURV, axs_SURV = plt.subplots(1, num_species, figsize = set_figsize(num_species))
+        for s in range(num_species):
+
+            ax_SURV = axs_SURV[s] if num_species > 1 else axs_SURV
+            # Plotting the mean power spectra for all replicates
+            data_A = Tavg.loc[(slice(None), slice(None), T_vals[-1]), :]
+            #data_A = Tavg.loc[(slice(None), slice(None), slice(None), slice(None)), :]
+            # Create a mesh grid of a and FREQ[{var}] values, as X and Y respectively, with POWER[{var}]_MEAN_SURV OR  POWER[{var}]_MEAN_ALL as Z.
+            X, Y = np.meshgrid(data_A.index.get_level_values('a').unique(), data_A["FREQ[" + var_labels[s] + "]"].unique())
+            Z_ALL = data_A["POWER[" + var_labels[s] + "]_MEAN_ALL"].values.reshape(len(data_A.index.get_level_values('a').unique()), len(data_A["FREQ[" + var_labels[s] + "]"].unique()))
+            Z_SURV = data_A["POWER[" + var_labels[s] + "]_MEAN_SURV"].values.reshape(len(data_A["FREQ[" + var_labels[s] + "]"].unique()), len(data_A.index.get_level_values('a').unique()))
+            # Plot the heatmap for the mean power spectra for surviving replicates
+
+            plot = ax_SURV.pcolormesh(X, Y, Z_SURV, cmap=sea.color_palette("icefire", as_cmap=True), shading = 'auto')
+            # If s = 0, set vmin and vmax for it.
+            if s == 0:
+                plot.set_clim(vmin = 0, vmax = 5)
+            ax_SURV.set_title(f"Power Spectra of {var_labels[s]}" )
+            ax_SURV.set_xlabel(r'R $(mm/d)$', fontsize=13)
+            ax_SURV.set_ylabel(r'Frequency (in $px^{-1}$ (px $ \approx 0.1 km$))', fontsize=13)
+            #axs_SURV.set_yscale('log')
+            ax_SURV.set_ylim(ax_SURV.get_ylim()[::-1])
+            ax_SURV.yaxis.set_major_locator(mtick.MultipleLocator(5))
+
+            # Only show y-axis values between 0 and 30
+            #ax_SURV.set_ylim(0, 30)
+
+            # Set x axis ticks to display a-values at the center of the bins.
+            #aval = data_A.index.get_level_values('a').unique()
+            #ax_SURV.set_xticks( [aval[i] + (aval[i+1] - aval[i])/2 for i in range(len(aval) - 1)] + [aval[-1] + (aval[-1] - aval[-2])/2])
+
+            # Add a colorbar to the plot
+            cbar = fig_SURV.colorbar(plot, ax = ax_SURV)
+        
+        #fig_SURV.suptitle(r" Power Spectra vs Rainfall ($R$)" + f" For {Pre} at dP = {dP}, Geq = {Geq} averaged over T = {Twin_min} -- {Twin_max}")
+        fig_SURV.suptitle(r" Power Spectra vs Rainfall ($R$)" + f" For {Pre} at dP = {dP}, Geq = {Geq} at Equilibrium")
+        plt.savefig(savedir + f"FFT_POWER_{Pre}_dP_{dP}_Geq_{Geq}_Tavg_{T_vals[-1]}_BWIN_0.5_DEF.png")
+        plt.show(); plt.close()
+
+
+            
+        
+
+
 
 def analyse_FRAME_POTdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], find_minima= True, filename = "Pot_Well.csv", 
                           minimafilename = "LOCAL_MINIMA.csv", var_labels= [ "P(x; t)" , "G(x; t)", "Pr(x; t)", "O(x; t)"]):
@@ -2057,15 +2294,15 @@ def recursive_copydir(src, dst, include_filetypes = ["*.txt"],
 
 
 #
-recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filetypes =["*.png", "*.jpg", "*.jpeg", "*.mp4"], symlinks=False)
-a_vals = [0.042, 0.05, 0.052]  #1.75, 1.8, 20] #0.026, 0.034, 0.0415, 0.042, 0.05, 0.052] #, 0.057 , 0.06] #0.051, 0.053, 0.055]; 
+#recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filetypes =["*.png", "*.jpg", "*.jpeg", "*.mp4"], symlinks=False)
+a_vals = [0.026, 0.034, 0.0415, 0.042, 0.05, 0.052]  #1.75, 1.8, 20] #0.026, 0.034, 0.0415, 0.042, 0.05, 0.052] #, 0.057 , 0.06] #0.051, 0.053, 0.055]; 
 a_scaling = 1 #0.001
 #T_vals= [0, 63.03, 109.56, 144.54, 190.52, 251.13, 331.1, 436.48, 575.41, 758.56, 831.71, 999.9, 1202.19, 1445.4, 1737.78, 2089.23, 2511.85, 3019.94, 3630.77, 4365.13, 5247.99, 6309.49, 6918.23, 7585.71, 8317.54, 9120.1, 9999.99]
 #T_vals=[0, 63095.7, 69182.9, 75857.7, 83176.3, 91201, 99999.9, 109647, 120226, 131826, 144544, 158489, 173780, 190546, 208930, 229087];
 # TVALS WHEN DT= 0.1
 #T_vals=[0, 63095.7, 69183, 75857.7, 83176.3, 91201, 100000, 109647, 120226, 131826, 144544, 158489, 173780, 190546];
 # TVALS WHEN DT= 0.12
-T_vals=[];#0, 63095.6, 69183, 75857.6, 83176.3, 91201, 100000, 109647, 120226, 131826, 144544, 158489, 173780, 190546];
+T_vals=[91201];#0, 63095.6, 69183, 75857.6, 83176.3, 91201, 100000, 109647, 120226, 131826, 144544, 158489, 173780, 190546];
 #[0, 33, 47.85, 68.75, 99.55, 144.1, 208.45, 250.8, 301.95, 363, 436.15, 524.7, 600.05, 649.99, 700.04, 749.98, 800.03, 849.97, 900.02, 949.96, 1000.01, 1049.95, 1100, 1150.05, 1199.99, 1250.04, 1299.98, 1350.03, 1399.97, 1450.02, 1499.96, 1584.55, 1737.45, 1905.2, 7585.6] 
 #[0, 144.54, 190.52, 251.13, 331.1, 436.48, 575.41, 758.56, 831.71, 999.9, 1202.19, 1445.4, 1737.78, 2089.23, 2511.85, 3019.94, 3630.77, 4365.13, 5247.99, 6309.49, 6918.23, 7585.71, 9120.1, 9999.99, 10964.7, 91201, 63095.7, 69183.1, 75857.7, 91201,  99999.9, 10964.3, 120226, 131826, 144544, 158489]
 # 3SP INIT [0, 575.3, 758.45, 911.9, 1096.15, 1317.8, 1584.55, 1905.2, 2290.75, 2753.85, 3311, 3980.7, 4786.1, 5754.1, 6309.05, 6917.9, 7585.6, 8317.1, 9120.1, 9999.55, 91201, 99999.9, 10964.3, 120226, 131826, 144544, 158489]
@@ -2091,6 +2328,8 @@ T_vals=[];#0, 63095.6, 69183, 75857.6, 83176.3, 91201, 100000, 109647, 120226, 1
 #"DiC-B6-MFTEQ"]#"DiC-STD"]#,"DiC-S7LI", "DiC-0.1LI"]
 #prefixes = ["COR-DDM5-NREF-0.5HI", "COR-DDM10-NREF-0.5HI", "COR-DDM1-NREF-0.5HI"]
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
+#prefixes = ["HX2001-UA125A0-5E2UNI"]#, "HX1005-UA125A125-5E2UNI"]#, "HX2005-UA125A0-5E2UNI"]
+prefixes = ["DiC-STD"]
 
 # PREFIXES FOR SMALL BODY SIZE METAPOPLN
 
@@ -2103,9 +2342,9 @@ T_vals=[];#0, 63095.6, 69183, 75857.6, 83176.3, 91201, 100000, 109647, 120226, 1
 
 # GENERIC SMALL MAMMAL
 #prefixes = ["DsC-HXR03015-UA0-1UNI", "DsC-HXR2010-UA0-1UNI"] #"DsC-HXR03015-UA0-1UNI",
-prefixes = ["DsC-HXR03015-UA0A0-1UNI", "DsC-HXR2010-UA0A0-1UNI", "DsC-HXR03015-UA125A0-1UNI", "DsC-HXR2010-UA125A0-1UNI"] #"DsC-HXR03015-UA0-1UNI",
+#prefixes = ["DsC-HXR03015-UA0A0-1UNI", "DsC-HXR2010-UA0A0-1UNI", "DsC-HXR03015-UA125A0-1UNI", "DsC-HXR2010-UA125A0-1UNI"] #"DsC-HXR03015-UA0-1UNI",
 
-TS_vals = [190546]  #33113.1] 36307.7]#, 131826] #190546] #57544] #69183.1] # #[229087] #[208930] #91201]  #[190546]; #[109648];
+TS_vals = [91201]  #33113.1] 36307.7]#, 131826] #190546] #57544] #69183.1] # #[229087] #[208930] #91201]  #[190546]; #[109648];
 #a_vals = []#0.034, 0.048, 0.054]; 
 #T_vals = []#0, 91201, 190546, 208930, 229087]
 
@@ -2131,7 +2370,7 @@ for Pre in prefixes:
                      video_relpath= "{Pre}/Videos/Conc/{a}/{Tmin}-{Tmax}/")
 #'''
 
-#''' FOR VIDEOS OF INDIVIDUAL REPLICATES
+''' FOR VIDEOS OF INDIVIDUAL REPLICATES
 for Pre in prefixes:
     for R in range(0, 3):
         frame_visualiser(in_dir, out_dir, Pre, a_vals, T_vals, maxR= R+1, minR= R, plt_gamma= False, delpng = False)
@@ -2163,14 +2402,17 @@ for Pre in prefixes:
 #analyse_timeseriesData(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "MEAN_REPLICATES.txt")
 if SPB == 3:
     variable_labels = [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"]
+    var_frame_labels = ["P(x; t)" , "G(x; t)", "Pr(x; t)"]
     Tavg_win_index = [160000, 200000]; Traj_win_index =[1000, 35000]; #[100000, 240000]
     # Window for averaging over last Tavg_win_index values of T (if negative, then average over last |Tavg_win_index| values of T)
     # If Tavg_win_index[0] < 0 and Tavg_win_index[1] <= 0, then average over last Tavg_win_index[0] + Tmax to Tavg_win_index[1] + Tmax values of T.
     # If Tavg_win_index[1] >= Tavg_win_index[0] >= 0, then average over last Tavg_win_index[0] to Tavg_win_index[1] values of T.
 elif SPB == 2:
-    variable_labels = [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r"]; Tavg_win_index = [160000, 200000]; Traj_win_index =[1000, 10000];#[150000, 240000] #[50000, 100000] #
+    variable_labels = [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r"]; 
+    var_frame_labels = ["P(x; t)" , "G(x; t)"]
+    Tavg_win_index = [160000, 200000]; Traj_win_index =[1000, 10000];#[150000, 240000] #[50000, 100000] #
 elif SPB == 1:
-    variable_labels = ["<<P(x; t)>_x>_r"]; Tavg_win_index = [71000, 100000]; Traj_win_index =[200, 5000]; #[65000, 100000]
+    variable_labels = ["<<P(x; t)>_x>_r"]; var_frame_labels = ["P(x; t)"];  Tavg_win_index = [71000, 100000]; Traj_win_index =[200, 5000]; #[65000, 100000]
 
 #analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels, a_scaling= a_scaling)
 #analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = Tavg_win_index, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels, a_scaling= a_scaling)
@@ -2178,6 +2420,7 @@ elif SPB == 1:
 for a in a_vals:
     analyse_PRELIMS_TRAJECTORYdata(in_dir, out_dir, prefixes, [a], TS_vals, size_label = ["t"], maxR= 10, minR=0, T_window = Traj_win_index, meanfilename = "Mean_TSERIES_T_{TS}_dP_{dP}_Geq_{Geq}.csv", a_scaling= a_scaling, x_label= ["<<P(x; t)>_x>_r"], y_label= ["<<G(x; t)>_x>_r"], hue_label=[])
 #'''
+analyse_FRAME_FFTPOWERdata(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "FFT_POWERspectra.csv", Tavg_window_index = Tavg_win_index, var_labels= var_frame_labels, a_scaling= a_scaling)
 #analyse_FRAME_POTdata(in_dir, out_dir, prefixes, a_vals, T_vals, find_minima= True, filename = "Pot_Well.csv", 
 #                          minimafilename = "LOCAL_MINIMA.csv", var_labels= [ "P(x; t)" , "G(x; t)", "Pr(x; t)"])
 

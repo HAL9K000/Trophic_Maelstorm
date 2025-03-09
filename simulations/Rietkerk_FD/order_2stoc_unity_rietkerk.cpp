@@ -10,7 +10,7 @@ int main(int argc, char *argv[])
   double a_start, a_end; double r; double dP; // Kick for high initial state
   int g, div;
 
-  dx= 1; //From Bonachela et al 2015 (in km)
+  dx= 0.1; //From Bonachela et al 2015 (in km)
 
   //c= 10; d =0.25; gmax= 0.05; alpha =0.2; W0= 0.2; rW = 0.2; // From Bonachela et al 2015
   /**
@@ -23,13 +23,15 @@ int main(int argc, char *argv[])
   // Using units of mass = kg, length = km, time = hr.
 
   double mGrazer; 
-  mGrazer = 0.15; // Mass of grazer in kg.
-
+  
   c = 10000; gmax = 0.05*pow(10, -3.0)/24.0; d = 0.25/24.0; alpha =0.2/24.0; W0 = 0.2; rW = 0.2/24.0; // From Bonachela et al 2015
 
-  //double p0i = 0.5; double p0j= p0i/200; double p0j= 2.25; double p0m= 8; // In g/m^2
+  double k0, k1, k2; double d0, d1, d2, d3; double s0, s1; double v1; double dtv1; 
 
-  double k0, k1, k2; double d0, d1, d2, d3; double s0, s1; double v1; double dtv1;
+  
+
+  /** // ASSUMING MASS OF  GRAZER = 150g
+  mGrazer = 0.15; // Mass of grazer in kg.
   
   // Diffusion coefficient allometries for consumer species:
   //General allometry: ln(D (in km^2/hr)) = 0.3473*ln(M) -4.15517, where M is mass in kg of general consumer.
@@ -50,13 +52,11 @@ int main(int argc, char *argv[])
   //Time-scale of advection.
   dtv1 = (exp(1.8106)*pow(mGrazer, 0.2596))/60.0; // 0.062272 In hr, based on relation ln(dtv_grazer) = 0.2596*ln(M) + 1.8106, where M is mass in kg, and dtv_grazer is in min.
 
-  /** OLD DEFAULT WITH GRAZER MASS = 20 KG 
+  //*/
+  ///** OLD DEFAULT WITH GRAZER MASS = 20 KG 
 
-  c = 10000; gmax = 0.05*pow(10, -3.0)/24.0; d = 0.25/24.0; alpha =0.2/24.0; W0 = 0.2; rW = 0.2/24.0; // From Bonachela et al 2015
-
-  //double p0i = 0.5; double p0j= p0i/200; double p0j= 2.25; double p0m= 8; // In g/m^2
-
-  double k0, k1, k2; double d0, d1, d2, d3; double s0, s1; double v1; double dtv1;
+  // ASSUMING MASS OF  GRAZER = 20 kg
+  mGrazer = 20; // Mass of grazer in kg.
   
   // Diffusion coefficient allometries for consumer species:
   //General allometry: ln(D (in km^2/hr)) = 0.3473*ln(M) -4.15517, where M is mass in kg of general consumer.
@@ -81,7 +81,7 @@ int main(int argc, char *argv[])
   double D[Sp] ={d0, d1, d2, d3}; //Diffusion coefficients for species.
   double K[3] ={k0, k1, k2}; //Diffusion coefficients for species.
   double sigma[Sp] ={s0, s1, 0, 0}; //Demographic stochasticity coefficients for species.
-  double v[Sp] ={0, v1, 0, 0}; //Velocity of species.
+  double v[SpB] ={0, v1}; //Velocity of species.
 
   /**
 

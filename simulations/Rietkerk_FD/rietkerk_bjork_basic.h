@@ -83,7 +83,10 @@ namespace fs = std::filesystem;
 inline const int SpB = Sp - 2; //Number of biota species in the system.
 inline const int Sp_NV = Sp-3; //Number of grazer and predator species in system.
 inline const int Sp4_1 = 4*(Sp -2) +3; // Used for generating statistics on surviving runs
-inline const int Sp2 = 2*Sp; // Used for generating statistics on surviving runs
+inline const int Sp2 = 2*Sp; // Used for generating statistics on surviving run
+inline const int SpB2 = 2*SpB; // Used for generating statistics on surviving runs
+inline const int SpB3 = 3*SpB; // Used for generating statistics on surviving runs
+inline const int SpB4 = 4*SpB; // Used for generating statistics on surviving runs
 
 // Global user-defined parameters for the Rietkerk model.
 inline double dt2 /** = dt/2.0*/; inline double dt6 /** = dt/6.0*/;
@@ -107,6 +110,7 @@ inline const string frame_prefix = "/FRAME_P_c_DP_G_"; //Prefix for frame files.
 inline const string gamma_prefix = "/GAMMA_G_"; //Prefix for gamma files.
 inline const string prelim_prefix = "/PRELIM_AGGRAND_P_c_ID_"; //Prefix for preliminary data files.
 inline const string replicate_prefix = "/PRELIM_TSERIES_P_c_DP_G_"; //Prefix for replicate time-series data files.
+inline const string movement_prefix = "/PRELIM_MOVSERIES_P_c_DP_G_"; //Prefix for movement time-series data files.
 //inline const string frame_header = "a_c,  x,  P(x; t), G(x; t), Pr(x; t), W(x; t), O(x; t) \n"; //Header for frame files.
 inline const string input_prefix = "/FRAME_T_"; //Prefix for input files.
 inline string stat_prefix = "../Data/Rietkerk/Stochastic/"+ std::to_string(SpB) +"Sp/1stCC_Rietkerk_" + prefix + "_P_c_G_";
@@ -123,7 +127,7 @@ inline std::map<string, string> input_keys = { {"outPRE", ""}, {"a", "0"}, {"a_c
 inline vector<string> MFT_Vec_CoexExpr(2*Sp, ""); //Vector of MFT Coexistance expressions for all species.
 
 //inline exprtk::symbol_table<double> global_symbol_table; //Symbol table for the Expertk library.
-
+inline vector<double> frame_tmeas; //Vector to store time measurements for the frames.
 
 //------------------------- TYPEDEFS --------------------------------------------------------------//
 
@@ -160,6 +164,32 @@ template <long long B>
 struct Pow<B, 0>
 {
     static const long long result = 1;
+};
+
+// Generic Permutation compile-time calculations. Perm<N,K>::result == N!/(N-K)!
+template <long long N, long long K>
+struct Perm
+{
+	static const long long result = N * Perm<N-1, K-1>::result;
+};
+
+template <long long N>
+struct Perm<N, 0>
+{
+	static const long long result = 1;
+};
+
+// Generic Combination compile-time calculations. Comb<N,K>::result == N!/(K!(N-K)!)
+template <long long N, long long K>
+struct Comb
+{
+	static const long long result = Perm<N,K>::result / Perm<K, K>::result;
+};
+
+template <long long N>
+struct Comb<N, 0>
+{
+	static const long long result = 1;
 };
 
 // Bailey-Borwein-Plouffe formula for calculating pi
@@ -208,6 +238,8 @@ struct zd_coordinates {
 
 inline const double PI = CalculatePi<14>::pi;
 
+inline const int SpB_Mov = 2*SpB + Comb<SpB, 2>::result; // Used for generating statistics on movement of surviving runs
+
 //void set_global_user_Rietkerk_params(double c,double gmax,double alpha, double rW, double W0, double (&D)[Sp], 
 //	double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB])
 
@@ -251,10 +283,12 @@ void init_solitarytear(D2Vec_Double &array, int length);
 double mean_of_array(double array[],int size);
 double standard_deviation_of_array(double array[],int size);
 double mean_of_vector(vector<double> array,int size);
+double variance_of_vector(vector<double> array,int size);
 double standard_deviation_of_vector(vector<double> array,int size);
 double occupied_sites_of_vector(vector<double> array,int size);
 auto meansq_spread_of_vector(vector<double> array, int g, int c_x, int c_y);
 
+void generic_SPBmean_surv_runs(D2Vec_Double &t_avg_var_rep_N, const D2Vec_Double &X_curr, int size, int spcolnum, int j);
 void var_mean_incremental_surv_runs(D2Vec_Double &t_avg_var_rep_N, const D2Vec_Double &X_curr, int size, int j);
 
 void var_mean_incremental_all_runs(double rep_avg_var[][3], double X_curr[][2], int size, int r);
@@ -265,6 +299,8 @@ void var_mean_incremental(double rep_avg_var[][2], vector<vector <double>> &X_cu
 
 template<typename T> std::vector<double> linspace(T start_in, T end_in, int num_in);
 template<typename T>std::vector<double> lnspace(T start_in, T end_in, int log_points);
+template<typename T>std::vector<T> switchsort_and_bait(std::vector<T> vals, T low = 0, T high = 0, 
+	int num_points =50, string insert_type = "None",  bool erase = false);
 std::vector<double> logarithmic_time_bins(double t_max, double dt);
 std::vector<double> logarithm10_time_bins(double t_max, double dt);
 
@@ -333,7 +369,11 @@ void save_prelimframe(D2Vec_Double &Rho_t, const string &parendir, const string 
 		double t, double dt, double dx, double dP, int r, int g, string header ="", bool overwrite = false, bool delete_previous = false);
 void save_frame(D2Vec_Double &Rho_t, const string &parendir, const string &filenamePattern, double a, double a_st, double a_end, 
 		double t, double dt, double dx, double dP, int r, int g, string header ="", bool overwrite = false);
-
+// A wrapper function to save the preliminary data for the Rietkerk model. Returns 1 if detects no vegetation left, else 0.
+int save_fileswrapper(int index, int tot_iter, int j, int thrID,  double t, double dt, double dx, D2Vec_Double &Rho_dt, D2Vec_Double &DRho, D2Vec_Double &Rho_M, D2Vec_Double &Rho_Mov,
+	D2Vec_Double &rho_rep_avg_var, vector<double> &t_meas, D2Vec_Double &gamma, D2Vec_Pair_Double &v_eff, double t_max, 
+	double a, double c, double gmax, double alpha, double rW, double W0, double (&D)[Sp], double (&v)[SpB], double (&K)[3], double sigma[], double a_st, double a_end, double a_c,
+	double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double dP, int r, int g, double Gstar =-1., double Vstar = -1.);
 //Calculates gamma for 3 Sp Rietkerk model (details in PDF, 
 // ASSUMING PREDATORS AREN'T DETERRED BY HIGH LOCAL VEGETATION DENSITY)
 void calc_gamma_3Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringSites, D2Vec_Double &Rho_t, D2Vec_Double &gamma,  
@@ -346,10 +386,10 @@ void f_2Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, 
 void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D3Vec_Int &nR2,double a,double c,double gmax,double alpha,
 		double rW, double W0, double (&D)[Sp], double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t,double dt,double dx, int g);
 void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double c, double gmax, double alpha, double rW, double W0, 
-	double (&D)[Sp], double v[], double (&K)[3], double sigma[], double a_st, double a_end, double a_c, double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], 
+	double (&D)[Sp], double (&v)[SpB], double (&K)[3], double sigma[], double a_st, double a_end, double a_c, double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], 
 	int (&dtV)[SpB], double clow[], double dt, double dx, double dP, int r, int g, double Gstar  = -1.0,  double Vstar = -1.0 );
 void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, double a_start, double a_end, double a_c,  double c, double gmax, double alpha,
-	double rW, double W0,  double (&D)[Sp], double v[], double (&K)[3], double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[],
+	double rW, double W0,  double (&D)[Sp], double (&v)[SpB], double (&K)[3], double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[],
 	int (&dtV)[SpB], double clo[], double dt, double dx, double dP, int r,  int g,double Gstar  = -1.0,  double Vstar = -1.0);
 
 #endif
