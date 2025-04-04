@@ -386,8 +386,10 @@ int main(int argc, char *argv[])
     double scaling_factor[2*Sp] = {10, dP/dP, dP/(10.0*dP), 1,  1, 1, 1, 0.1*init_frac_pred, 1, 1};
     // USED FOR HOMOGENEOUS MFT BASED INITIAL CONDITIONS.
   #else
-    double scaling_factor[2*Sp] = {0, dP/dP, dP/(10.0*dP)*init_frac_pred, 1, 1, 5, 1, 0.1*init_frac_pred, 1, 1};
+    //double scaling_factor[2*Sp] = {0, dP/dP, dP/(10.0*dP)*init_frac_pred, 1, 1, 5, 1, 0.1*init_frac_pred, 1, 1};
     // USED FOR PERIODIC MFT BASED INITIAL CONDITIONS.
+    double scaling_factor[2*Sp] = {500, Gstar*10, 40, 4, 20, 500, Gstar*10, 40, 4, 10};
+    // The above scaling factor is used for Gaussian initial conditions for testing and is NOT MEANT FOR PRODUCTION RUNS.
   #endif
 
   //*/

@@ -13,17 +13,17 @@ int main(int argc, char *argv[])
   string preFIX; // Prefix for the output files
   string input_preFIX= ""; // Prefix for the input files
   string input_frame_subdir; // Subdirectory for the input frames.
-  double a_c, b, c, gmax, alpha, d, rW, W0, t_max, dt, dx; //int g, div;
+  double a_c, b, c, d, gmax, alpha, t_max, dt, dx; //int g, div;
   double a_start, a_end; double r; double dP; // Kick for high initial state
   int g, div;
 
-  //c= 10; d =0.25; gmax= 0.05; alpha =0.2; W0= 0.2; rW = 0.2; // From Bonachela et al 2015
-  /**
-  dx= 0.2 ; //From Bonachela et al 2015 (in m)
-  d0 = 0.001; d1=0; d2 = 0.001; d3= 0.1; //From Bonachela et al 2015 (in m^2/day)
-  k0= 0; k1 = 5; k2 =5;
-  s0 = sqrt(0.025); // ~ D/(dx)^2 (in g^{0.5}/(m day))
-  */
+  dx= 0.1 ; //From Bonachela et al 2015 (in km)
+  double mGrazer; double mPredator; // Mass of grazer and predator in kg.
+  // ASSUMING MASS OF  GRAZER = 20 kg, MASS OF PREDATOR = 100 kg.
+  mGrazer = 20; mPredator = 100;
+  // ASSUMING MASS OF  GRAZER = 1 g, MASS OF PREDATOR = 0.15 kg. 
+  //(FOR DESERT LOCUST CASE, WITH GRAZER = 1g, PREDATOR (COMMON KERNEL) = 0.15 kg [Mullie et al 2021 10.1371/journal.pone.0244733])
+  //mGrazer = 0.001; mPredator = 0.15;
 
   // Using units of mass = kg, length = km, time = hr.
   // ASSUMING MASS OF  GRAZER = 20 kg, MASS OF PREDATOR = 100 kg.
@@ -33,11 +33,11 @@ int main(int argc, char *argv[])
 
   double k0, k1, k2; double d0, d1, d2, d3, d4; double s0, s1, s2; double v1, v2;//Slightly 
   
-  dx= 0.1 ; //From Bonachela et al 2015 (in km)
-  d0 = 0.00025/24.0; d1=0.0298; d2= 0.05221; d3 = 0.00025/24.0; d4= 0.025/24.0; //From Bonachela et al 2015 (in km^2/hr)
+  
+  d0 = 0.00025/24.0; d1=0.0298; d2= 0.05221; d3 = 0.00025/24.0; d4= 0.025/24.0; s2 = 3; //From Bonachela et al 2015 (in km^2/hr) and general D allometry.
   s0 = sqrt(d0/(dx*dx)); // ~ D0/(dx)^2 (in kg^{0.5}/(km hr))
   s1 = 1; // ~ D/(dx)^2 (in kg^{0.5}/(km hr))
-  s2 = 3; // ~ D/(dx)^2 (in kg^{0.5}/(km hr))
+  
   
   // Allometric scaling for velocity: 
   // v (m/hr) = 43.706*M^1.772*(1 - e^{-14.27*(M)^(-1.865)}), where M is mass in kg.
@@ -52,17 +52,17 @@ int main(int argc, char *argv[])
   double mj_scale, aij_scale, mm_scale, ajm_scale; // Scaling factors for the mass and attack rate of the grazer.
   mj_scale = 1.0; aij_scale = 1.0; mm_scale = 1.0; ajm_scale = 1.0;
   
-  aij = 3.6*pow(10.0, -6.08)*pow(20.0, -0.37); // in km^2/(hr kg)
+  aij = 3.6*pow(10.0, -6.08)*pow(mGrazer, -0.37); // in km^2/(hr kg)
   hij = 1; // Handling time in hrs
-  ej =0.45; mj = 0.061609*pow(20.0, -0.25)/8760.0; // Mortality rate in hr^{-1}
+  ej =0.45; mj = 0.061609*pow(mGrazer, -0.25)/8760.0; // Mortality rate in hr^{-1}
   //Predator of mass 100 kg.
-  ajm = 3.6*pow(10.0, -6.08)*pow(100.0, -0.37); // in km^2/(hr kg)
+  ajm = 3.6*pow(10.0, -6.08)*pow(mPredator, -0.37); // in km^2/(hr kg)
   hjm = 1; // Handling time in hrs
-  em =0.85; mm = 0.061609*pow(100.0, -0.25)/8760.0; // Mortality rate in hr^{-1}
+  em =0.85; mm = 0.061609*pow(mPredator, -0.25)/8760.0; // Mortality rate in hr^{-1}
 
   
 
-  double Km = pow(10.0, 1.22)*pow(100.0, -0.31); // Carrying capacity of predator in kg/km^2s
+  double Km = pow(10.0, 1.22)*pow(mPredator, -0.31); // Carrying capacity of predator in kg/km^2s
 
   //double Gstar = mm/((em -mm*hjm)*ajm); //Steady state for grazer.
   double H[SpB][SpB] ={{0, hij, 0}, 
@@ -71,7 +71,7 @@ int main(int argc, char *argv[])
   double A[SpB][SpB] ={{0, aij, 0}, 
                       {aij, 0.0, ajm}, 
                       {0, ajm, 0}};  // Attack rate matrix []. No canabilism, symmetric effects. 
-  double M[SpB] = {d, mj, mm};     // Mortality Rate of Species. (in hr^{-1})
+  double M[SpB] = {0.0, mj, mm};     // Mortality Rate of Species. (in hr^{-1})
   double E[SpB] ={1.0, ej, em}; //Efficiency of consumption.
   //double D[Sp] ={d0, d1}; //Diffusion coefficients for species. (in km^2/hr)
   double pR[Sp] ={0.0, 1.04285/2.0, 1.25536/2.0}; //Perception radius of species (in km)
@@ -197,6 +197,11 @@ int main(int argc, char *argv[])
     cout << "Warning: CFL condition violated. The velocity of the grazer is too high for the given dx and dt. Please reduce the velocity and dt or increase dx ." << endl;
     exit(2);
   }
+  else if( 2*v[2]*dt/dx > 1)
+  {
+    cout << "Warning: CFL condition violated. The velocity of the predator is too high for the given dx and dt. Please reduce the velocity and dt or increase dx ." << endl;
+    exit(2);
+  }
   else
   {
     cout << "CFL condition satisfied." << endl;
@@ -212,7 +217,7 @@ int main(int argc, char *argv[])
   }
   //Defining the save folders.
   
-  set_Prefix(preFIX); //Set the prefix (and thus save folders) to the user-defined prefix.
+  set_Prefix(preFIX, mGrazer, mPredator); //Set the prefix (and thus save folders) to the user-defined prefix.
   cout << "Save directory for frames: " << frame_folder << "\n";
   cout << "Save directory for preliminary data: " << prelim_folder << "\n";
   cout << "Save directory for final data: " << stat_prefix << "\n";

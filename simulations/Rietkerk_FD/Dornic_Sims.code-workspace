@@ -116,7 +116,8 @@
 			"propagate_const": "cpp",
 			"dynamic_bitset": "cpp",
 			"buffer": "cpp",
-			"socket": "cpp"
+			"socket": "cpp",
+			"ignored_typedef.C": "cpp"
 		},
 		"C_Cpp.intelliSenseEngineFallback": "enabled"
 	}

@@ -86,22 +86,22 @@ fi
 curr_dir=$(pwd)
 
 # First, create the object files for the cpp scripts and for the CUDA scripts
-if [$INIT ne 2]; then
+if [ $INIT -ne 2 ]; then
     # Compile order_${SPB}stoc_unity_rietkerk.cpp
-    bash -c "cd .. ; g++-14 -DSPB=${SPB} -DINIT=${INIT} -DMV_INVARIANCE=${MV_INVARIANCE} -DBARRACUDA -c order_${SPB}stoc_unity_rietkerk.cpp -fopenmp -o -std=c++20 -I/usr/local/cuda/include"
+    bash -c "cd .. ; g++-14 -DSPB=${SPB} -DINIT=${INIT} -DMV_INVARIANCE=${MV_INVARIANCE} -DBARRACUDA -c order_${SPB}stoc_unity_rietkerk.cpp -fPIE -fopenmp -std=c++20 -I/usr/local/cuda/include"
 else
-    bash -c "cd .. ; g++-14 -DSPB=${SPB} -DINIT=${INIT} -DMV_INVARIANCE=${MV_INVARIANCE} -DBARRACUDA -c order_${SPB}stoc_burnin_rietkerk.cpp -fopenmp -o -std=c++20 -I/usr/local/cuda/include"
+    bash -c "cd .. ; g++-14 -DSPB=${SPB} -DINIT=${INIT} -DMV_INVARIANCE=${MV_INVARIANCE} -DBARRACUDA -c order_${SPB}stoc_burnin_rietkerk.cpp -fPIE -fopenmp -std=c++20 -I/usr/local/cuda/include"
 fi
 echo "Created object file for order_${SPB}stoc ... script"
 # Next, compile the main cpp script
-bash -c "g++-14 -DSPB=${SPB} -DINIT=${INIT} -DMV_INVARIANCE=${MV_INVARIANCE} -DBARRACUDA -c rietkerk_bjork_FKE.cpp -fopenmp -std=c++20"
+bash -c "cd .. ; g++-14 -DSPB=${SPB} -DINIT=${INIT} -DMV_INVARIANCE=${MV_INVARIANCE} -DBARRACUDA -c rietkerk_bjork_FKE.cpp -fPIE -fopenmp -std=c++20 -I/usr/local/cuda/include"
 echo "Created object file for rietkerk_bjork_FKE ... script"
 
 #Next create object files for the CUDA scripts, with ARCH-SM flag if specified, else no flag
 if [ -z "$ARCH_SM" ]; then
-    bash -c "nvcc -c -o kernel_FKE.o  kernel_advdiff_FKE2D.cu -std=c++20; cd $curr_dir"
+    bash -c "cd .. ; nvcc -c -o kernel_FKE.o  kernel_advdiff_FKE2D.cu -std=c++20;"
 else
-    bash -c "nvcc -arch=sm_${ARCH_SM} -c -o kernel_FKE.o  kernel_advdiff_FKE2D.cu -std=c++20; cd $curr_dir"
+    bash -c "cd .. ; nvcc -arch=sm_${ARCH_SM} -c -o kernel_FKE.o  kernel_advdiff_FKE2D.cu -std=c++20;"
 fi
 echo "Created object file for kernel_FKE ... script"
 
@@ -153,8 +153,11 @@ start_screen(){
     if ! screen -list | grep -q "${screen_names[$screen_index]}"; then
         # Start a new screen session and run the job
         #Done by linking and compiling the object files, then running the executable
-
-        screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; nvcc -o ${screen_names[$screen_index]}_cuFKE${spb}.out rietkerk_bjork_FKE.o order_${spb}stoc_unity_rietkerk.o kernel_FKE.o -std=c++20 -I/usr/local/cuda/include -L/usr/local/cuda/lib64 -lcudart; ./${screen_names[$screen_index]}_cuFKE${spb}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 $p11 $p12 $p13 &> stderr_${screen_names[$screen_index]}.txt; cd $curr_dir"
+        if [ $init -ne 2 ]; then
+            screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; nvcc -arch=sm_${arch_sm} -o ${screen_names[$screen_index]}_cuFKE${spb}.out rietkerk_bjork_FKE.o order_${spb}stoc_unity_rietkerk.o kernel_FKE.o -Xcompiler -fopenmp -std=c++20 -I/usr/local/cuda/include -L/usr/local/cuda/lib64 -lcudart; ./${screen_names[$screen_index]}_cuFKE${spb}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 $p11 $p12 &> stderr_${screen_names[$screen_index]}.txt; cd $curr_dir"
+        else
+            screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; nvcc -arch=sm_${arch_sm} -o ${screen_names[$screen_index]}_cuFKE${spb}.out rietkerk_bjork_FKE.o order_${spb}stoc_burnin_rietkerk.o kernel_FKE.o -Xcompiler -fopenmp -std=c++20 -I/usr/local/cuda/include -L/usr/local/cuda/lib64 -lcudart; ./${screen_names[$screen_index]}_cuFKE${spb}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 $p11 $p12 $p13 &> stderr_${screen_names[$screen_index]}.txt; cd $curr_dir"
+        fi
         screen_index=$((screen_index+1))
     else
         #echo "Screen session ${screen_names[$screen_index]} is already running. Using the next screen name."

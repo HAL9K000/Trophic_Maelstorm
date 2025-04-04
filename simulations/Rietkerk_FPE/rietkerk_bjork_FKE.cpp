@@ -1245,6 +1245,17 @@ double mean_of_vector(vector<double> array,int size){
 	return sum/(double)size;
 }
 
+double variance_of_vector(vector<double> array,int size){
+	double mean = mean_of_vector(array,size);
+	  float sum = 0.0;
+  
+	  for (int i =0; i<size; ++i){
+		  sum += (array[i]-mean)*(array[i]-mean);
+	  }
+	double variance = sum/(double)size;
+	  return variance;
+}
+
 double standard_deviation_of_vector(vector<double> array,int size){
 
   double mean = mean_of_vector(array,size);
@@ -1281,6 +1292,28 @@ auto meansq_spread_of_vector(vector<double> array, int g, int c_x, int c_y){
 			}
 	}
 	return coord {sq_dist, sum};
+}
+
+void generic_SPBmean_surv_runs(D2Vec_Double &t_avg_var_rep_N, const D2Vec_Double &X_curr, int size, int spcolnum, int j)
+{
+	/** X_curr contains time-series data (indexed as (N(t), <rho(t)>x)) from the current surviving replicate (given by r) 
+	 * with a length (number of rows) "size", and spcolnum is the columns per species in X_curr (so X_curr will have spcolnum*SpB columns).
+	 *  rep_avg_var stores the time(t), running density average and variance of X_curr, as well as N(t) and number of survivng replicates 
+	 * for each time-step from previous surviving replicates ( <= r-1) respectively.
+	 * In this function, X_curr is used to update the running avg and variance of rep_avg_var to account for current surviving replicate r(t).
+	 * Note rep_avg_Var[t][3] stores number of surviving runs at t.
+	*/
+	for(int s=0; s < SpB; s++)
+	{
+		for(int i=0; i<size; i++)
+		{
+			// For each species s, save the values of X_curr in the corresponding columns of t_avg_var_rep_N, iterating using spcolnum.
+			for(int k = 0; k< spcolnum; k++)
+			{
+				t_avg_var_rep_N[i][spcolnum*s + k + 1] = X_curr[i][spcolnum*s + k];
+			}
+		}
+	}
 }
 
 void var_mean_incremental_surv_runs(D2Vec_Double &t_avg_var_rep_N, const D2Vec_Double &X_curr, int size, int j)
@@ -1385,6 +1418,47 @@ template<typename T>std::vector<double> lnspace(T start_in, T end_in, int log_po
        }
 	   logspaced.push_back(static_cast<double>(end_in));
   	   return logspaced;
+}
+
+/** Create a function switch_and_bait() that accepts a vector of any type, along with the following arguments:
+// 1. low: Lower bound of the range to be switched (default = 0).
+// 2. high: Upper bound of the range to be switched (default = 0).
+// 3. insert_type: Type of insertion (None, linspace, lnspace) (default = None).
+// 4. num_points: Number of points to be inserted (default = 50).
+// 5. erase: Boolean to determine if the original vals in the range corresponding to {low ,high} should be erased (default = false).
+// The function accepts a vector of any type, and if erase is true, it erases the elements in the range {low, high} and inserts the new elements based on insert_type.
+// If insert_type is None, the function only sorts and returns the vector. 
+// If insert_type is linspace, it inserts num_points linearly spaced points between low and high.
+// If insert_type is lnspace, it inserts num_points logarithmically spaced points between low and high.
+// The function returns the sorted vector. */ 
+
+template<typename T>std::vector<T> switchsort_and_bait(std::vector<T> vals, T low /**= 0 */, T high /**= 0 */, 
+	int num_points /**= 50 */, string insert_type /** = "None" */,  bool erase /**= false*/)
+{
+	// Function to switch and bait elements in a vector.
+	if(erase)
+		vals.erase(std::remove_if(vals.begin(), vals.end(), [low, high](T x){return x >= low && x <= high;}), vals.end());
+	
+	// Next check if low < high, if not, swap the values.
+	if(low > high){
+		T temp = low; low = high; high = temp;
+	}
+	if(insert_type == "linspace")
+	{
+		std::vector<double> lin_spaced = linspace(low, high, num_points);
+		vals.insert(vals.end(), lin_spaced.begin(), lin_spaced.end());
+	}
+	else if(insert_type == "lnspace")
+	{
+		std::vector<double> log_spaced = lnspace(low, high, num_points);
+		vals.insert(vals.end(), log_spaced.begin(), log_spaced.end());
+	}
+	else
+		std::cout << "Invalid insert_type. Sorting and returning original vector. \n";
+	
+	std::sort(vals.begin(), vals.end());
+	vals.erase(unique( vals.begin(), vals.end() ), vals.end()); //Remove duplicates if any.
+	return vals;
 }
 
 std::vector<double> logarithmic_time_bins(double t_max, double dt)
@@ -2801,10 +2875,280 @@ void save_frame(D2Vec_Double &Rho_t, const string &parendir, const string &filen
 	
 }
 
-// A wrapper function to save the files for each thread, called from the main simulation loop in rietkerk_Dornic_2D_MultiSp()
-int save_fileswrapper(int index, int tot_iter, int j, int thrID,  double t, double dt, double dx, D2Vec_Double &Rho_dt, D2Vec_Double &DRho, D2Vec_Double &Rho_M, 
-	D2Vec_Double &rho_rep_avg_var, vector<double> &t_meas, double t_max, double a, double c, double gmax, double alpha, double rW, double W0, double (&D)[Sp], double (&v)[SpB], 
+
+void save_framefileswrapper(int index, int tot_iter, int j, int thrID,  double t, double dt, double dx, D2Vec_Double &Rho_dt, D2Vec_Double &DRho,
+	D2Vec_Double &rho_rep_avg_var, vector<double> &t_meas, D2Vec_Double &gamma, D2Vec_Pair_Double &v_eff, double t_max, 
+	double a, double c, double gmax, double alpha, double rW, double W0, double (&D)[Sp], double (&v)[SpB], 
 	double (&K)[3], double sigma[], double a_st, double a_end, double a_c, double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], 
+    double dP, int r, int g, double Gstar /* =-1.*/, double Vstar /* = -1.*/)
+{
+	// FRAME SAVING
+	if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 50000 && t <= 150000 || t >= 50 && t <= 15000 
+		|| t== 0)
+	{
+		//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
+		
+		stringstream L, tm ,d3, p1, rini, gm, a1, a2, Dm0, Dm1, Dm2, alph, w0t, aij, hij, dix, dimitri, sig0, sig1, geq, veq, thr_ID;
+
+		L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; dix << setprecision(2) << dx;
+		rini << j; Dm0 << D[0]*pow(10.0, 7.0); Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2]; thr_ID << thrID; 
+		a1 << a_st; a2  << a_end; sig0 << sigma[0]; sig1 << sigma[1]; dimitri  << dP; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
+		//gm << setprecision(3) << gmax; w0t << setprecision(3) << W0; alph << setprecision(3) << alpha; aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1]; 
+		// Three replicates are over.
+
+		string parendir = "";
+
+		// Creating a file instance called output to store output data as CSV.
+		if(Gstar != -1)
+			parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
+		else if(Vstar != -1)
+			parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str();
+		else
+			parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
+		
+		string filenamePattern = frame_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str()
+		+ "_a_" + p1.str()  + "_D1_"+ Dm1.str() + "_jID_"+ thr_ID.str() + "_dx_"+ dix.str() + "_R_";
+		//Next, designate the naive filename
+		string filename = filenamePattern + rini.str() + ".csv";
+
+		#if SPB > 1
+			string gammafilenamePattern = gamma_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() 
+			+ "_a_" + p1.str()  + "_D1_"+ Dm1.str() + "_jID_"+ thr_ID.str() + "_dx_"+ dix.str() + "_R_";
+		#endif
+		
+		/** // SAVE ALL FRAMES
+		save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+		#if SPB > 1 // Save gamma frames.
+			save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
+		#endif
+		stringstream m3;
+		m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
+		cout << m3.str();
+		// */
+		
+
+		// SAVE SELECTED FRAMES
+		/** FRAME SAVING STRATEGY FOR LOW DT (DT ~ 0.01)
+		if(t < 250)
+		{
+			//Only save one in 4 frames here.
+			if(index%4 ==0 || t== 0)
+			{
+				save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+				#if SPB > 1 // Save gamma frames.
+					save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
+				#endif
+				stringstream m3;
+				m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
+				cout << m3.str(); 
+			}
+		}
+		else if(t >= 250 && t < 600)
+		{	//Only save one in two frames here.
+			if(index%2 ==0)
+			{
+				save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+				#if SPB > 1 // Save gamma frames.
+					save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
+				#endif
+				stringstream m3;
+				m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
+				cout << m3.str(); 
+			}
+		} //*/
+
+		/** PREVIOUS FRAME SAVING STRATEGY (DT ~ 0.1)
+		if(t < 760)
+		{
+			//Only save one in three frames here.
+			if(index%3 ==2 || t== 0)
+			{
+				save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+				#if SPB > 1 // Save gamma frames.
+					save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
+				#endif
+				stringstream m3;
+				m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
+				cout << m3.str();
+			}
+		}
+		else if(t >= 760 && t < 6000)
+		{	//Only save one in two frames here.
+			if(index%2 ==0)
+			{
+				save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+				#if SPB > 1 // Save gamma frames.
+					save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
+				#endif
+
+				stringstream m3;
+				m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
+				cout << m3.str(); 
+			}
+		}//*/
+
+		///** FRAME SAVING STRATEGY FOR DT WITH FRAME_MEAS WITH LINEAR WINDOWS
+		if(t > 1500 && t < 6000)
+		{	//Only save one in two frames here.
+			if(index%2 ==0)
+			{
+				save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+				#if SPB > 1 // Save gamma frames.
+					save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
+				#endif
+
+				stringstream m3;
+				m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
+				cout << m3.str(); 
+			}
+		}
+		else
+		{
+			//Save all frames here.
+			save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+			#if SPB > 1 // Save gamma frames.
+				save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
+			#endif
+			stringstream m3;
+			m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
+			cout << m3.str(); 
+		}
+		//*/
+		
+	}
+	//
+}
+
+// A wrapper function to save the prelim files for each thread, called from the main simulation loop in rietkerk_Dornic_2D_MultiSp()
+// Also saves future prelim files if vegetation extinction is detected.
+int save_prelimfileswrapper(int index, int tot_iter, int j, int thrID,  double t, double dt, double dx, D2Vec_Double &Rho_dt, D2Vec_Double &DRho, D2Vec_Double &Rho_M, D2Vec_Double &Rho_Mov,
+	D2Vec_Double &rho_rep_avg_var, vector<double> &t_meas, D2Vec_Double &gamma, D2Vec_Pair_Double &v_eff, double t_max, 
+	double a, double c, double gmax, double alpha, double rW, double W0, double (&D)[Sp], double (&v)[SpB], 
+	double (&K)[3], double sigma[], double a_st, double a_end, double a_c, double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], 
+    double dP, int r, int g, double Gstar /* =-1.*/, double Vstar /* = -1.*/)
+{
+
+	// BLOCK FOR CALCULATING AND TEMP PRELIMINARY FRAMES
+	if( index == int(tot_iter*0.85) || index == int(tot_iter*0.9) || index == int(tot_iter*0.95) || index == int(tot_iter-1))
+	{
+		// In this case, copy the first "index" rows of rho_rep_avg_var to a new 2D vector, update the values using var_mean_incremental_surv_runs()
+		// and save to file.
+		D2Vec_Double rho_rep_avg_var_temp(index+1, vector<double> (Sp4_1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+		//std::copy(rho_rep_avg_var.begin(), rho_rep_avg_var.begin() + index, rho_rep_avg_var_temp.begin());
+		var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index+1, 0);
+
+		#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
+			D2Vec_Double gamma_mov_avg_temp(index+1, vector<double> (int(Rho_Mov[0].size()) + 1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+			// Get cols_per_sp by dividing the number of columns in Rho_Mov by the number of species (SpB).
+			int cols_per_sp = int(Rho_Mov[0].size()/SpB);
+			generic_SPBmean_surv_runs(gamma_mov_avg_temp, Rho_Mov, index+1, cols_per_sp, 0);
+			//Time is stored in the first column.
+			for(int i=0; i < index+1; i++)
+				gamma_mov_avg_temp[i][0] = t_meas[i];
+
+		#endif
+
+
+		//Time is stored in the first column.
+		for(int i=0; i < index+1; i++)
+			rho_rep_avg_var_temp[i][0] = t_meas[i];
+
+		//Finally save to file.
+		stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, geq, veq, jID; // cgm, sig0;
+		a1 << a_st; a2 << a_end;
+		L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(5) << a; dimitri << dP; jID << thrID;
+		rini << j; Dm << setprecision(4) << D[2]; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
+
+		string parendir= "";
+		if(Gstar != -1)
+			parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str() + "/TimeSeries";
+		else if(Vstar != -1)
+			parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str() + "/TimeSeries";
+		else
+			parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/TimeSeries";
+
+		//double ran_jid = (unif(rng)*1000.0)/1000.0; jID << ran_jid; // Random number between 0 and 1.
+		
+		string filenamePattern = replicate_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+		"_jID_"+ jID.str() + "_R_";
+
+		save_prelimframe(rho_rep_avg_var_temp, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
+
+		#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
+		string filenamePattern_mov = movement_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+		"_jID_"+ jID.str() + "_R_";
+		save_prelimframe(gamma_mov_avg_temp, parendir, filenamePattern_mov, a, a_st, a_end, t, dt, dx, dP, j, g, movmheader, false, false);
+		#endif
+
+		
+
+		// Check if no vegetation is left at this current index. If so, break out of the while loop.
+		if( Rho_M[index][0] == 0.0)
+		{
+			stringstream m3_1;
+			m3_1 << "RUN-TIME WARNING: ZERO Active VEG sites for TIME [t, a, thr, j]\t" 
+			<< t << " , " << a << " , " << omp_get_thread_num()  << " , " << j << " Skipping to next replicate .... \n"; 
+			cout << m3_1.str(); cerr << m3_1.str();
+
+			//Next save future preliminary frames with 0.0 values for population densities after this time point.
+			int index_prelim_range[4] = {int(tot_iter*0.85), int(tot_iter*0.9), int(tot_iter*0.95), int(tot_iter-1)};
+			int iter_index =0;
+			for(int iter_index =0; iter_index < 4; iter_index++)
+			{	
+				int new_index = index_prelim_range[iter_index];
+				if( index > new_index)
+					continue; //Skip to next iteration if index is greater than the current range.
+				// In this case, copy the first "index" rows of rho_rep_avg_var to a new 2D vector, update the values using var_mean_incremental_surv_runs()
+				// and save to file.
+				D2Vec_Double rho_rep_avg_var_future_temp(new_index+1, vector<double> (Sp4_1, 0.0)); 
+				//Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+				var_mean_incremental_surv_runs(rho_rep_avg_var_future_temp, Rho_M, new_index+1, 0);
+				stringstream tm_future; tm_future << t_meas[new_index]; // Time at which the frame is saved.
+
+				//Time is stored in the first column.
+				for(int i=0; i < new_index+1; i++)
+					rho_rep_avg_var_future_temp[i][0] = t_meas[i];
+
+				string filenamePattern_future = replicate_prefix + L.str() + "_T_" + tm_future.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+				"_jID_"+ jID.str() + "_R_";
+
+				//Finally save to file.
+				save_prelimframe(rho_rep_avg_var_future_temp, parendir, filenamePattern_future, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
+
+				#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
+					D2Vec_Double gamma_mov_avg_future_temp(new_index+1, vector<double> (int(Rho_Mov[0].size()) + 1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+					// Get cols_per_sp by dividing the number of columns in Rho_Mov by the number of species (SpB).
+					int cols_per_sp = int(Rho_Mov[0].size()/SpB);
+					generic_SPBmean_surv_runs(gamma_mov_avg_future_temp, Rho_Mov, new_index+1, cols_per_sp, 0);
+					//Time is stored in the first column.
+					for(int i=0; i < new_index+1; i++)
+						gamma_mov_avg_future_temp[i][0] = t_meas[i];
+
+					string filenamePattern_mov_future = movement_prefix + L.str() + "_T_" + tm_future.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+					"_jID_"+ jID.str() + "_R_";
+					save_prelimframe(gamma_mov_avg_future_temp, parendir, filenamePattern_mov_future, a, a_st, a_end, t, dt, dx, dP, j, g, movmheader, false, false);
+					vector<vector<double>>().swap(gamma_mov_avg_future_temp); //Flush temp out of memory.
+				#endif
+
+				vector<vector<double>>().swap(rho_rep_avg_var_future_temp); //Flush temp out of memory.
+			}
+			return 1; //Indicate that the current replicate has no vegetation left at this time point (and break out of the while loop).
+		}
+
+		vector<vector<double>>().swap(rho_rep_avg_var_temp); //Flush temp out of memory.
+	} 
+	// */
+
+	return 0;
+
+
+}
+
+
+// A wrapper function to save the files for each thread, called from the main simulation loop in rietkerk_Dornic_2D_MultiSp()
+int save_fileswrapper(int index, int tot_iter, int j, int thrID,  double t, double dt, double dx, D2Vec_Double &Rho_dt, D2Vec_Double &DRho, D2Vec_Double &Rho_M, D2Vec_Double &Rho_Mov, 
+	D2Vec_Double &rho_rep_avg_var, vector<double> &t_meas, D2Vec_Double &gamma, D2Vec_Pair_Double &v_eff, double t_max, double a, double c, double gmax, double alpha, double rW, double W0, 
+	double (&D)[Sp], double (&v)[SpB], double (&K)[3], double sigma[], double a_st, double a_end, double a_c, double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], 
     double dP, int r, int g, double Gstar /* =-1.*/, double Vstar /* = -1.*/)
 {
 
@@ -2917,6 +3261,17 @@ int save_fileswrapper(int index, int tot_iter, int j, int thrID,  double t, doub
 		//std::copy(rho_rep_avg_var.begin(), rho_rep_avg_var.begin() + index, rho_rep_avg_var_temp.begin());
 		var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index+1, 0);
 
+		#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
+		D2Vec_Double gamma_mov_avg_temp(index+1, vector<double> (int(Rho_Mov[0].size()) + 1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+		// Get cols_per_sp by dividing the number of columns in Rho_Mov by the number of species (SpB).
+		int cols_per_sp = int(Rho_Mov[0].size()/SpB);
+		generic_SPBmean_surv_runs(gamma_mov_avg_temp, Rho_Mov, index+1, cols_per_sp, 0);
+
+		//Time is stored in the first column.
+		for(int i=0; i < index+1; i++)
+			gamma_mov_avg_temp[i][0] = t_meas[i];
+
+		#endif
 		//Time is stored in the first column.
 		for(int i=0; i < index+1; i++)
 			rho_rep_avg_var_temp[i][0] = t_meas[i];
@@ -2938,9 +3293,15 @@ int save_fileswrapper(int index, int tot_iter, int j, int thrID,  double t, doub
 		//double ran_jid = (unif(rng)*1000.0)/1000.0; jID << ran_jid; // Random number between 0 and 1.
 		
 		string filenamePattern = replicate_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
-		"_D2_"+ Dm.str() + "_R_";
+		"_jID_"+ jID.str() + "_R_";
 
 		save_prelimframe(rho_rep_avg_var_temp, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
+
+		#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
+		string filenamePattern_mov = movement_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+		"_jID_"+ jID.str() + "_R_";
+		save_prelimframe(gamma_mov_avg_temp, parendir, filenamePattern_mov, a, a_st, a_end, t, dt, dx, dP, j, g, movmheader, false, false);
+		#endif
 		
 
 		// Check if no vegetation is left at this current index. If so, break out of the while loop.
@@ -2976,6 +3337,21 @@ int save_fileswrapper(int index, int tot_iter, int j, int thrID,  double t, doub
 				//Finally save to file.
 				save_prelimframe(rho_rep_avg_var_future_temp, parendir, filenamePattern_future, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
 				vector<vector<double>>().swap(rho_rep_avg_var_future_temp); //Flush temp out of memory.
+
+				#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
+					D2Vec_Double gamma_mov_avg_future_temp(new_index+1, vector<double> (int(Rho_Mov[0].size()) + 1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+					// Get cols_per_sp by dividing the number of columns in Rho_Mov by the number of species (SpB).
+					int cols_per_sp = int(Rho_Mov[0].size()/SpB);
+					generic_SPBmean_surv_runs(gamma_mov_avg_future_temp, Rho_Mov, new_index+1, cols_per_sp, 0);
+					//Time is stored in the first column.
+					for(int i=0; i < new_index+1; i++)
+						gamma_mov_avg_future_temp[i][0] = t_meas[i];
+
+					string filenamePattern_mov_future = movement_prefix + L.str() + "_T_" + tm_future.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+					"_jID_"+ jID.str() + "_R_";
+					save_prelimframe(gamma_mov_avg_future_temp, parendir, filenamePattern_mov_future, a, a_st, a_end, t, dt, dx, dP, j, g, movmheader, false, false);
+					vector<vector<double>>().swap(gamma_mov_avg_future_temp); //Flush temp out of memory.
+				#endif
 			}
 			return 1; //Indicate that the current replicate has no vegetation left at this time point (and break out of the while loop).
 		}
@@ -3274,7 +3650,8 @@ void advdiff_FKE_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D2Vec_Doub
 				{
 					//int y = (q + g) % g;
 					int dy = std::abs(q - c_j);
-					Rho_tsar[s][i] += (gamma2_si)*Rho_t[s][i]*(gaussian_stencil_D[s][dx]*gaussian_stencil_D[s][dy]);
+					int i_new = ((p + g)%g)*g + (q + g)%g;
+					Rho_tsar[s][i_new] += (gamma2_si)*Rho_t[s][i]*(gaussian_stencil_D[s][dx]*gaussian_stencil_D[s][dy]);
 				}
 
 				// Next update C_t[][] using joint probability of advection and diffusion terms
@@ -3282,7 +3659,8 @@ void advdiff_FKE_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D2Vec_Doub
 				{
 					//int y = (q + g) % g;
 					int dy = std::abs(q - mu_y);
-					Rho_tsar[s][i] += (gamma[s][i] - gamma2_si)*Rho_t[s][i]*(gaussian_stencil_D[s][dx]*gaussian_stencil_VXY[s][dy]);
+					int i_new = ((p + g)%g)*g + (q + g)%g;
+					Rho_tsar[s][i_new] += (gamma[s][i] - gamma2_si)*Rho_t[s][i]*(gaussian_stencil_D[s][dx]*gaussian_stencil_VXY[s][dy]);
 				}
 			}
 			// Update C_t[][] for the advection term using the Gaussian stencil (plus other mixture term)
@@ -3294,14 +3672,16 @@ void advdiff_FKE_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D2Vec_Doub
 				{
 					//int y = (q + g) % g;
 					int dy = std::abs(q - c_j);
-					Rho_tsar[s][i] += (gamma[s][i] - gamma2_si)*Rho_t[s][i]*(gaussian_stencil_VXY[s][dx]*gaussian_stencil_D[s][dy]);
+					int i_new = ((p + g)%g)*g + (q + g)%g;
+					Rho_tsar[s][i_new] += (gamma[s][i] - gamma2_si)*Rho_t[s][i]*(gaussian_stencil_VXY[s][dx]*gaussian_stencil_D[s][dy]);
 				}
 				
 				for(int q = min_q_vy; q <= max_q_vy; ++q)
 				{
 					//int y = (q + g) % g;
 					int dy = std::abs(q - mu_y);
-					Rho_tsar[s][i] += (1-gamma[s][i])*(1-gamma[s][i])*Rho_t[s][i]*(gaussian_stencil_VXY[s][dx]*gaussian_stencil_VXY[s][dy]);
+					int i_new = ((p + g)%g)*g + (q + g)%g;
+					Rho_tsar[s][i_new] += (1-gamma[s][i])*(1-gamma[s][i])*Rho_t[s][i]*(gaussian_stencil_VXY[s][dx]*gaussian_stencil_VXY[s][dy]);
 				}
 			}
 
@@ -3447,6 +3827,8 @@ void rietkerk_DorFPE_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 	int tot_iter = t_meas.size(); // Stores total number of iterations (i.e. time steps logged) per replicate.
 	t_max = t_meas[t_meas.size() -1]; //Only compute until end of sampling events
 
+	int frame_tot_iter = frame_tmeas.size(); // Stores total number of iterations (i.e. time steps logged) for frame saving.
+
 	//double rho_rep_avg_var[tot_iter][Sp4_1] ={0.0}; 
 	D2Vec_Double rho_rep_avg_var(tot_iter, vector<double> (Sp4_1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively. rho_rep_avg_var[0][0] = 0;
 	//Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively. rho_rep_avg_var[0][0] = 0;
@@ -3531,12 +3913,12 @@ void rietkerk_DorFPE_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
     	D2Vec_Double K3(Sp, vector<double> (g*g, 0.0)); D2Vec_Double K4(Sp, vector<double> (g*g, 0.0));
 
 		D2Vec_Double Rho_M(tot_iter, vector<double> (Sp2, 0.0)); //Stores <rho>x values per time step for a single replicate.
-		//double Rho_M[tot_iter][Sp2] ={0.0}; //Stores <rho>x values per time step for a single replicate.
+		D2Vec_Double Rho_Mov(tot_iter, vector<double> (SpB4, 0.0)); //Stores averaged gamma and velocity values per time step for a single replicate.
 
 		double Rhox_avg[Sp] = {0.0}; double Rhox_num[Sp] = {0.0}; //Stores spatial average and number of occupied sites at given t.
 
 		//init_randbistableframe(Rho_dt, g*g, a, a_c,  perc, chigh, clow); // Returns a frame with random speckles of high and low density.
-
+		/** GENERIC EXPRTK INITIALISATIONS 
 		// MFT PERTURBATION BASED FRAME INITIALISATION
 		#if defined(INIT) && INIT == 0
 			// HOMOGENEOUS FRAME INITIALISATION
@@ -3561,7 +3943,7 @@ void rietkerk_DorFPE_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			// DEFAULT FRAME INITIALISATION (RANDOM MFT BASED SPECKLES)
 			init_exprtk_randbiMFTframe(Rho_dt, g*g, a, a_c, dP, perc, clow); // Returns a frame with random speckles of high and low density.
 		#endif
-
+		*/
 		/** OLD FRAME INITIALISATION FOR 3 SPB.
 		#if SPB == 3
 		// NOTE: clow[] is used to store the fractional change from MFT steady state for some species, corresponds to c_spread[] in init_exprtk_randbiMFTframe(...).
@@ -3569,7 +3951,7 @@ void rietkerk_DorFPE_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		#endif
 		// */
 
-		/** // GAUSSIAN FRAME INITIALISATION  
+		///**  GAUSSIAN FRAME INITIALISATION  
 		// Initialise vector <double> amp to elements of clow[].
 		vector <double> amp(Sp, 500.0);  //Setting amplitude of gaussian distributions of vegetation to 500.
 		for (int s=0; s< Sp; s++)
@@ -3608,7 +3990,7 @@ void rietkerk_DorFPE_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		thrID = (j == 0) ? int(round(unif(rng)*1000)) : thrID; //Random number between 0 and 1000.
 
 		double t=0; int index = 0;  //Initialise t
-		int iter_index=0; int po=1; int so =1; int lo=1; int counter =0;
+		int frame_index=0; int po=1; int so =1; int lo=1; int counter =0;
 		vector <std::pair<int, int>> dtV_counter(SpB, {0, 0}); 
 		//Keeps track of dtV[s] and counter%dtV[s] for each species s. Used to determine if species s is updated at time t.
 		// Note counter := t/dt, so counter%dtV[s] = 0 implies t%dtV[s] = 0.
@@ -3648,13 +4030,43 @@ void rietkerk_DorFPE_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					//    break; //Finish negotiations as all basal species are dead.
 				}
 
+				//Next store spatial average of gamma and velocity for each species at given t.
+				#if SPB > 1
+				double mov_avg, mov_var;
+				for(int s=1; s< SpB; s++)
+				{
+					vector <double> temp= {gamma[s].begin(),gamma[s].end()}; //gamma for species 's'
+					mov_avg = mean_of_vector(temp, g*g); //Finds spatial average of densities at given t.
+					mov_var = variance_of_vector(temp, g*g); //Finds spatial average of densities at given t.
+					//rhox_num = occupied_sites_of_vector(temp, g*g); //Finds number of occupied at given t.
+					Rho_Mov[index][4*s] = mov_avg; Rho_Mov[index][4*s +1] = mov_var; //Stores spatial average of gamma for species s at given t.
+					vector<double>().swap(temp); //Flush temp out of memory.0
+
+					// v_eff is a 2D vector of pairs of dim: SpBx(L*l), called v. Stores the velocity of each species at each site.
+					// Compute the spatial average of the velocity in the x and y directions for each species.
+					vector <double> temp_vx; //v_eff for species 's'
+					vector <double> temp_vy; //v_eff for species 's'
+					for (const auto& vel : v_eff[s]) 
+					{
+						temp_vx.push_back(vel.first); temp_vy.push_back(vel.second);
+					}
+					mov_avg = mean_of_vector(temp_vx, g*g); //Finds spatial average of densities at given t.
+					Rho_Mov[index][4*s +2] = mov_avg; //Stores spatial average of gamma for species s at given t.
+					
+					mov_avg = mean_of_vector(temp_vy, g*g); //Finds spatial average of densities at given t.
+					Rho_Mov[index][4*s +3] = mov_avg; //Stores spatial average of gamma for species s at given t.
+
+					vector<double>().swap(temp_vx); vector<double>().swap(temp_vy); //Flush temp out of memory.
+				}
+				#endif
+
 				vector <double> temp_alt= {DRho[0].begin(),DRho[0].end()}; //Rho_dt for species '0'
 				rhox_num = occupied_sites_of_vector(temp_alt, g*g); //Finds number of occupied at given t.
 				vector<double>().swap(temp_alt); //Flush temp out of memory.0
 
 				// Saving frames to file at given time points.
-				int break_flag = save_fileswrapper(index, tot_iter, j, thrID, t, dt, dx, Rho_dt, DRho, Rho_M, 
-					rho_rep_avg_var, t_meas, t_max, a, c, gmax, alpha, rW, W0, D, v, K, sigma, a_st, a_end, a_c, A,H,E,M, 
+				int break_flag = save_prelimfileswrapper(index, tot_iter, j, thrID, t, dt, dx, Rho_dt, DRho, Rho_M, Rho_Mov, rho_rep_avg_var,
+					t_meas, gamma, v_eff, t_max, a, c, gmax, alpha, rW, W0, D, v, K, sigma, a_st, a_end, a_c, A,H,E,M, 
     				dP, r, g, Gstar /* =-1.*/, Vstar /* = -1.*/);
 				if( break_flag == 1)
 					break; //Finish negotiations as all basal species are dead.
@@ -3673,6 +4085,15 @@ void rietkerk_DorFPE_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				<< " AND # Non-Zero in VEG DRho_0:  " << rhox_dt <<  "\n"; cout << m4_1.str();
 				 **/
 				//int counter_nzero_alpha=0;
+			}
+			// BASIC BOOK-KEEPING. Saves frame to file at given time points.
+			if(t == 0 || t >= frame_tmeas[frame_index] -dt/2.0 && t < frame_tmeas[frame_index] +dt/2.0)
+			{
+				// Saving frames to file at given time points.
+				save_framefileswrapper(frame_index, frame_tot_iter, j, thrID, t, dt, dx, Rho_dt, DRho, rho_rep_avg_var,
+					frame_tmeas, gamma, v_eff, t_max, a, c, gmax, alpha, rW, W0, D, v, K, sigma, a_st, a_end, a_c, A,H,E,M, 
+					dP, r, g, Gstar /* =-1.*/, Vstar /* = -1.*/);
+				frame_index+=1;
 			}
 
 			// First up, calculate gamma and v_eff for each species at each site.
@@ -3912,7 +4333,8 @@ void rietkerk_DorFPE_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			if(counter%50000 == 0) // STATUS UPDATE FOR GRAZER + PRED MOVEMENT INTEGRATION
 			{
 				stringstream m5_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
-				m5_1 << "STATUS UPDATE AT TIME [t, a, thr, j]\t" << t << " , " << a << " , " << omp_get_thread_num() << " , " << j << "\t GRAZER + PRED MOVEMENT INTEGRATION DONE, FOR " << prefix + "\n"; 
+				m5_1 << "STATUS UPDATE AT TIME [t, a, thr, j]\t" << t << " , " << a << " , " << omp_get_thread_num() << " , " << j 
+				<< "\t GRAZER + PRED MOVEMENT INTEGRATION DONE, FOR " << prefix + "\n"; 
 				cout << m5_1.str(); cerr << m5_1.str();
 			}
 			
@@ -3920,7 +4342,8 @@ void rietkerk_DorFPE_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			if(counter%200 == 0) // STATUS UPDATE FOR GRAZER + PRED MOVEMENT INTEGRATION
 			{
 				stringstream m5_1;     //To make cout thread-safe as well as non-garbled due to race conditions.
-				m5_1 << "STATUS UPDATE AT TIME [t, a, thr, j]\t" << t << " , " << a << " , " << omp_get_thread_num() << " , " << j << "\t GRAZER + PRED MOVEMENT INTEGRATION DONE, FOR " << prefix + "\n"; 
+				m5_1 << "STATUS UPDATE AT TIME [t, a, thr, j]\t" << t << " , " << a << " , " << omp_get_thread_num() << " , " << j 
+				<< "\t GRAZER + PRED MOVEMENT INTEGRATION DONE, FOR " << prefix + "\n"; 
 				cout << m5_1.str(); cerr << m5_1.str();
 			}
 			#endif
@@ -4278,13 +4701,44 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 
 	t_measure.erase( unique( t_measure.begin(), t_measure.end() ), t_measure.end() );
 
+	// Copy t_measure values to frame_tmeas [PRELIM AND FRAME TMEAS ARE THE SAME]
+	frame_tmeas = t_measure;
+
+	// Use switchsort_and_bait() to swap values in frame_tmeas b/w [50, 400] with linspace(50, 400, 8) 
+	// and [400, 1200] with linspace(400, 1200, 9).
+	frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 50, 400, 8, "linspace", true);
+	frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 400, 1200, 9, "linspace", true);
 
 
-  	cout << "Values in t_measure (which is of total size " << t_measure.size() << ") are :" <<endl;
-  	for (int i=0; i< t_measure.size(); i++)
-  	{
+	if(t_measure[t_measure.size()-1] > 90000)
+	{
+
+		// Remove all elements of frame_tmeas that lie between 50000 and 100000.
+		//frame_tmeas.erase(std::remove_if(frame_tmeas.begin(), frame_tmeas.end(), 
+		//[](double x){return (x > 50000.0 && x < 100000.0);}), frame_tmeas.end());
+		// Create linear window from 50000 to 100000, with 26 points (spaced 2500 apart).
+		vector <double> t_frame_linearwindow = linspace(50000, 100000, 26); 
+		// Rounded down to 1 decimal place.
+		// Insert the linear window to frame_tmeas vector after the element in frame_tmeas that is just less than the first element in t_frame_linearwindow.
+		auto it = std::upper_bound(frame_tmeas.begin(), frame_tmeas.end(), t_frame_linearwindow[0]);
+		frame_tmeas.insert(it, t_frame_linearwindow.begin(), t_frame_linearwindow.end());
+		// Sort the frame_tmeas vector in ascending order and remove duplicates (if any).
+		sort( frame_tmeas.begin(), frame_tmeas.end() );
+	}
+	// Remove all duplicate elements in frame_tmeas.
+	frame_tmeas.erase( unique( frame_tmeas.begin(), frame_tmeas.end() ), frame_tmeas.end() );
+
+	cout << "Values in t_measure (which is of total size " << t_measure.size() << ") are :" <<endl;
+	for (int i=0; i< t_measure.size(); i++)
+	{
 		cout << t_measure[i] << " ";
-  	} 	cout << endl;
+	} 	cout << endl;
+
+	cout << "Values in frame_tmeas (which is of total size " << frame_tmeas.size() << ") are :" <<endl;
+	for (int i=0; i< frame_tmeas.size(); i++)
+	{
+		cout << frame_tmeas[i] << " ";
+	} 	cout << endl;
 
 	int rd = std::random_device{}();
 	std::mt19937_64 rng; // initialize Mersennes' twister using rd to generate the seed

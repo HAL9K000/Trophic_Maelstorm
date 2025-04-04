@@ -198,11 +198,64 @@ def post_process(prefixes= []):
         prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(out_dir_noprefix, '*/'))]
     
     for pre in prefixes:
-        # Recursively navigate to each sub-directory within out_dir_noprefix/{pre} that contains files of the form "FRAME*.csv".
+
+        workdir = os.path.join(out_dir_noprefix, pre)
+        # Recursovely navigate to each sub-directory within out_dir_noprefix/{pre} that contains files of the form "MOVSERIES*.csv".
+        # These subdirectories may be immediate or nested. For each such non-empty nested sub-directory, use glob to find all files of the form "MOVSERIES*.csv".
+        # Pass this list of files to other functions for further processing.
+        all_valid_subdirpaths = [dir for dir, _, files in os.walk(workdir) if len(glob.glob(dir + "/MOVSERIES*.csv")) > 0]
+        for subdirpath in all_valid_subdirpaths:
+            files = glob.glob(subdirpath + "/MOVSERIES*.csv")
+
+            # FIRST, getting maximum replicate number (maxR) for each value of T in subdirpath.
+            # Read list of T values from TimeSeries_vals.txt in subdirpath (if it exists), else create it using the files.
+            T_vals = []
+            if os.path.exists(subdirpath + "/TimeSeries_vals.txt"):
+                with open(subdirpath + "/TimeSeries_vals.txt", "r") as f:
+                    lines = f.readlines()
+                    for line in lines:
+                        T_vals.append(float(line.strip()))
+                f.close()
+            else:
+                #Using find_vals to extract T values from files.
+                find_vals(files, [r'T_[\d]*[.][\d]+', r'T_[\d]+'], T_vals)
+                # Remove T_ from T_vals and sort them in ascending order.
+                T_vals = sorted([float(re.sub( "T_", "", v)) for v in T_vals])
+                # Only consider unique values of T.
+                T_vals =np.unique(T_vals)
+                # For each value of T, find Rmax of corresponding files in files.
+            for t in T_vals:
+                t = int(t) if float(t).is_integer() else t
+                selectedfiles = glob.glob(subdirpath + "/MOVSERIES*_T_" + str(t) + "*.csv")
+
+                # Using find_vals to extract R values from files.
+                movmaxR = max([int(re.findall(r'[\d]+' , f)[-1]) for f in selectedfiles])
+
+                # Save movmaxR to a file in subdirpath.
+                try:
+                    with open(subdirpath + "/movmaxR_T_" + str(t) + ".txt", "w") as f:
+                        f.write(str(movmaxR+1))
+                    f.close()
+                except Exception as e:
+                    print("Error: Could not write movmaxR to */" + os.path.basename(subdirpath) 
+                            + "/movmaxR_T_" + str(t) + ".txt with error message: \n" + str(e))
+                
+                # Elementwise average, variance and surviving runs for each value of T in subdirpath using gen_MEAN_INDVL_Prelimsfiledata()
+                df_avgtimeseries = gen_MEAN_INDVL_Prelimsfiledata(selectedfiles, subdirpath, "csv", tmax =t, dt= dt, include_col_labels= ["t", "<GAM[P(x; t)]>_x", "<vx[P(x; t)]>_x", "<vy[P(x; t)]>_x",
+                                "<GAM[G(x; t)]>_x", "<vx[G(x; t)]>_x", "<vy[G(x; t)]>_x", "<GAM[Pr(x; t)]>_x", "<vx[Pr(x; t)]>_x", "<vy[Pr(x; t)]>_x"] , 
+                                handle_nonstandardtime_fileconflicts= "interpolate")
+                try:
+                    if df_avgtimeseries is not None:
+                        df_avgtimeseries.to_csv(subdirpath + f"/MEAN_MOVSERIES_T_{t}.csv", index=False, header=True)
+                except Exception as e:
+                    print("Error: Could not write MEAN_MOVSERIES to " + subdirpath + f"/MEAN_MOVSERIES_T_{t}.csv with error message: \n" + str(e))
+        print(f"Done post-processing MOVSERIES for prefix: {pre}...")
+        # NOW DEALING WITH TSERIES FILES.
+        # Recursively navigate to each sub-directory within out_dir_noprefix/{pre} that contains files of the form "TSERIES*.csv".
         # These subdirectories may be immediate or nested.
         # For each such non-empty nested sub-directory, use glob to find all files of the form "TSERIES*.csv".
         # Pass this list of files to other functions for further processing.
-        workdir = os.path.join(out_dir_noprefix, pre)
+        
         all_valid_subdirpaths = [dir for dir, _, files in os.walk(workdir) if len(glob.glob(dir + "/TSERIES*.csv")) > 0]
         for subdirpath in all_valid_subdirpaths:
             files = glob.glob(subdirpath + "/TSERIES*.csv")
@@ -255,9 +308,9 @@ def post_process(prefixes= []):
                         df_avgtimeseries.to_csv(subdirpath + f"/MEAN_TSERIES_T_{t}.csv", index=False, header=True)
                 except Exception as e:
                     print("Error: Could not write MEAN_TSERIES to " + subdirpath + f"/MEAN_TSERIES_T_{t}.csv with error message: \n" + str(e))
-            
-        print(f"Done post-processing for prefix: {pre}...")
-
+        print("\n=====================================================================================================\n") 
+        print(f"Done post-processing all prelims for prefix: {pre}...")
+        print("\n=====================================================================================================\n")
 
 
 def main():
@@ -309,7 +362,7 @@ def main():
 
             for sub in subdir:
                 #Get all files in subdirectory Timeseries that begin with the above, but not e.
-                files = glob.glob(sub + "/TimeSeries/PRELIM_TSERIES_*_G_" + str(g) + "_T_*.csv")
+                files = glob.glob(sub + "/TimeSeries/PRELIM_*_G_" + str(g) + "_T_*.csv")
                 #Find all unique values of a_val in files (in ascending order) (using regex with finding "a_{a_val}" and then removing a_).
                 a_vals = []
                 find_vals(files, [r'a_[\d]*[.][\d]+', r'a_[\d]+'], a_vals)
@@ -367,7 +420,7 @@ def main():
 
                     for t in t_range:
                         #Get all files in parent directory that begin with the above (but not subdirectories).
-                        selectedfiles = glob.glob(sub + "/TimeSeries/PRELIM_TSERIES*_G_" + str(g) + "_T_" + str(t) +"*_a_" + str(a) + "_*.csv")
+                        selectedfiles = glob.glob(sub + "/TimeSeries/PRELIM_*_G_" + str(g) + "_T_" + str(t) +"*_a_" + str(a) + "_*.csv")
                         t_subdir = outdir
                         # Recursively create t_subdir (and parent directories) if it doesn't exist.
                         #Path(t_subdir).mkdir(parents=True, exist_ok=True)
@@ -385,16 +438,10 @@ def main():
 
                             # First extract T, a_val, R from source_filename.
                             T = t; a_val = a; R = int(re.findall(r'[\d]+' , source_filename)[-1])
-                            # Find filetype of source_filename, which are the characters before the first "_"
+                            # Find filetype of source_filename, which are the characters between the first and second underscore.
                             filetype = source_filename.split("_")[1]
                             # Now create new filename.
                             out_filename = filetype + "_T_" + str(T) + "_a_" + str(a_val) + "_R_" + str(R) + ".csv"
-                            '''
-                            if re.search("GAMMA", source_filename):
-                                out_filename = "GAMMA_T_%g_a_%g" %(T, a_val) + "_R_" + str(R) + ".csv"
-                            else:
-                                out_filename = "FRAME_T_%g_a_%g" %(T, a_val) + "_R_" + str(R) + ".csv"
-                            '''
                             outfile = t_subdir + out_filename
                             #Check if outfile already exists.
                             #fd_source = os.open(source_file, os.O_RDONLY);

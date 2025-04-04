@@ -16,13 +16,13 @@ int main(int argc, char *argv[])
   double a_start, a_end; double r; double dP; // Kick for high initial state
   int g, div;
 
-  //c= 10; d =0.25; gmax= 0.05; alpha =0.2; W0= 0.2; rW = 0.2; // From Bonachela et al 2015
-  /**
-  dx= 0.2 ; //From Bonachela et al 2015 (in m)
-  d0 = 0.001; d1=0; d2 = 0.001; d3= 0.1; //From Bonachela et al 2015 (in m^2/day)
-  k0= 0; k1 = 5; k2 =5;
-  s0 = sqrt(0.025); // ~ D/(dx)^2 (in g^{0.5}/(m day))
-  */
+  dx= 0.1 ; //From Bonachela et al 2015 (in km)
+  double mGrazer; double mPredator; // Mass of grazer and predator in kg.
+  // ASSUMING MASS OF  GRAZER = 20 kg, MASS OF PREDATOR = 100 kg.
+  mGrazer = 20; mPredator = 100;
+  // ASSUMING MASS OF  GRAZER = 1 g, MASS OF PREDATOR = 0.15 kg. 
+  //(FOR DESERT LOCUST CASE, WITH GRAZER = 1g, PREDATOR (COMMON KERNEL) = 0.15 kg [Mullie et al 2021 10.1371/journal.pone.0244733])
+  //mGrazer = 0.001; mPredator = 0.15;
 
   // Using units of mass = kg, length = km, time = hr.
   // ASSUMING MASS OF  GRAZER = 20 kg, MASS OF PREDATOR = 100 kg.
@@ -51,17 +51,17 @@ int main(int argc, char *argv[])
   double mj_scale, aij_scale, mm_scale, ajm_scale; // Scaling factors for the mass and attack rate of the grazer.
   mj_scale = 1.0; aij_scale = 1.0; mm_scale = 1.0; ajm_scale = 1.0;
   
-  aij = 3.6*pow(10.0, -6.08)*pow(20.0, -0.37); // in km^2/(hr kg)
+  aij = 3.6*pow(10.0, -6.08)*pow(mGrazer, -0.37); // in km^2/(hr kg)
   hij = 1; // Handling time in hrs
-  ej =0.45; mj = 0.061609*pow(20.0, -0.25)/8760.0; // Mortality rate in hr^{-1}
+  ej =0.45; mj = 0.061609*pow(mGrazer, -0.25)/8760.0; // Mortality rate in hr^{-1}
   //Predator of mass 100 kg.
-  ajm = 3.6*pow(10.0, -6.08)*pow(100.0, -0.37); // in km^2/(hr kg)
+  ajm = 3.6*pow(10.0, -6.08)*pow(mPredator, -0.37); // in km^2/(hr kg)
   hjm = 1; // Handling time in hrs
-  em =0.85; mm = 0.061609*pow(100.0, -0.25)/8760.0; // Mortality rate in hr^{-1}
+  em =0.85; mm = 0.061609*pow(mPredator, -0.25)/8760.0; // Mortality rate in hr^{-1}
 
   
 
-  double Km = pow(10.0, 1.22)*pow(100.0, -0.31); // Carrying capacity of predator in kg/km^2s
+  double Km = pow(10.0, 1.22)*pow(mPredator, -0.31); // Carrying capacity of predator in kg/km^2s
 
   //double Gstar = mm/((em -mm*hjm)*ajm); //Steady state for grazer.
   double H[SpB][SpB] ={{0, hij, 0}, 
@@ -70,7 +70,7 @@ int main(int argc, char *argv[])
   double A[SpB][SpB] ={{0, aij, 0}, 
                       {aij, 0.0, ajm}, 
                       {0, ajm, 0}};  // Attack rate matrix []. No canabilism, symmetric effects. 
-  double M[SpB] = {d, mj, mm};     // Mortality Rate of Species. (in hr^{-1})
+  double M[SpB] = {0.0, mj, mm};     // Mortality Rate of Species. (in hr^{-1})
   double E[SpB] ={1.0, ej, em}; //Efficiency of consumption.
   //double D[Sp] ={d0, d1}; //Diffusion coefficients for species. (in km^2/hr)
   double pR[Sp] ={0.0, 1.04285/2.0, 1.25536/2.0}; //Perception radius of species (in km)
@@ -201,7 +201,7 @@ int main(int argc, char *argv[])
   }
   //Defining the save folders.
   
-  set_Prefix(preFIX); //Set the prefix (and thus save folders) to the user-defined prefix.
+  set_Prefix(preFIX, mGrazer, mPredator); //Set the prefix (and thus save folders) to the user-defined prefix.
   cout << "Save directory for frames: " << frame_folder << "\n";
   cout << "Save directory for preliminary data: " << prelim_folder << "\n";
   cout << "Save directory for final data: " << stat_prefix << "\n";

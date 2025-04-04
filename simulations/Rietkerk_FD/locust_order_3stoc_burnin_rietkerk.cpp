@@ -100,7 +100,7 @@ int main(int argc, char *argv[])
   double D[Sp] ={d0, d1, d2, d3, d4}; //Diffusion coefficients for species.
   double K[3] ={k0, k1, k2}; //Diffusion coefficients for species.
   double sigma[Sp] ={s0, s1, s2, 0, 0}; //Demographic stochasticity coefficients for species.
-  double v[Sp] ={0, v1, v2, 0, 0}; //Velocity of species.
+  double v[SpB] ={0, v1, v2}; //Velocity of species.
 
   /**
 

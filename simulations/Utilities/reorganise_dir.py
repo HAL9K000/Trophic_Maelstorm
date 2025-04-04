@@ -183,6 +183,64 @@ def set_frames_input():
         print("indx_vals_t: " + str(indx_vals_t))
         
         return
+    
+""" # Summary of the function post_process_gamma(...)
+# A wrapper function that post-processes the data files in out_dir_noprefix, after the main() function has been executed.
+# Identical to post_process(...) (SEE BELOW), but only processes files with the prefix "GAMMA".
+"""
+def post_process_gamma(prefixes= []):
+    #Assigning prefixes to all subdirectories in out_dir_noprefix if prefixes is empty.
+    if len(prefixes) == 0:
+        prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(out_dir_noprefix, '*/'))]
+
+    for pre in prefixes:
+        # Recursively navigate to each sub-directory within out_dir_noprefix/{pre} that contains files of the form "GAMMA*.csv".
+        # These subdirectories may be immediate or nested.
+        # For each such non-empty nested sub-directory, use glob to find all files of the form "GAMMA*.csv".
+        # Pass this list of files to other functions for further processing.
+        workdir = os.path.join(out_dir_noprefix, pre)
+        all_valid_subdirpaths = [dir for dir, _, files in os.walk(workdir) if len(glob.glob(dir + "/GAMMA*.csv")) > 0]
+        for subdirpath in all_valid_subdirpaths:
+            files = glob.glob(subdirpath + "/GAMMA*.csv")
+            # Now pass this list of files to other functions for further processing.
+            
+            #If no files are found, skip the subdirectory.
+            if len(files) == 0:
+                continue
+
+            # Find max R in gamma files.
+            Rvals=[]; find_vals(files, ["R_[\d]+"], Rvals)
+            # Assumes R is an integer and files are of the form "GAMMA_T_{T}_a_{a_val}_R_{R}.csv"
+            maxR = max([int(re.sub("R_", "", r)) for r in Rvals])
+            # Save maxR+1 to a text file "gammaxR.txt" in subdirpath, overwriting the file if it already exists.
+            try:
+                with open(subdirpath + "/gammaxR.txt", "w") as f:
+                    f.write(str(maxR + 1))
+                f.close()
+            except Exception as e:
+                print("Error: Could not write gammaxR to */" + os.path.basename(subdirpath) + "/gammaxR.txt with error message: \n" + str(e))
+
+            '''# Find potential well data in files using gen_potential_well_data.
+            # Save the potential well data to a csv file in subdirpath/Pot_Well.
+            # If evaluate_local_minima is True, also save the local minima data to a csv file in subdirpath/Gamma_Pot_Well.
+            '''
+            df_kde, df_local_minima = gen_potential_well_data(files, pathtodir=subdirpath, ext="csv",
+                    exclude_col_labels= ["a_c", "x", "L"], Tmin = 50000, evaluate_local_minima= True, bins =100)
+            Path(subdirpath + "/Gamma_Pot_Well").mkdir(parents=True, exist_ok=True)
+            try:
+                if df_kde is not None:
+                    df_kde.to_csv(subdirpath + "/Gamma_Pot_Well/Pot_Well.csv", sep=",", index=False, header=True)
+                if df_local_minima is not None:
+                    df_local_minima.to_csv(subdirpath + "/Gamma_Pot_Well/LOCAL_MINIMA.csv", sep=",", index=False, header=True)
+            except Exception as e:
+                print("Error: Could not write potential well data to " + subdirpath + "/Gamma_Pot_Well/Pot_Well.csv with error message: \n" + str(e))
+            #'''
+
+        # Done with all subdirectories in out_dir_noprefix/{pre} that contain files of the form "FRAME*.csv".
+        print(f"\nDone post-processing GAMMA for prefix: {pre}... \n")
+
+
+
 
 
 
@@ -292,7 +350,7 @@ def post_process(prefixes= []):
             #'''  
         # Done with all subdirectories in out_dir_noprefix/{pre} that contain files of the form "FRAME*.csv".
         print("\n=====================================================================================================\n")
-        print(f"Done post-processing for prefix: {pre}...")
+        print(f"Done post-processing FRAMES for prefix: {pre}...")
         print("\n=====================================================================================================\n")
             
 
@@ -455,12 +513,12 @@ def main():
                                 filetype = source_filename.split("_")[0]
                                 # Now create new filename.
                                 out_filename = filetype + "_T_" + str(T) + "_a_" + str(a_val) + "_R_" + str(R) + ".csv"
-                                '''
+                                #'''
                                 if re.search("GAMMA", source_filename):
                                     out_filename = "GAMMA_T_%g_a_%g" %(T, a_val) + "_R_" + str(R) + ".csv"
                                 else:
                                     out_filename = "FRAME_T_%g_a_%g" %(T, a_val) + "_R_" + str(R) + ".csv"
-                                '''
+                                #'''
                                 outfile = t_subdir + out_filename
                                 #Check if outfile already exists.
                                 #fd_source = os.open(source_file, os.O_RDONLY);
@@ -549,6 +607,8 @@ def main():
 set_frames_input()
 #main()
 post_process(prefixes)
+post_process_gamma(prefixes)
+#post_process_gamma(prefixes)
 #dir = "\\\\?\\D:\\cygwin64\\home\\koust\\Code\\Trophic_Maelstorm\\simulations\\Data\\Remote\\Rietkerk\\Frames\\Stochastic\\3Sp\\DDM_DiC_BURNIN_0.025-0.065_dP_30000_Geq_4.802";
 #rename(dir, "_RANDDDMDiCBURNIN_ThreeSp_P_c_DP", "")
 

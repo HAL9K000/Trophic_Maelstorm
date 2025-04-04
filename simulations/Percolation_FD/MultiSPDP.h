@@ -66,6 +66,9 @@ inline const int SpB = Sp; //Number of biota species in the system.
 inline const int Sp_NV = Sp-1; //Number of grazer and predator species in system.
 inline const int Sp4_1 = 4*(Sp) +1; // Used for generating statistics on surviving runs
 inline const int Sp2 = 2*Sp; // Used for generating statistics on surviving runs
+inline const int SpB2 = 2*SpB; // Used for generating statistics on surviving runs
+inline const int SpB3 = 3*SpB; // Used for generating statistics on surviving runs
+inline const int SpB4 = 4*SpB; // Used for generating statistics on surviving runs
 
 // Global user-defined parameters for the Rietkerk model.
 inline double dt2 /** = dt/2.0*/; inline double dt6 /** = dt/6.0*/;
@@ -86,6 +89,7 @@ inline const string frame_prefix = "/FRAME_P_c_DP_G_"; //Prefix for frame files.
 inline const string gamma_prefix = "/GAMMA_G_"; //Prefix for gamma files.
 inline const string prelim_prefix = "/PRELIM_AGGRAND_P_c_ID_"; //Prefix for preliminary data files.
 inline const string replicate_prefix = "/PRELIM_TSERIES_P_c_DP_G_"; //Prefix for replicate time-series data files.
+inline const string movement_prefix = "/PRELIM_MOVSERIES_P_c_DP_G_"; //Prefix for movement time-series data files.
 
 inline const string input_prefix = "/FRAME_T_"; //Prefix for input files.
 inline string stat_prefix = "../Data/DP/Stochastic/"+ std::to_string(SpB) +"Sp/1stCC_"  + prefix + "_P_c_G_";
@@ -105,7 +109,7 @@ inline std::map<string, string> input_keys = { {"outPRE", ""}, {"a", "0"}, {"a_c
 inline vector<string> MFT_Vec_CoexExpr(2*Sp, ""); //Vector of MFT Coexistance expressions for all species.
 
 //inline exprtk::symbol_table<double> global_symbol_table; //Symbol table for the Expertk library.
-
+inline vector<double> frame_tmeas; //Vector to store time measurements for the frames.
 
 //------------------------- TYPEDEFS --------------------------------------------------------------//
 
@@ -117,6 +121,9 @@ typedef std::vector<std::vector <std::vector <int>>> D3Vec_Int;
 
 typedef std::vector<std::vector <std::vector <std::vector <double>>>> D4Vec_Double;
 typedef std::vector<std::vector <std::vector <std::vector <int>>>> D4Vec_Int;
+
+typedef std::vector<std::vector<std::pair<double, double>>> D2Vec_Pair_Double;
+typedef std::vector<std::vector<std::pair<int, int>>> D2Vec_Pair_Int;
 
 typedef std::vector<double> Vec_Double;
 typedef std::vector<int> Vec_Int;
@@ -162,7 +169,31 @@ struct CalculatePi<-1>
     static const constexpr  double pi = 0;
 };
 
-// Generic template to 
+// Generic Permutation compile-time calculations. Perm<N,K>::result == N!/(N-K)!
+template <long long N, long long K>
+struct Perm
+{
+	static const long long result = N * Perm<N-1, K-1>::result;
+};
+
+template <long long N>
+struct Perm<N, 0>
+{
+	static const long long result = 1;
+};
+
+// Generic Combination compile-time calculations. Comb<N,K>::result == N!/(K!(N-K)!)
+template <long long N, long long K>
+struct Comb
+{
+	static const long long result = Perm<N,K>::result / Perm<K, K>::result;
+};
+
+template <long long N>
+struct Comb<N, 0>
+{
+	static const long long result = 1;
+}; 
 
 struct coordinates {
    int x;
@@ -186,6 +217,7 @@ struct zd_coordinates {
 };
 
 inline const double PI = CalculatePi<14>::pi;
+inline const int SpB_Mov = 2*SpB + Comb<SpB, 2>::result; // Used for generating statistics on movement of surviving runs
 
 //void set_global_user_Rietkerk_params(double c,double gmax,double alpha, double rW, double W0, double (&D)[Sp], 
 //	double (&K)[3], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB])
@@ -195,7 +227,8 @@ void increase_stack_limit(long long stack_size);
 bool maxis(int a, int b);
 string format_str(const std::string& s, const std::map<string, string>& values);
 void add_three(int a, int b, int c); //Test function.
-void set_Prefix(string& user_prefix);
+void set_Prefix(string& user_prefix, double mG = 0, double mP = 0);
+void set_LocustPrefix(string& user_prefix);
 void set_input_Prefix(string& user_inputframepath, string& user_prefix, double user_a_c, double user_dP, double user_Geq = -1, double user_input_T = -1);
 void set_global_system_params(double dt, double dx);
 void set_global_predator_params(double Km);
@@ -208,6 +241,7 @@ void init_fullframe(D2Vec_Double &array, int Sp, int size);
 
 void init_randbistableframe(D2Vec_Double &array, int size, double R, double R_c, double perc,  double c_high[], double c_low[]);
 // NOTE: The following function REQUIRES the exprtk library to be included in the project.
+void init_exprtk_homogenousMFTframe(D2Vec_Double &array, int size, double R, double R_c, double c_spread[]);
 void init_exprtk_randbiMFTframe(D2Vec_Double &array, int size, double R, double R_c, double dP, double perc,  double c_spread[]);
 void init_exprtk_readCSVcolumns_frame(D2Vec_Double &array, vector<int> &const_index, const string &parendir, const string &filenamePattern, 
 					const std::vector<std::string> &read_cols, double a, double a_c,  int L, int r, double c_spread[]);
@@ -225,10 +259,12 @@ void init_solitarytear(D2Vec_Double &array, int length);
 double mean_of_array(double array[],int size);
 double standard_deviation_of_array(double array[],int size);
 double mean_of_vector(vector<double> array,int size);
+double variance_of_vector(vector<double> array,int size);
 double standard_deviation_of_vector(vector<double> array,int size);
 double occupied_sites_of_vector(vector<double> array,int size);
 auto meansq_spread_of_vector(vector<double> array, int g, int c_x, int c_y);
 
+void generic_SPBmean_surv_runs(D2Vec_Double &t_avg_var_rep_N, const D2Vec_Double &X_curr, int size, int spcolnum, int j);
 void var_mean_incremental_surv_runs(D2Vec_Double &t_avg_var_rep_N, const D2Vec_Double &X_curr, int size, int j);
 
 void var_mean_incremental_all_runs(double rep_avg_var[][3], double X_curr[][2], int size, int r);
@@ -239,6 +275,9 @@ void var_mean_incremental(double rep_avg_var[][2], vector<vector <double>> &X_cu
 
 template<typename T> std::vector<double> linspace(T start_in, T end_in, int num_in);
 template<typename T>std::vector<double> lnspace(T start_in, T end_in, int log_points);
+// By default, switchsort_and_bait() will simply sort the vector in ascending order.
+template<typename T>std::vector<T> switchsort_and_bait(std::vector<T> vals, T low = 0, T high = 0, 
+	int num_points =50, string insert_type = "None",  bool erase = false);
 std::vector<double> logarithmic_time_bins(double t_max, double dt);
 std::vector<double> logarithm10_time_bins(double t_max, double dt);
 
@@ -267,6 +306,15 @@ void save_prelimframe(D2Vec_Double &Rho_t, const string &parendir, const string 
 void save_frame(D2Vec_Double &Rho_t, const string &parendir, const string &filenamePattern, double a, double a_st, double a_end, 
 		double t, double dt, double dx, double dP, int r, int g, string header ="", bool overwrite = false);
 
+void save_framefileswrapper(int index, int tot_iter, int j, int thrID,  double t, double dt, double dx, D2Vec_Double &Rho_dt, D2Vec_Double &DRho,
+	D2Vec_Double &rho_rep_avg_var, vector<double> &t_meas, D2Vec_Double &gamma, D2Vec_Pair_Double &v_eff, double t_max, 
+	double a, double b, double c, int a_scalingfactor, double (&D)[Sp], double (&v)[SpB], double sigma[], double a_st, double a_end, double a_c,
+	double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double dP, int r, int g, double Gstar =-1., double Vstar = -1.);
+int save_prelimfileswrapper(int index, int tot_iter, int j, int thrID,  double t, double dt, double dx, D2Vec_Double &Rho_dt, D2Vec_Double &DRho, D2Vec_Double &Rho_M, D2Vec_Double &Rho_Mov,
+	D2Vec_Double &rho_rep_avg_var, vector<double> &t_meas, D2Vec_Double &gamma, D2Vec_Pair_Double &v_eff, double t_max, 
+	double a, double b, double c, int a_scalingfactor, double (&D)[Sp], double (&v)[SpB], double sigma[], double a_st, double a_end, double a_c, 
+	double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double dP, int r, int g, double Gstar =-1., double Vstar = -1.);
+
 //------------------- Only Vegetation -------------------//
 
 void f_DP_Dor_1Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double b, double c, double t, double dt, double g);
@@ -293,11 +341,11 @@ void f_DP_Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double b
 	double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t, double dt, double g);
 void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D2Vec_Double &K1, D2Vec_Double &K2, D2Vec_Double &K3, D2Vec_Double &K4, D3Vec_Int &nR2,
 	double b, double c, double (&Dxd2)[Sp], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double t,double dt,double dx, int g);
-void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double b, double c, double (&D)[Sp], double v[],
+void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double b, double c, double (&D)[Sp], double (&v)[SpB],
     double sigma[], double a_st, double a_end, double a_c, double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], 
 	double chigh[], double clow[], double dt, double dx, double dP, int r, int g, double Gstar = -1, double Vstar = -1);
 void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, double a_start, double a_end, double a_c, double b,  double c, 
-	double (&D)[Sp], double v[], double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], double ch[], double clo[],
+	double (&D)[Sp], double (&v)[SpB], double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], double ch[], double clo[],
 	double dt, double dx, double dP, int r,  int g, double Gstar = -1, double Vstar = -1);
 
 #endif

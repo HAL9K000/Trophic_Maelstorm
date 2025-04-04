@@ -134,18 +134,18 @@ __global__ void updateMovement( double* Rho_t, double* Rho_tsar, double* gamma, 
                 for (int q = min_q; q <= max_q; ++q) 
                 {
                     //int y = (q + L) % L;
-                    int dy = abs(q - c_j);
+                    int dy = abs(q - c_j); int i_new = ((p + L)%L)*L + (q + L)%L;
                     //C_t[x * Nx + y] += (1 - a1) * (1 - a1) * C[i * Nx + j] * gaussian_stencil_D[dx] * gaussian_stencil_D[dy];
-                    atomicAdd(&Rho_tsar[s*L2 + i], (gamma[s*L2 + i]) * (gamma[s*L2 + i]) * Rho_t[s*L2 + i] 
+                    atomicAdd(&Rho_tsar[s*L2 + i_new], (gamma[s*L2 + i]) * (gamma[s*L2 + i]) * Rho_t[s*L2 + i] 
                     *(gaussian_stencil_D[d_size_gauss_D[s] + dx] *gaussian_stencil_D[d_size_gauss_D[s] + dy]));
                 }
                 // Next update d_C_t[] using joint probability of advection and diffusion terms
                 for(int q = min_q_vy; q <= max_q_vy; ++q)
                 {
                     //int y = (q + L) % L;
-                    int dy = std::abs(q - mu_y);
+                    int dy = std::abs(q - mu_y); int i_new = ((p + L)%L)*L + (q + L)%L;
                     //C_t[x][y] += (1-a1)*(a1)*C[i][j]*(gaussian_stencil_D[dx]*gaussian_stencil_vy[dy]);
-                    atomicAdd(&Rho_tsar[s*L2 + i], (gamma[s*L2 + i]) *(1 - gamma[s*L2 + i])* Rho_t[s*L2 + i] *
+                    atomicAdd(&Rho_tsar[s*L2 + i_new], (gamma[s*L2 + i]) *(1 - gamma[s*L2 + i])* Rho_t[s*L2 + i] *
                     (gaussian_stencil_D[d_size_gauss_D[s]+dx]*gaussian_stencil_VXY[d_size_gauss_VXY[s]+dy]));
                 }
             }
@@ -159,9 +159,9 @@ __global__ void updateMovement( double* Rho_t, double* Rho_tsar, double* gamma, 
                 for (int q = min_q; q <= max_q; ++q) 
                 {
                     //int y = (q + L) % L;
-                    int dy = std::abs(q - c_j);
+                    int dy = std::abs(q - c_j); int i_new = ((p + L)%L)*L + (q + L)%L;
                     //C_t[x][y] += (a1)*(1-a1)*C[i][j]*(gaussian_stencil_vx[dx]*gaussian_stencil_D[dy]);
-                    atomicAdd(&Rho_tsar[s*L2 + i], (1 - gamma[s*L2 + i])*(gamma[s*L2 + i])*Rho_t[s*L2 + i] 
+                    atomicAdd(&Rho_tsar[s*L2 + i_new], (1 - gamma[s*L2 + i])*(gamma[s*L2 + i])*Rho_t[s*L2 + i] 
                     *(gaussian_stencil_VXY[d_size_gauss_VXY[s]+dx]*gaussian_stencil_D[d_size_gauss_D[s]+dy]));
                 }
 
@@ -169,9 +169,9 @@ __global__ void updateMovement( double* Rho_t, double* Rho_tsar, double* gamma, 
                 for (int q = min_q_vy; q <= max_q_vy; ++q) 
                 {
                     //int y = (q + L) % L;
-                    int dy = abs(q - mu_y);
+                    int dy = abs(q - mu_y); int i_new = ((p + L)%L)*L + (q + L)%L;
                     //C_t[x * Nx + y] += a1 * a1 * C[i * Nx + j] * gaussian_stencil_vx[dx] * gaussian_stencil_vy[dy];
-                    atomicAdd(&Rho_tsar[s*L2 + i], (1-gamma[s*L2 + i])*(1-gamma[s*L2 + i])* Rho_t[s*L2 + i] 
+                    atomicAdd(&Rho_tsar[s*L2 + i_new], (1-gamma[s*L2 + i])*(1-gamma[s*L2 + i])* Rho_t[s*L2 + i] 
                     *(gaussian_stencil_VXY[d_size_gauss_VXY[s]+dx]*gaussian_stencil_VXY[d_size_gauss_VXY[s]+dy]));
                 }
             }

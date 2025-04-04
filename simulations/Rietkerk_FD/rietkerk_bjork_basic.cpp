@@ -3471,7 +3471,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 
 		//init_randbistableframe(Rho_dt, g*g, a, a_c,  perc, chigh, clow); // Returns a frame with random speckles of high and low density.
 
-		/** EXPRT-TK INITIALISATIONS 
+		///** EXPRT-TK INITIALISATIONS 
 		// MFT PERTURBATION BASED FRAME INITIALISATION
 		#if defined(INIT) && INIT == 0
 			// HOMOGENEOUS FRAME INITIALISATION
@@ -3504,7 +3504,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		#endif
 		// */
 
-		///**  GAUSSIAN FRAME INITIALISATION  
+		/**  GAUSSIAN FRAME INITIALISATION  
 		// Initialise vector <double> amp to elements of clow[].
 		vector <double> amp(Sp, 500.0);  //Setting amplitude of gaussian distributions of vegetation to 500.
 		for (int s=0; s< Sp; s++)
@@ -3512,12 +3512,14 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		
 		vector <double> sd{g/8.0, g/16.0}; //Setting standard deviation of gaussian distributions of vegetation to g/8 and g/16.
 
-		init_gaussframe(Rho_dt, g*g, sd, amp); // **/
+		init_gaussframe(Rho_dt, g*g, sd, amp); 
+		//*/
 	
 		// The first SpB species stored in Rho_dt are to be initialised on frame as Gaussian distributions.
 		// Species 0 is the vegetation, Species 1 is the grazer and Species 2 is the predator.
 		// Species 0 should be centered near the top right corner of the grid, Species 1 near the bottom right corner and Species 2 near the bottom left corner. */
 		
+		/** // GRADIENT FRAME INITIALISATION
 		#if defined(LOCUST_WIND)
 		// Define map for gradient initialisation of grazer (indexed 1) and predator (indexed 2) species.
 		
@@ -3528,6 +3530,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		init_gradientframe(Rho_dt, g*g, init_grad_map, "R"); //Initialise Rho_dt with gradient for Grazer from left to right.
 
 		#endif
+		//*/
 
 		/** // BURN-IN FRAME INITIALISATION (OLD)
 		
@@ -3940,10 +3943,10 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 
 					//diff_eff[s].first = (D[s] -(dxb2)*(vx_abs*(1 - dt*dx1*vx_abs)))*dx1_2;
 					//diff_eff[s].second = (D[s] -(dxb2)*(vy_abs*(1 - dt*dx1*vy_abs)))*dx1_2;
-
+					double gamma_prime_si = (1 - gamma[s][i]); // Probability of advection.
 					///** CORRECT DsC VERSION 
-					diff_eff[s].first = (D[s] -(dxb2)*(gamma[s][i]*vx_abs*(1 - dt*dx1*gamma[s][i]*vx_abs)))*dx1_2;
-					diff_eff[s].second = (D[s] -(dxb2)*(gamma[s][i]*vy_abs*(1 - dt*dx1*gamma[s][i]*vy_abs)))*dx1_2;
+					diff_eff[s].first = (D[s] -(dxb2)*(gamma_prime_si*vx_abs*(1 - dt*dx1*gamma_prime_si*vx_abs)))*dx1_2;
+					diff_eff[s].second = (D[s] -(dxb2)*(gamma_prime_si*vy_abs*(1 - dt*dx1*gamma_prime_si*vy_abs)))*dx1_2;
 					//*/
 					//diff_coefficient[s] = (D[s] -(dx/2.0)*(v[s]*(1 - dt*vdx[s])))/(dx2);
 					// Advection leads to excess diffusion, hence the correction term.
@@ -3969,7 +3972,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					// Advection corrected diffusion term.
 					double alpha_i = gamma[s][i]*(diff_eff[s].second*(DRho[s][nR2[i][0][0]] + DRho[s][nR2[i][0][1]]) 
 												+ diff_eff[s].first*(DRho[s][nR2[i][1][0]] + DRho[s][nR2[i][1][1]])) 
-									+dx1*(1-gamma[s][i])*(vx_abs*DRho[s][nR2[i][1][sgn_index(v_eff[s][i].first)]]+ vy_abs*DRho[s][nR2[i][0][sgn_index(v_eff[s][i].second)]]);
+									+dx1*(gamma_prime_si)*(vx_abs*DRho[s][nR2[i][1][sgn_index(v_eff[s][i].first)]]+ vy_abs*DRho[s][nR2[i][0][sgn_index(v_eff[s][i].second)]]);
 					
 					if(alpha_i == 0 && DRho[s][i] == 0) 
 					{
@@ -4167,15 +4170,15 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				filename = filenamePattern_DRho + rini.str() + ".csv";
 				save_frame(DRho, frame_parendir, filenamePattern_DRho, a, a_st, a_end, t, dt, dx, dP, j, g);
 
-				/** // SAVING GAMMA FRAME
+				///**  SAVING GAMMA FRAME
 				string filenamePattern_Gamma = "/ERROR_GAMMA_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str()
 				+ "_a_" + p1.str()  + "_dx_"+ dix.str() + "_R_";
 				//Next, designate the naive filename
 				filename = filenamePattern_Gamma + rini.str() + ".csv";
 					
-				string gammaheader = "a_c,  x,  Gam0(x; t), Gam1(x; t) \n"; //Header for output frame.
+				//string gammaheader = "a_c,  x,  Gam0(x; t), Gam1(x; t) \n"; //Header for output frame.
 				save_frame(gamma, frame_parendir, filenamePattern_Gamma, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
-				*/
+				//*/
 				
 				// SAVING PRELIMINARY FRAME
 				// In this case, copy the first "index" rows of rho_rep_avg_var to a new 2D vector, update the values using var_mean_incremental_surv_runs()
