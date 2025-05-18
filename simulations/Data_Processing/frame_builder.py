@@ -43,6 +43,7 @@ import regex as re
 import fnmatch
 from pathlib import Path
 import adjustText as adjT
+from collections import defaultdict
 
 os.environ["OMP_NUM_THREADS"] = '7' # To avoid KMeans memory leak
 
@@ -66,7 +67,7 @@ out_dir = f"../../Images/{SPB}Sp/ASCALE_20_100_BRNIN-HsX/"
 Path(out_dir).mkdir(parents=True, exist_ok=True)
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 
-g = 128;  dP = 10000; Geq = 0.19208  ; R_max= -1; #4.802    0.19208   0.096039         #0.2991     7.4774
+g = 128;  dP = 10000; Geq = 4.802  ; R_max= -1; #4.802    0.19208   0.096039         #0.2991     7.4774
 #g = 128;  dP = 1; Geq = 0 ; R_max= -1; #0.0032013  
 # Geq (for LOC case) 2.2007 0.088027 [2 SP] 2.2786 0.091143
 # Geq (for small ratio case) 3.0029 0.12012 [2 SP] 4.1569 0.16627
@@ -106,6 +107,21 @@ def set_figsize(SPB):
         return (8, 6)
     else:
         return (8 + 6*(SPB-1), 6)
+    
+def set_figsizeGrid(p, q):
+    # Sets the figure size to accomodate square subplots (i.e. 1x1, 2x2, 3x3 etc), based on the number of species in the model.
+    if p == 1 and q == 1:
+        return (8, 6)
+    else:
+        return (8 + 6*(q-1), 6 + 6*(p-1))
+    
+def set_figsizeSquare(SPB):
+    # Sets the figure size to accomodate square subplots (i.e. 1x1, 2x2, 3x3 etc), based on the number of species in the model.
+    if SPB == 1:
+        return (8, 6)
+    else:
+        square_SPB_Size = int(math.ceil(math.sqrt(SPB))) # Calculate the square size based on the number of species
+        return (8 + 6*(square_SPB_Size-1), 6 + 6*(square_SPB_Size-1))
 
 def hex_to_rgb(value):
     '''
@@ -642,7 +658,110 @@ def get_FRAME_FFTPOWdata(indir, PREFIX, a_vals, T_vals, a_scale=1,
                 print(f"Data not found for a = {a}, T = {T}. Skipping....")
                 continue
     return data
+
+
+''' # Summary Description of get_FRAME_CORRdata(...) (called by analyse_CORRdata(...))
+This function creates a multi-Indexed DataFrame with the correlation data of species across different time steps.
+The indices are as follows:
+Prefix, a, T0, T1, maxR
+The columns are determined by reading the header of comma-delineated csv file {corrType}_{analType}_TD_{t-delay}.csv
+If more than one matching file is used, use the file with the largest TD_{t-delay} value, where t-delay is an integer
+representing the time delay between the two time steps, i.e. t0 - t1 = t-delay.
+The file is located in the directory {in_dir}/{PREFIX}/L_{g}_a_{a_val}/dP_{dP}/Geq_{Geq}/T_{T0}/2DCorr/
+Each such input file will have the following columns:
+t0, t1, t-delay, maxR (in fixed order), followed by the correlation data for each species:
+{analytype}[{var1}]_R_0, ... {analytype}[{var1}]_R_{R1}, {analytype}[{var2}]_R_0, ... {analytype}[{varN}]_R_{R1}, AVG[{analytype}[{var1}]] ... AVG[{analytype}[{varN}]]
+where {var} is one of the variable names. Note that the columns are not in fixed order, i.e. var1, var2, ... varN can be in any order.
+and R1 is the actual max replicate number and is generally less than maxR.
+
+This script will read all the files in the directory and create a multi-indexed DataFrame with the data.
+The data is stored in the DataFrame with the following structure:
+Indices: Prefix, a, T0, T1, maxR (WHERE maxR = R1!!!)
+Columns: t-delay, AVG[{var1}], ... AVG[{varN}], {analytype}[{var1}]_R_0, ... {analytype}[{var1}]_R_{R1}, {analytype}[{var2}]_R_0, ... {analytype}[{varN}]_R_{R1}
+
+The data is stored in the DataFrame and returned, alongside var_names, which is a list of the variable names, 
+as determined by reading the columns of the input files.
+
+'''
+def get_FRAME_CORRdata(indir, PREFIX, a_vals, focus_T_vals, corrsubdir="2DCorr/", corrfilename = "{corrType}_{analType}_TD_*.csv", 
+                       corrType = "Auto", analType = "NCC", a_scale=1 ):
+    
+    a_vals, _ = auto_guess_avals_tvals(indir, PREFIX, a_vals, focus_T_vals)
+    if a_vals == None:
+        print("Exiting..."); return;
+    a_scaled_vals = [a*a_scale for a in a_vals]
+    print(f"List of a values: {a_vals}")
+    if (a_scale != 1):
+        print(f"List of scaled a values: {a_scaled_vals}")
+
+    # Create a multi-indexed DataFrame
+    corrdata = pan.DataFrame()
+    var_names = []
+    # Now populate the DataFrame with the data from the files
+    for a in a_vals:
+        for T0 in focus_T_vals:
+            try:
+                # Read the csv file corresponding to the T0 value
+                # In case of multiple files, use the one with the largest t-delay value.
+                #print(f"Reading {corrfilename} for a = {a}, T0 = {T0}...")
+
+                matched_files = glob.glob(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T0}/{corrsubdir}" + 
+                                          corrfilename.format(corrType=corrType, analType=analType))
+                #print(f"Matched files: {matched_files}")
+                if len(matched_files) == 0:
+                    print(f"No files found for a = {a}, T0 = {T0}. Skipping....")
+                    continue
+                if len(matched_files) > 1:
+                    # Sort the files by t-delay value (the last part of the filename)
+                    matched_files.sort(key=lambda x: int(x.split("_")[-1].split(".")[0]), reverse=True)
+                    print(f"Multiple files found for {corrType}_{analType}_TD a = {a}, T0 = {T0}. Using the file with the largest t-delay value: {os.path.basename(matched_files[0])}")
+                    
+                # Read the file
+                df = pan.read_csv(matched_files[0], header=0)
+                df.columns = df.columns.astype(str)
+                df.columns = df.columns.str.strip()
+                # Get the variable names from the columns of the input file.
+
+
+            
+                # Create the multi-index for the DataFrame
+                # Comprising of Prefix, a, T0, T1, Rmax
+                # a is scaled by a_scale, T0 and T1 are assigned right from the file.
+                # Rmax is determined by reading the maximum value corresponding to _R_* in the df.columns
                 
+                Rmax = max([int(col.split("_R_")[-1]) for col in df.columns if "_R_" in col]) + 1
+
+                
+                # Assign the index to the DataFrame
+                df.index = pan.MultiIndex.from_tuples( [(PREFIX, a*a_scale, df.loc[i, "t0"], df.loc[i, "t1"], Rmax) 
+                                                        for i in range(len(df))], names = ['Prefix', 'a', 'T0', 'T1', 'maxR'])
+                
+                # Remove the columns t0, t1, maxR from the DataFrame
+                df = df.drop(columns=["t0", "t1"])
+
+                # Concatenate the DataFrame with the existing data
+                corrdata = pan.concat([corrdata, df], axis=0).sort_index(axis=0)
+
+                # The list of unique variable names can be determined from the columns AVG[{analytype}[{var1}]] ... AVG[{analytype}[{varN}]]
+                match_vars_nongamma = r'AVG\[' + f'{analType}{{' +  r'(.*?)\}\]'
+                #match_vars_gamma = r'AVG\[' + f'{analType}\[GAM{{' +  r'(.*?)\]\]\]'
+                file_var_names = list(set([re.search(match_vars_nongamma, col).group(1) for col in df.columns if re.search(match_vars_nongamma, col)]))
+                #file_var_names.extend(list(set(["GAM[" + re.search(match_vars_gamma, col).group(1) +"]" for col in df.columns if re.search(match_vars_gamma, col)])))
+                # Add unique variable names to the list of variable names
+                var_names.extend(file_var_names)
+                # Remove duplicates from the list of variable names
+                var_names = list(set(var_names))
+
+
+            
+            except FileNotFoundError as e:
+                print(f"{e} for a = {a}, T0 = {T0}. Skipping....")
+                continue
+    
+    print(df.columns)
+    return (corrdata, var_names)
+
+
 
 ''' # Summary Description of get_FRAME_POTdata(...) (called by analyse_POTdata(...))
 This function creates a multi-Indexed DataFrame with the potential data for each species.
@@ -662,7 +781,8 @@ The local minima data is stored in the Multi-Indexed DataFrame with the same ind
 Returns: (data, local_minima) if read_local_minima is set to True, else (data, None)
 '''
 
-def get_FRAME_POTdata(indir, PREFIX, a_vals, T_vals, a_scale =1, return_localminima= True, potfilename = "Pot_Well.csv", minimafilename = "LOCAL_MINIMA.csv", potsubdir = "Pot_Well/"):
+def get_FRAME_POTdata(indir, PREFIX, a_vals, T_vals, a_scale =1, return_localminima= True, potfilename = "Pot_Well.csv", minimafilename = "LOCAL_MINIMA.csv", 
+                      potsubdir = "Pot_Well/"):
 
     a_vals, T_vals = auto_guess_avals_tvals(indir, PREFIX, a_vals, T_vals)
     if a_vals == None:
@@ -1182,7 +1302,375 @@ def analyse_FRAME_FFTPOWERdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[
         plt.show(); plt.close()
 
 
+
+
+def analyse_FRAME_CORRdata(indir, out_dir, prefixes=[], a_vals=[], focus_T_vals =[], analType = "NCC", 
+                           filename = "{corrType}_{analType}_TD_*.csv", var_labels= "deduce", a_scaling = 1):
+    autosavefilename = f"AUTOCORR-2D_{analType}_fTmax_{focus_T_vals[-1]}"
+    crosssavefilename = f"CROSSCORR-2D_{analType}_fTmax_{focus_T_vals[-1]}"
+    if len(prefixes) == 0:
+        prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(indir, '*/'))]
+    combined_data_auto = pan.DataFrame(); combined_data_cross = pan.DataFrame()
+    sea.set_palette("husl")
+
+    colours = [hex_list[i][-1] for i in range(len(hex_list))]
+    colours_med = [hex_list[i][-4] for i in range(len(hex_list))]
+    colours_light = [hex_list[i][1] for i in range(len(hex_list))]
+    init_a_vals = a_vals; init_focusT_vals = focus_T_vals
+
+    for Pre in prefixes:
+
+        auto_data, autovariables = get_FRAME_CORRdata(indir, Pre, init_a_vals, init_focusT_vals, 
+                    corrfilename = filename, a_scale= a_scaling, analType = analType, corrType="Auto")
+        '''' NOTE: autovariables is a list of the variables in the data, which is used for plotting if var_labels = "deduce".
+        Note that the number of columns can vary for each a and T value, as R_max can vary, so we need to handle this.
+        The data is a MultiIndex DataFrame with Indices: Prefix, a, T0, T1, Rmax and columns:
+        "t-delay", "AVG[{analytype}[{var}]], "{analytype}[{var}]_R_0, .... "{analytype}[{var}]_R_{R1}"
+        where {var} is one of the species names, t-delay is the time delay (T0 - T1) and {analytype} is the type of analysis (e.g. NCC, Morans, AMI etc.)
+        and 0 < R1 <= Rmax (i.e. the number of actual replicates reported in the data may be less than Rmax)
+        '''
+
+        cross_data, crossvariables = get_FRAME_CORRdata(indir, Pre, init_a_vals, init_focusT_vals, 
+                    corrfilename = filename, a_scale= a_scaling, analType = analType, corrType="Cross")
+        ''' NOTE: crossvariables is a list of the variables in the data, which is used for plotting if var_labels = "deduce".
+        Note that the number of columns can vary for each a and T value, as R_max can vary, so we need to handle this.
+        The data is a MultiIndex DataFrame with Indices: Prefix, a, T0, T1, Rmax and columns:
+        "t-delay", "AVG[{analytype}[{var}]], "{analytype}[{var}_R_0, .... "{analytype}[{var}]_R_{R1}"
+        where {var} is one of the species names, t-delay is the time delay (T0 - T1) and {analytype} is the type of analysis (e.g. NCC, Morans, AMI etc.)'''
+
+        if auto_data.empty and cross_data.empty:
+            print(f"No correlation data found for {Pre}. Skipping....")
+            continue
+        if auto_data.empty:
+            print(f"WARNING: No auto correlation data found for {Pre}.")
+        if cross_data.empty:
+            print(f"WARNING: No cross correlation data found for {Pre}.")
+        
+
+        print("====================================================================")
+        print(f"Auto-data for {Pre}:")
+        print("====================================================================\n")
+
+        #print(auto_data.info())
+        print(auto_data.head())
+        print(auto_data.tail())
+        print(auto_data.columns)
+        print(auto_data.index)
+
+        #print(auto_data.describe())
+        print("\n====================================================================")
+        print(f"Cross-data for {Pre}:")
+        print("====================================================================\n")
+        #print(cross_data.info())
+        print(cross_data.head())
+        print(cross_data.tail())
+        print(cross_data.columns)
+        print(cross_data.index)
+        #print(cross_data.describe())
+
+        # Also report found auto/cross variables.
+        print("-------------------------------------------------------------------------\n")
+        print(f"Auto variables deduced: {autovariables}");
+        print(f"Cross variables deduced: {crossvariables}")
+        print("-------------------------------------------------------------------------\n")
+
+        # Save the data to a csv file.
+        savecsvdir = out_dir + f"{Pre}/2DCorrelation/" 
+        Path(savecsvdir).mkdir(parents=True, exist_ok=True)
+        auto_data.to_csv(savecsvdir + f"{autosavefilename}_dP_{dP}_Geq_{Geq}.csv")
+        cross_data.to_csv(savecsvdir + f"{crosssavefilename}_dP_{dP}_Geq_{Geq}.csv")
+
+        # Get max t-delay value from the data.
+        max_tdelay_auto = auto_data["t-delay"].max(); max_tdelay_auto = round(max_tdelay_auto) #if float(max_tdelay_auto).is_integer() else max_tdelay_auto
+        max_tdelay_cross = cross_data["t-delay"].max(); max_tdelay_cross = round(max_tdelay_cross) #if float(max_tdelay_cross).is_integer() else max_tdelay_cross
+
+        # For custom plots
+        if SPB == 3 and len(autovariables) >= 5:
+            autovariables = ['P(x; t)', 'G(x; t)', 'Pr(x; t)', 'GAM[G(x; t)]', 'GAM[Pr(x; t)]']
+        if SPB == 3 and len(crossvariables) >= 20:
+            crossvariables = ['P(x; t);G(x; t)', 'G(x; t);P(x; t)', 'G(x; t);Pr(x; t)', 'Pr(x; t);G(x; t)',
+                            'GAM[G(x; t)];G(x; t)', 'G(x; t);GAM[G(x; t)]', 'GAM[G(x; t)];Pr(x; t)', 'Pr(x; t);GAM[G(x; t)]',
+                            'GAM[Pr(x; t)];Pr(x; t)', 'Pr(x; t);GAM[Pr(x; t)]', 'GAM[Pr(x; t)];G(x; t)', 'G(x; t);GAM[Pr(x; t)]',
+                            'GAM[G(x; t)];P(x; t)', 'P(x; t);GAM[G(x; t)]', 'GAM[G(x; t)];GAM[Pr(x; t)]', 'GAM[Pr(x; t)];GAM[G(x; t)]',
+                            'P(x; t);Pr(x; t)', 'Pr(x; t);P(x; t)', 'GAM[Pr(x; t)];P(x; t)', 'P(x; t);GAM[Pr(x; t)]']
+    
+        # Making auto-correlation plots for each a value and T0 value first.
+        if not auto_data.empty:
+            # Working on auto_data 
+            a_scaled_vals = auto_data.index.get_level_values('a').unique().to_list()
+            focus_T_vals = auto_data.index.get_level_values('T0').unique().to_list()
+
+
+            for T0 in focus_T_vals:
+                T0 = int(T0) if float(T0).is_integer() else T0
+
+                violin_data_all = defaultdict(list)  # Keys: (variable, a), (variable, '$\langle a\rangle$')
+                # Stores violin plot data for each autovariable and T0 value.
+                avg_viol_data = defaultdict(lambda: defaultdict(dict))  # Structure: {variable: {a: DataFrame}}
+
+                saveviolpngdir = out_dir + f"{Pre}/2DCorrelation/BoxViolin/L_{g}/dP_{dP}/Geq_{Geq}/T0_{T0}/"
+                # Create the directory if it does not exist.
+                Path(saveviolpngdir).mkdir(parents=True, exist_ok=True);
+
+                for a in a_scaled_vals:
+                    a = int(a) if float(a).is_integer() else a
+                    savepngdir_auto = out_dir + f"{Pre}/2DCorrelation/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T0_{T0}/"
+                    
+                    # Create the directory if it does not exist.
+                    Path(savepngdir_auto).mkdir(parents=True, exist_ok=True);
+                    try:
+                        auto_data_A = auto_data.loc[(slice(None), a, T0, slice(None), slice(None)), :]
+                        #cross_data_A = cross_data.loc[(slice(None), a, T0, slice(None), slice(None)), :]
+                    except KeyError:
+                        print(f"No data found for {Pre} at a = {a}, T0 = {T0}. Skipping....")
+                        continue
+
+                    # Plotting for a fixed a value, species and Prefix for all R values.
+                    # Create subplots of shape (p, p) where p is round(sqrt(len(autovariables)))
+                    p_auto = len(autovariables)// SPB + 1; q_auto = SPB
+                    fig_auto, axs_auto = plt.subplots(p_auto, q_auto, figsize = set_figsizeGrid(p_auto, q_auto), sharex = True, sharey = True)
+
+                    # Flatten the axs array for easier indexing.
+                    axs_auto = axs_auto.flatten(); #axs_cross = axs_cross.flatten()
+                    # Loop over the variables and plot the data.
+                    for s in range(len(autovariables)):
+                        # Plotting the auto data
+                        
+                        # First plotting the AVG data vs t-delay
+                        ax_auto = axs_auto[s] if len(autovariables) > 1 else axs_auto
+                        # For each species, plot the first and third columns
+                        print(f"Plotting MEAN {analType}[{autovariables[s]}] for {Pre} at a = {a}, T0 = {T0}.")
+                        ax_auto.plot(auto_data_A["t-delay"], auto_data_A["AVG[" + analType + "{" + autovariables[s] + "}]"], label = r"$\mu_{all}(" + autovariables[s] + ")$",
+                                color = colours[s % len(colours)], linestyle = 'solid', linewidth = 2, alpha = 0.85)
+                        # Plotting the mean of all replicates
+
+                        # Get Rmax from data_A
+                        Rmax = int(auto_data_A.index.get_level_values('maxR').max())
+                        # Plotting the mean of surviving replicates (if the column exists)
+                        for R in range(0, Rmax):
+                            # Check if the column exists and is not empty before plotting.
+                            if f"{analType}{{{autovariables[s]}}}_R_{R}" in auto_data_A.columns and not auto_data_A[f"{analType}{{{autovariables[s]}}}_R_{R}"].isnull().all():
+                                #print(f"Plotting R {analType}[{autovariables[s]}]_R_{R} for {Pre} at a = {a}, T0 = {T0}.")
+                                ax_auto.plot(auto_data_A["t-delay"], auto_data_A[f"{analType}{{{autovariables[s]}}}_R_{R}"],
+                                        color = "grey", linestyle = 'solid', alpha = 0.45)
+                        # Set the title and labels for the plot.
+                        ax_auto.set_title(r"$\langle$ " + analType + "[" + autovariables[s] + r"] $\rangle_{x}$ vs $\Delta(T)$" + f" at a = {a}, T0 = {T0}")
+                        ax_auto.set_xlabel(r'Time Delay $\Delta(T)$ $(hr)$')
+                        ax_auto.set_ylabel(r'$\langle$' + analType + "[" + autovariables[s] + r'] $\rangle_{x}$' )
+                        ax_auto.legend()
+
+                        # Next, generate violin plot data for the current variable and a value.
+                        avg_viol_data[autovariables[s]][str(a)] = auto_data_A[["AVG[" + analType + "{" + autovariables[s] + "}]", "t-delay"]].dropna()
+                        violin_data_all[(autovariables[s], str(a))].extend(avg_viol_data[autovariables[s]][str(a)]["AVG[" + analType + "{" + autovariables[s] + "}]"].values.tolist())
+
+                        # Remove existing Multindex index for avg_viol_data[autovariables[s]][str(a)] and set it to a single index
+                        # given by the t-delay values, and then drop the t-delay column.
+                        avg_viol_data[autovariables[s]][str(a)].reset_index(drop=True, inplace=True)
+                        # Set the index to the t-delay values.
+                        avg_viol_data[autovariables[s]][str(a)].set_index("t-delay", inplace=True)
+                        # Drop the t-delay column.
+                        #avg_viol_data[autovariables[s]][str(a)].drop(columns = ["t-delay"], inplace=True)
+
+                        #print(avg_viol_data[autovariables[s]][str(a)].head())
+
+                    # End of s loop
+                    fig_auto.suptitle(r"$\langle$ " + analType + r" $\rangle_{x}$  vs $\Delta(T)$" + f" For {Pre} at a = {a}, T0 = {T0}, dP = {dP}, Geq = {Geq}")
+                    plt.tight_layout()
+                    plt.savefig(savepngdir_auto + f"{autosavefilename}_TDelay_{max_tdelay_auto}.png")
+                    plt.close()
+                    #plt.show(); plt.close()
+                # End of a loop
+
+                # Finally get the (variable, 'avg') data for the violin plot, storing it in  violin_data_all.
+                if avg_viol_data:
+                    for var in autovariables:
+                        # Get the average of the data for all a values.
+                        avg_viol_data[var]['avg'] = pan.concat([avg_viol_data[var][str(a)] for a in a_scaled_vals], axis=1).mean(axis=1)
+                        # Store the data in violin_data_all.
+                        violin_data_all[(var, r'$\langle a\rangle$')].extend(avg_viol_data[var]['avg'].values.tolist())
+
+                    # Generate violin_df and plot the violin plot for each variable.
+                    violin_df_all = pan.DataFrame([ {"variable": var, "a": a, "value": value} 
+                                                for (var, a), valslist in violin_data_all.items() for value in valslist])
+                    
+                    # Create a violin plot for each variable.
+                    p_violin = len(autovariables)// SPB + 1; q_violin = SPB
+                    fig_violin, axs_violin = plt.subplots(p_violin, q_violin, figsize = set_figsizeGrid(p_violin, q_violin), sharex = True, sharey = True)
+                    # Ensures that <a> is always the first variable in the subplot followed by the rest of the a vals.
+                    cat_var_plot_order = [r'$\langle a\rangle$'] + sorted(x for x in violin_df_all['a'].unique() if x != r'$\langle a\rangle$')
+                    # Flatten the axs array for easier indexing.
+                    axs_violin = axs_violin.flatten()
+                    # Loop over the variables and plot the data.
+                    for s in range(len(autovariables)):
+                        # Plotting the auto data
+                        ax_violin = axs_violin[s] if len(autovariables) > 1 else axs_violin
+                        
+                        print(f"Plotting AUTO VIOLIN {analType}[{autovariables[s]}] for {Pre} at T0 = {T0}.")
+                        # First plot mean.
+                        if not violin_df_all[(violin_df_all['variable'] == autovariables[s]) & (violin_df_all['a'] == r'$\langle a\rangle$')].empty:
+                            sea.violinplot(data=violin_df_all[(violin_df_all['variable'] == autovariables[s]) & 
+                                    (violin_df_all['a'] == r'$\langle a\rangle$')], x='a', y='value', ax=ax_violin, cut=0, bw_adjust=0.5, bw_method='scott',
+                                    color=colours[s % len(colours)], inner='box', linewidth=1.5, order=cat_var_plot_order, alpha=0.85, fill=True, density_norm="area")
+                        # Next plot violin plots for each a value.
+                        sea.violinplot(data=violin_df_all[(violin_df_all['variable'] == autovariables[s]) 
+                                    & (violin_df_all['a'] != r'$\langle a\rangle$')], x='a', y='value', ax=ax_violin,  order=cat_var_plot_order, 
+                                    color=colours_med[s % len(colours_med)], inner='box', linewidth=1.1, alpha=0.85, cut=0, bw_adjust=0.5, bw_method='scott', density_norm="area")
+                        # Add a vertical grey line seperating the mean violin plot (i.e. at a = r'$\langle a\rangle$') from the rest.
+                        ax_violin.axvline(x=0.5, color='grey', linestyle='--', linewidth=1.5, alpha=0.75)
+                        # Set the title and labels for the plot.
+                        ax_violin.set_title(f" AVG {analType}[{autovariables[s]}] vs a")
+                        ax_violin.set_xlabel(r'R $(mm/d)$')
+                        ax_violin.set_ylabel(r'$\langle$' + analType + "[" + autovariables[s] + r'] $\rangle_{R}$' )
+                        
+                    # End of s loop
+                    fig_violin.suptitle(r"$\langle$ " + analType + r" $\rangle_{R}$" + f" For {Pre} at T0 = {T0}, dP = {dP}, Geq = {Geq}")
+                    plt.tight_layout()
+                    plt.savefig(saveviolpngdir + f"{autosavefilename}_TDelay_{max_tdelay_auto}_Violin.png")
+                    plt.show()
+                    plt.close()
+            # End of T0 loop          
+        # Now plotting the cross data
             
+        if not cross_data.empty:
+            a_scaled_vals = auto_data.index.get_level_values('a').unique().to_list()
+            focus_T_vals = auto_data.index.get_level_values('T0').unique().to_list()
+            for T0 in focus_T_vals:
+                T0 = int(T0) if float(T0).is_integer() else T0
+
+                violin_data_all = defaultdict(list)  # Keys: (variable, a), (variable, '$\langle a\rangle$')
+                # Stores violin plot data for each crossvariable and T0 value.
+                avg_viol_data_cross = defaultdict(lambda: defaultdict(dict))  # Structure: {variable: {a: DataFrame}}
+
+                saveviolpngdir_cross = out_dir + f"{Pre}/2DCorrelation/BoxViolin/L_{g}/dP_{dP}/Geq_{Geq}/T0_{T0}/"
+                # Create the directory if it does not exist.
+                Path(saveviolpngdir_cross).mkdir(parents=True, exist_ok=True);
+                for a in a_scaled_vals:
+                    a = int(a) if float(a).is_integer() else a
+                    savepngdir_cross = out_dir + f"{Pre}/2DCorrelation/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T0_{T0}/"
+                    Path(savepngdir_cross).mkdir(parents=True, exist_ok=True)
+                    try:
+                        cross_data_A = cross_data.loc[(slice(None), a, T0, slice(None), slice(None)), :]
+                    except KeyError:
+                        print(f"No CROSS data found for {Pre} at a = {a}, T0 = {T0}. Skipping....")
+                        continue
+                    # Plotting for a fixed a value, species and Prefix for all R values.
+                    # Create subplots of shape (p, p) where p is round(sqrt(len(crossvariables)))
+                    p_cross = len(crossvariables)// SPB + 1; q_cross = SPB
+                    #p_cross = len(crossvariables)//4 + 1; q_cross = 4
+                    fig_cross, axs_cross = plt.subplots(p_cross, q_cross, figsize = set_figsizeGrid(p_cross, q_cross), sharex = True, sharey = True)
+                    #fig_cross, axs_cross = plt.subplots(p_cross, p_cross, figsize = set_figsizeSquare(len(crossvariables)), sharex = True, sharey = True)
+                    # Flatten the axs array for easier indexing.
+                    axs_cross = axs_cross.flatten()
+                    # Loop over the variables and plot the data.
+                    for s in range(len(crossvariables)):
+                        # Plotting the cross data
+                        
+                        # First plotting the AVG data vs t-delay
+                        ax_cross = axs_cross[s] if len(crossvariables) > 1 else axs_cross
+                        # For each species, plot the first and third columns
+                        print(f"Plotting MEAN {analType}{{{crossvariables[s]}}}] for {Pre} at a = {a}, T0 = {T0}.")
+                        ax_cross.plot(cross_data_A["t-delay"], cross_data_A["AVG[" + analType + "{" + crossvariables[s] + "}]"], 
+                                label = r"$\mu_{all}(" + crossvariables[s] + ")$", color = colours[s % len(colours)],
+                                linestyle = 'solid', linewidth = 2, alpha = 0.85)
+                        # Plotting the mean of all replicates
+
+                        # Get Rmax from data_A
+                        Rmax = int(cross_data_A.index.get_level_values('maxR').max())
+                        # Plotting the mean of surviving replicates (if the column exists)
+                        for R in range(0, Rmax):
+                            # Check if the column exists and is not empty before plotting.
+                            if f"{analType}{{{crossvariables[s]}}}_R_{R}" in cross_data_A.columns and not cross_data_A[f"{analType}{{{crossvariables[s]}}}_R_{R}"].isnull().all():
+                                #print(f"Plotting R {analType}[{crossvariables[s]}]_R_{R} for {Pre} at a = {a}, T0 = {T0}.")
+                                ax_cross.plot(cross_data_A["t-delay"], cross_data_A[f"{analType}{{{crossvariables[s]}}}_R_{R}"],
+                                        color = "grey", linestyle = 'solid', alpha = 0.45)
+                        # Set the title and labels for the plot.
+                        ax_cross.set_title(r"$\langle$ " + analType + "[" + crossvariables[s] + r"] $\rangle_{x}$ vs $\Delta(T)$" + f" at a = {a}, T0 = {T0}")
+                        ax_cross.set_xlabel(r'Time Delay $\Delta(T)$ $(hr)$')
+                        ax_cross.set_ylabel(r'$\langle$' + analType + "[" + crossvariables[s] + r'] $\rangle_{x}$' )
+                        ax_cross.legend()
+
+                        avg_viol_data_cross[crossvariables[s]][str(a)] = cross_data_A[["AVG[" + analType + "{" + crossvariables[s] + "}]", "t-delay"]].dropna()
+                        violin_data_all[(crossvariables[s], str(a))].extend(avg_viol_data_cross[crossvariables[s]][str(a)]["AVG[" 
+                                                            + analType + "{" + crossvariables[s] + "}]"].values.tolist())
+
+                        # Remove existing Multindex index for avg_viol_data[crossvariables[s]][str(a)] and set it to a single index
+                        # given by the t-delay values, and then drop the t-delay column.
+                        avg_viol_data_cross[crossvariables[s]][str(a)].reset_index(drop=True, inplace=True)
+                        # Set the index to the t-delay values.
+                        avg_viol_data_cross[crossvariables[s]][str(a)].set_index("t-delay", inplace=True)
+                    # End of s loop
+                    
+                    fig_cross.suptitle(r"$\langle$ " + analType + r" $\rangle_{x}$" + f" For {Pre} at a = {a}, T0 = {T0}, dP = {dP}, Geq = {Geq}")
+                    plt.tight_layout()
+                    plt.savefig(savepngdir_cross + f"{crosssavefilename}_TDelay_{max_tdelay_cross}.png")
+                    plt.close()
+                    #plt.show(); plt.close()
+                # End of a loop
+            
+                # Finally get the (variable, 'avg') data for the violin plot, storing it in  violin_data_all.
+                if avg_viol_data_cross:
+                    for var in crossvariables:
+                        # Get the average of the data for all a values.
+                        avg_viol_data_cross[var]['avg'] = pan.concat([avg_viol_data_cross[var][str(a)] for a in a_scaled_vals], axis=1).mean(axis=1)
+                        # Store the data in violin_data_all.
+                        violin_data_all[(var, r'$\langle a\rangle$')].extend(avg_viol_data_cross[var]['avg'].values.tolist())
+
+                    # Generate violin_df and plot the violin plot for each variable.
+                    violin_df_all = pan.DataFrame([ {"variable": var, "a": a, "value": value} 
+                                                for (var, a), valslist in violin_data_all.items() for value in valslist])
+                    
+                    # Create a violin plot for each variable.
+                    #p_violin = len(crossvariables)// SPB + 1; q_violin = SPB
+                    p_violin = len(crossvariables)// 4; q_violin = 4
+                    fig_violin, axs_violin = plt.subplots(p_violin, q_violin, figsize = set_figsizeGrid(p_violin, q_violin), sharex = True, sharey = True)
+                    # Ensures that <a> is always the first variable in the subplot followed by the rest of the a vals.
+                    cat_var_plot_order = [r'$\langle a\rangle$'] + sorted(x for x in violin_df_all['a'].unique() if x != r'$\langle a\rangle$')
+                    # Flatten the axs array for easier indexing.
+                    axs_violin = axs_violin.flatten()
+                    # Loop over the variables and plot the data.
+                    for s in range(len(crossvariables)):
+                        # Plotting the cross data
+                        ax_violin = axs_violin[s] if len(crossvariables) > 1 else axs_violin
+                        
+                        print(f"Plotting CROSS VIOLIN {analType}[{crossvariables[s]}] for {Pre} at T0 = {T0}.")
+                        # First plot mean.
+                        if not violin_df_all[(violin_df_all['variable'] == crossvariables[s]) & (violin_df_all['a'] == r'$\langle a\rangle$')].empty:
+                            sea.violinplot(data=violin_df_all[(violin_df_all['variable'] == crossvariables[s]) & 
+                                    (violin_df_all['a'] == r'$\langle a\rangle$')], x='a', y='value', ax=ax_violin, cut=0, bw_adjust=0.5, bw_method='scott',
+                                    color=colours[s % len(colours)], inner='box', linewidth=1.5, order=cat_var_plot_order, alpha=0.85, fill=True, density_norm="area")
+                        # Next plot violin plots for each a value.
+                        sea.violinplot(data=violin_df_all[(violin_df_all['variable'] == crossvariables[s]) 
+                                    & (violin_df_all['a'] != r'$\langle a\rangle$')], x='a', y='value', ax=ax_violin,  order=cat_var_plot_order, 
+                                    color=colours_med[s % len(colours_med)], inner='box', linewidth=1.1, alpha=0.85, cut=0, bw_adjust=0.5, bw_method='scott', density_norm="area")
+                        # Add a vertical grey line seperating the mean violin plot (i.e. at a = r'$\langle a\rangle$') from the rest.
+                        ax_violin.axvline(x=0.5, color='grey', linestyle='--', linewidth=1.5, alpha=0.75)
+                        # Set the title and labels for the plot.
+                        ax_violin.set_title(f" AVG {analType}[{crossvariables[s]}] vs a")
+                        ax_violin.set_xlabel(r'R $(mm/d)$')
+                        ax_violin.set_ylabel(r'$\langle$' + analType + "[" + crossvariables[s] + r'] $\rangle_{R}$' )
+                        
+                    # End of s loop
+                    fig_violin.suptitle(r"$\langle$ " + analType + r" $\rangle_{R}$" + f" For {Pre} at T0 = {T0}, dP = {dP}, Geq = {Geq}")
+                    plt.tight_layout()
+                    plt.savefig(saveviolpngdir_cross + f"{crosssavefilename}_TDelay_{max_tdelay_cross}_Violin.png")
+                    plt.show()
+                    plt.close()
+            # End of T0 loop
+
+
+        # Use home_video function to create a video of the plots.
+        home_video(out_dir, out_dir, prefixes=[f"{Pre}/2DCorrelation"], a_vals= a_scaled_vals, T_vals=focus_T_vals, maxR= 1, 
+                   pngformat= "%s_TDelay_%g.png" %(autosavefilename, max_tdelay_auto), 
+                   pngdir= "{Pre}/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T0_{T}/", 
+                   videoname = f"{autosavefilename}_{Pre}_TDmax_{max_tdelay_auto}.mp4", video_relpath= "{Pre}/Videos/{amin}-{amax}/T0_{Tmax}/")
+        # Note that there is only one png per a value, so the video will be a simple slideshow (and R_max = 1).
+
+        # Use home_video function to create a video of the cross plots.
+        home_video(out_dir, out_dir, prefixes=[f"{Pre}/2DCorrelation"], a_vals= a_scaled_vals, T_vals=focus_T_vals, maxR= 1,
+                   pngformat= "%s_TDelay_%g.png" %(crosssavefilename, max_tdelay_cross),
+                   pngdir= "{Pre}/L_{g}/a_{a}/dP_{dP}/Geq_{Geq}/T0_{T}/",
+                   videoname = f"{crosssavefilename}_{Pre}_TDmax_{max_tdelay_cross}.mp4", video_relpath= "{Pre}/Videos/{amin}-{amax}/T0_{Tmax}/")
+        input("Press F to Continue...")
         
 
 
@@ -2350,6 +2838,7 @@ def recursive_copydir(src, dst, include_filetypes = ["*.txt"],
 recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filetypes =["*.png", "*.jpg", "*.jpeg", "*.mp4"], symlinks=False)
 a_vals = [ 0.026, 0.034, 0.0415, 0.042, 0.05, 0.052]  #1.75, 1.8, 20] #0.026, 0.034, 0.0415, 0.042, 0.05, 0.052] #, 0.057 , 0.06] #0.051, 0.053, 0.055]; 
 a_scaling = 1 #0.001
+T_vals= [82000.1, 90000, 92000, 96000, 100000]
 #T_vals= [0, 63.03, 109.56, 144.54, 190.52, 251.13, 331.1, 436.48, 575.41, 758.56, 831.71, 999.9, 1202.19, 1445.4, 1737.78, 2089.23, 2511.85, 3019.94, 3630.77, 4365.13, 5247.99, 6309.49, 6918.23, 7585.71, 8317.54, 9120.1, 9999.99]
 #T_vals=[0, 63095.7, 69182.9, 75857.7, 83176.3, 91201, 99999.9, 109647, 120226, 131826, 144544, 158489, 173780, 190546, 208930, 229087];
 # TVALS WHEN DT= 0.1
@@ -2363,7 +2852,7 @@ a_scaling = 1 #0.001
 #T_vals=[0, 63095.7, 69182.9, 75857.7, 83176.3, 91201, 99999.9, 109647, 120226, 131826, 144544, 158489, 173780, 190546, 208930]
 #T_vals= [158489, 173780, 190546, 208930, 229087, 251189, 275423, 301995, 331131, 363078]
 # TVALS FOR GAMMA CHECK:
-T_vals= [0, 82000.1, 84000, 86000, 88000, 90000, 92000, 94000, 96000, 98000, 100000, 144544, 158489, 173780, 190546]
+#T_vals= [0, 82000.1, 84000, 86000, 88000, 90000, 92000, 94000, 96000, 98000, 100000, 144544, 158489, 173780, 190546]
 
 
 
@@ -2388,7 +2877,7 @@ T_vals= [0, 82000.1, 84000, 86000, 88000, 90000, 92000, 94000, 96000, 98000, 100
 #prefixes = ["COR-DDM5-NREF-0.5HI", "COR-DDM10-NREF-0.5HI", "COR-DDM1-NREF-0.5HI"]
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 #prefixes = ["HX2001-UA125A0-5E2UNI"]#, "HX1005-UA125A125-5E2UNI"]#, "HX2005-UA125A0-5E2UNI"]
-prefixes = [ "HsX2005-UA125A125-5E2UNI"]     
+prefixes = [ "HsX2001-UA125A0-5E2UNI"]#, "HsX2005-UA125A0-5E2UNI"]     
 
 # PREFIXES FOR SMALL BODY SIZE METAPOPLN
 
@@ -2406,6 +2895,9 @@ prefixes = [ "HsX2005-UA125A125-5E2UNI"]
 TS_vals = [190546]  #33113.1] 36307.7]#, 131826] #190546] #57544] #69183.1] # #[229087] #[208930] #91201]  #[190546]; #[109648];
 #a_vals = []#0.034, 0.048, 0.054]; 
 #T_vals = []#0, 91201, 190546, 208930, 229087]
+TCorr_vals =[100000]
+
+# col1 = "GAM[G(x; t)]"; col2 = "G(x; t)"; NCC_index_key = f"NCC-Index{{{col1};{col2}}}_{g}"
 
 print("Note the following set values:")
 print(f"Prefixes: {prefixes}")
@@ -2414,6 +2906,7 @@ print(f"T_vals: {T_vals}")
 print(f"a_vals: {a_vals}")
 print(f"SPB: {SPB}, g: {g}, dP: {dP}, Geq: {Geq}, maxR: {R_max}")
 print(f"in_dir: {in_dir} \nout_dir: {out_dir}")
+#print(f"NCC_index_key: {NCC_index_key}")
 input("Press F to pay respects...")
 print("\n\n__________________________________________________________________________________________\n\n")
 
@@ -2478,7 +2971,7 @@ elif SPB == 1:
     variable_labels = ["<<P(x; t)>_x>_r"]; var_frame_labels = ["P(x; t)"];  Tavg_win_index = [71000, 100000]; Traj_win_index =[200, 5000]; #[65000, 100000]
     move_var_labels = [ "<GAM[G(x; t)]>_x"]
 
-analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, serType = "TSERIES", meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels, a_scaling= a_scaling)
+#analyse_PRELIMS_TIMESERIESdata(in_dir, out_dir, prefixes, a_vals, TS_vals, serType = "TSERIES", meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels, a_scaling= a_scaling)
 #analyse_PRELIMS_EQdata(in_dir, out_dir, prefixes, a_vals, TS_vals, Tavg_window_index = Tavg_win_index, meanfilename = "Mean_TSERIES_T_{TS}.csv", var_labels= variable_labels, a_scaling= a_scaling)
 '''
 for a in a_vals:
@@ -2493,7 +2986,12 @@ for a in a_vals:
 
 #analyse_FRAME_POTdata(in_dir, out_dir, prefixes, a_vals, T_vals, find_minima= True, filename = "Gamma_Pot_Well.csv", 
 #                          minimafilename = "Gamma_LOCAL_MINIMA.csv", var_labels= [ "GAM[G(x; t)]" , "GAM[Pr(x; t)]"])
-
+#'''
+analType= ["NCC", "ZNCC", "AMI", "MI", "BVMoransI"]
+for anal in analType:
+    analyse_FRAME_CORRdata(in_dir, out_dir, prefixes, a_vals, TCorr_vals, analType = anal, 
+                           filename = "{corrType}_{analType}_TD_*.csv", var_labels= "deduce", a_scaling= a_scaling)
+#'''
 
 #compare_list = {"Prefix": [], "g": [], "dP": [100, 10000], "Geq": []}
 #multiplot_PRELIMS_CompareEQ(out_dir, out_dir, compare_list, prefixes = prefixes, meanfilename = "guess", var_labels= variable_labels)

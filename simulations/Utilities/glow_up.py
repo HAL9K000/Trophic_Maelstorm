@@ -13,13 +13,27 @@ import warnings
 import scipy.stats as stats
 import scipy.fftpack as fft
 from scipy.signal import find_peaks
+from scipy.signal import correlate2d
+from scipy.signal import fftconvolve
 from scipy.interpolate import CubicSpline
 from scipy.interpolate import InterpolatedUnivariateSpline
 from sklearn.cluster import KMeans
 from sklearn.mixture import GaussianMixture
+from skimage.metrics import structural_similarity as ssim
+from sklearn.metrics import mutual_info_score , normalized_mutual_info_score
+from sklearn.metrics import adjusted_mutual_info_score
+from esda.moran import Moran_BV
+from libpysal.weights import Queen, KNN, lat2W
+from collections import defaultdict
+
+from multiprocessing import Pool, cpu_count, Queue, Lock
+import functools
+
 
 import secrets
 rng = np.random.default_rng(secrets.randbits(128))
+
+print_lock = Lock()
 
 '''
 This script contains a set of utility functions that can be used to read and write text files, read and write csv files,
@@ -32,6 +46,37 @@ A detailed description of each function is provided below.
 
 class SkipFile(Exception):
     pass
+
+
+
+
+# Multi-thread safe-print function using lock
+def safe_print(*args, **kwargs):
+    print_lock.acquire()
+    try:
+        print(*args, **kwargs)
+    finally:
+        print_lock.release()
+
+# Replacing Lambda functions for defaultdict initialisation to avoid pickling issues with multiprocessing
+def default_dict():
+    return defaultdict(dict)
+
+def nested_default_dict():
+    return defaultdict(default_dict)
+
+def double_nested_default_dict():
+    return defaultdict(nested_default_dict)
+
+def recursively_nested_default_dict(iter):
+    if iter == 0:
+        return defaultdict(dict)
+    else:
+        return defaultdict(recursively_nested_default_dict(iter-1))
+    
+def sorted_files_R(files,  ascending=True):
+    sorted_files = sorted(files, key=lambda x: int(re.sub("R_", "", re.findall(r'R_[\d]+', x)[0])))
+    return sorted_files if ascending else sorted_files[::-1]
 
 '''# Summary of the function find_timerange(...)
     This function finds all T values in provided "files" (a list of files that may or may not be from the same directory)
@@ -87,6 +132,27 @@ at the values of compare_col_label in df1 (stored in df_interpolate[compare_col_
 4.) The function will return df_interpolate.
 5.) If the function encounters an error while generating the cubic spline interpolation, it will return None.
 '''
+
+''' Summary of the function freedman_diaconis_bin_width(...): Compute Freedman-Diaconis bin width.'''
+def freedman_diaconis_bin_width(data):
+    """Compute Freedman-Diaconis bin width."""
+    data = data[np.isfinite(data)]  # remove NaNs/infs
+    q75, q25 = np.percentile(data, [75, 25])
+    IQR = q75 - q25; n = len(data)
+    if IQR == 0 or n == 0:
+        return np.nan
+    return 2 * IQR / np.cbrt(n)
+
+"""Summary of the function scotts_bin_width(...): Compute Scott's bin width."""
+def scotts_bin_width(data):
+    
+    data = data[np.isfinite(data)]  # remove NaNs/infs
+    std = np.std(data)
+    n = len(data)
+    if std == 0 or n == 0:
+        return np.nan
+    return 3.5 * std / np.cbrt(n)
+
 def gen_interpolated_df(df1, df2, compare_col_label):
     
     # Check if compare_col_label is an existing column in both df1 and df2. If it is not, return an error.
@@ -109,6 +175,16 @@ def gen_interpolated_df(df1, df2, compare_col_label):
         df_interpolate[col] = cs(df1[compare_col_label])
     return df_interpolate
 
+'''# Summary of the function gen_zer0mean_normalised_df(...)
+    This function generates a COL-SPECIFIC zero-mean normalised dataframe of df, excluding the columns in exclude_col_labels.
+    The function will return the zero-mean normalised dataframe.
+'''
+def gen_zer0mean_normalised_df(df, exclude_col_labels= ["a_c", "x", "L"]):
+    # Exclude the columns in exclude_col_labels from df.
+    df = df[[col for col in df.columns if col not in exclude_col_labels]]
+    # Generate zero-mean normalised columns for each column in df.
+    df = df.apply(lambda x: (x - x.mean()) / (x.std() + 1e-10) , axis=0)
+    return df
 
 def find_vals(files, reg_search_patterns, vals, dir=""):
     # Recursively iterate over reg_search_patterns and find all values in files that match the pattern.
@@ -740,6 +816,930 @@ def gen_potential_well_data(files, pathtodir="", ext="csv", exclude_col_labels= 
     return (df_kde, df_local_minima) if evaluate_local_minima else (df_kde, None)
 
 
+def compute_mutual_information(X, Y, bins="scotts"):
+    # x, y should be 1D arrays, if not, flatten them
+    X = X.flatten() if X.ndim > 1 else X; Y = Y.flatten() if Y.ndim > 1 else Y
+    # If bins is numeric, use it as the number of bins. If bins is a string, set bins using Scott's method.
+
+    # Print the shapes of X and Y
+    #print(f"X shape: {X.shape}, Y shape: {Y.shape}")
+    # Also print the means and stds of X and Y
+    #print(f"X mean: {np.mean(X)}, X std: {np.std(X)}"); print(f"Y mean: {np.mean(Y)}, Y std: {np.std(Y)}")
+    #print(f"X 25th percentile: {np.percentile(X, 25)}, X 75th percentile: {np.percentile(X, 75)}")
+    #print(f"Y 25th percentile: {np.percentile(Y, 25)}, Y 75th percentile: {np.percentile(Y, 75)}")
+    #print(f"X min: {X.min()}, X max: {X.max()}") ; print(f"Y min: {Y.min()}, Y max: {Y.max()}")
+
+    # If bins is numeric, use it as the number of bins. If bins is a string, set bins using Scott's method.
+    try:
+        if isinstance(bins, str):
+            
+            if bins == 'freedman':
+                # Use Freedman-Diaconis rule to determine the number of bins.
+                bw_X = freedman_diaconis_bin_width(X); bw_Y = freedman_diaconis_bin_width(Y);
+            elif bins == 'scotts':
+                # Use Scott's method to determine the number of bins.
+                bw_X = scotts_bin_width(X); bw_Y = scotts_bin_width(Y);
+            else:
+                raise TypeError(f"Invalid binning method {bins}. Use 'freedman' or 'scotts' or integer value.")
+
+            if np.isnan(bw_X) or np.isnan(bw_Y) or bw_X <= 0 or bw_Y <= 0:
+                raise ValueError("Invalid bin width calculated. Check if data is constant, empty or near constant.")
+            # Both dataset partitions NEED TO have the same number of bins.
+            min_bw = min(bw_X, bw_Y);
+            data_range = max(X.max() - X.min(), Y.max() - Y.min())
+            nbins = max(1, int(np.ceil(data_range / min_bw)))
+
+            if( nbins > 256):
+                print(f"X bin width: {bw_X}, Y bin width: {bw_Y}, X range: {X.max() - X.min()}, Y range: {Y.max() - Y.min()}")
+                #print(f"nbins: {nbins}")
+                print(f"Warning: Number of bins is too high. Consider using a smaller bin width or a different binning method. Setting nbins to 256.")
+                nbins = 256
+
+        elif isinstance(bins, int) or isinstance(bins, float):
+            nbins = int(bins)
+        else:
+            raise TypeError(f"Invalid type for bins: {type(bins)}. Use 'freedman', 'scotts' or integer value.")
+    except ValueError as e:
+            print(f"Error: {e} for X and Y. Check if data is constant, empty or near constant. MI by definition is 0.")
+            print(f"X mean: {np.mean(X)}, X std: {np.std(X)}"); print(f"Y mean: {np.mean(Y)}, Y std: {np.std(Y)}")
+            print(f"X 25th percentile: {np.percentile(X, 25)}, X 75th percentile: {np.percentile(X, 75)}")
+            print(f"Y 25th percentile: {np.percentile(Y, 25)}, Y 75th percentile: {np.percentile(Y, 75)}")
+            print(f"X min: {X.min()}, X max: {X.max()}") ; print(f"Y min: {Y.min()}, Y max: {Y.max()}")
+            return 0
+    except TypeError as e:
+            print(f"Error: {e} for X and Y. Setting nBins to {256}.")
+            nbins = 256
+        
+    '''# OLD APPROACH: Compute the histogram of the joint distribution of X and Y.
+    c_XY = np.histogram2d(X, Y, bins=nbins)[0]
+    MI = mutual_info_score(None, None, contingency=c_XY)
+    '''
+
+    # NEW APPROACH: Use label vectors from the binned data to compute MI.
+    # Digitise the data in X and Y using the histogram bin edges.
+    X_digitised = np.digitize(X, bins=np.histogram_bin_edges(X, bins=nbins))
+    Y_digitised = np.digitize(Y, bins=np.histogram_bin_edges(Y, bins=nbins))
+    MI = mutual_info_score(X_digitised, Y_digitised)
+    #'''
+    return MI
+
+
+def compute_normalised_mutual_information(X, Y, bins="scotts"):
+    # x, y should be 1D arrays, if not, flatten them
+    X = X.flatten() if X.ndim > 1 else X; Y = Y.flatten() if Y.ndim > 1 else Y
+
+    # If bins is numeric, use it as the number of bins. If bins is a string, set bins using Scott's method.
+    try:
+        if isinstance(bins, str):
+            
+            if bins == 'freedman':
+                # Use Freedman-Diaconis rule to determine the number of bins.
+                bw_X = freedman_diaconis_bin_width(X); bw_Y = freedman_diaconis_bin_width(Y);
+            elif bins == 'scotts':
+                # Use Scott's method to determine the number of bins.
+                bw_X = scotts_bin_width(X); bw_Y = scotts_bin_width(Y);
+            else:
+                raise TypeError(f"Invalid binning method {bins}. Use 'freedman' or 'scotts' or integer value.")
+
+            if np.isnan(bw_X) or np.isnan(bw_Y) or bw_X <= 0 or bw_Y <= 0:
+                raise ValueError("Invalid bin width calculated. Check if data is constant, empty or near constant.")
+            # Both dataset partitions NEED TO have the same number of bins.
+            min_bw = min(bw_X, bw_Y);
+            data_range = max(X.max() - X.min(), Y.max() - Y.min())
+            nbins = max(1, int(np.ceil(data_range / min_bw)))
+
+            if( nbins > 256):
+                print(f"WARNING: Number of bins = {nbins} is too high. Setting nbins to 256." + 
+                      f"Consider using a smaller bin width or a different binning method.")
+                nbins = 256
+
+        elif isinstance(bins, int) or isinstance(bins, float):
+            nbins = int(bins)
+        else:
+            raise TypeError(f"Invalid type for bins: {type(bins)}. Use 'freedman', 'scotts' or integer value.")
+    except ValueError as e:
+            print(f"Error: {e} for X and Y. Check if data is constant, empty or near constant. MI by definition is 0.")
+            print(f"X mean: {np.mean(X)}, X std: {np.std(X)}"); print(f"Y mean: {np.mean(Y)}, Y std: {np.std(Y)}")
+            print(f"X 25th percentile: {np.percentile(X, 25)}, X 75th percentile: {np.percentile(X, 75)}")
+            print(f"Y 25th percentile: {np.percentile(Y, 25)}, Y 75th percentile: {np.percentile(Y, 75)}")
+            print(f"X min: {X.min()}, X max: {X.max()}") ; print(f"Y min: {Y.min()}, Y max: {Y.max()}")
+            return 0
+    except TypeError as e:
+            print(f"Error: {e} for X and Y. Setting nBins to {256}.")
+            nbins = 256
+
+    X_digitised = np.digitize(X, bins=np.histogram_bin_edges(X, bins=nbins))
+    Y_digitised = np.digitize(Y, bins=np.histogram_bin_edges(Y, bins=nbins))
+    # Compute NMI
+    NMI = normalized_mutual_info_score(X_digitised, Y_digitised)
+    return NMI
+
+def compute_adjusted_mutual_information(X, Y, bins="scotts"):
+    # x, y should be 1D arrays, if not, flatten them
+    X = X.flatten() if X.ndim > 1 else X; Y = Y.flatten() if Y.ndim > 1 else Y
+
+    # Print the shapes of X and Y
+    #print(f"X shape: {X.shape}, Y shape: {Y.shape}")
+    # Also print the means and stds of X and Y
+    # Print 25 and 75 percentiles of X and Y
+    #print(f"X 25th percentile: {np.percentile(X, 25)}, X 75th percentile: {np.percentile(X, 75)}")
+    #print(f"Y 25th percentile: {np.percentile(Y, 25)}, Y 75th percentile: {np.percentile(Y, 75)}")
+    #print(f"X min: {X.min()}, X max: {X.max()}") ; print(f"Y min: {Y.min()}, Y max: {Y.max()}")
+
+    # Also print first 10 elements of X and Y
+    #print(f"X first 10 elements: {X[:10]}") ; print(f"Y first 10 elements: {Y[:10]}")
+
+    # Also print last 10 elements of X and Y
+    #print(f"X last 10 elements: {X[-10:]}"); print(f"Y last 10 elements: {Y[-10:]}")
+
+    # If bins is numeric, use it as the number of bins. If bins is a string, set bins using Scott's method.
+    try:
+        if isinstance(bins, str):
+            
+            if bins == 'freedman':
+                # Use Freedman-Diaconis rule to determine the number of bins.
+                bw_X = freedman_diaconis_bin_width(X); bw_Y = freedman_diaconis_bin_width(Y);
+            elif bins == 'scotts':
+                # Use Scott's method to determine the number of bins.
+                bw_X = scotts_bin_width(X); bw_Y = scotts_bin_width(Y);
+            else:
+                raise TypeError(f"Invalid binning method {bins}. Use 'freedman' or 'scotts' or integer value.")
+
+            if np.isnan(bw_X) or np.isnan(bw_Y) or bw_X <= 0 or bw_Y <= 0:
+                raise ValueError("Invalid bin width calculated. Check if data is constant, empty or near constant.")
+            # Both dataset partitions NEED TO have the same number of bins.
+            min_bw = min(bw_X, bw_Y);
+            data_range = max(X.max() - X.min(), Y.max() - Y.min())
+            nbins = max(1, int(np.ceil(data_range / min_bw)))
+
+            if( nbins > 256):
+                print(f"WARNING: Number of bins = {nbins} is too high. Setting nbins to 256" + 
+                      f"Consider using a smaller bin width or a different binning method.")
+                nbins = 256
+
+        elif isinstance(bins, int) or isinstance(bins, float):
+            nbins = int(bins)
+        else:
+            raise TypeError(f"Invalid type for bins: {type(bins)}. Use 'freedman', 'scotts' or integer value.")
+    except ValueError as e:
+            print(f"Error: {e} for X and Y. Check if data is constant, empty or near constant. MI by definition is 0.")
+            print(f"X mean: {np.mean(X)}, X std: {np.std(X)}"); print(f"Y mean: {np.mean(Y)}, Y std: {np.std(Y)}")
+            print(f"X 25th percentile: {np.percentile(X, 25)}, X 75th percentile: {np.percentile(X, 75)}")
+            print(f"Y 25th percentile: {np.percentile(Y, 25)}, Y 75th percentile: {np.percentile(Y, 75)}")
+            print(f"X min: {X.min()}, X max: {X.max()}") ; print(f"Y min: {Y.min()}, Y max: {Y.max()}")
+            return 0
+    except TypeError as e:
+            print(f"Error: {e} for X and Y. Setting nBins to {256}.")
+            nbins = 256
+
+    # Discretize the data into bins
+    X_digitised = np.digitize(X, bins=np.histogram_bin_edges(X, bins=nbins))
+    Y_digitised = np.digitize(Y, bins=np.histogram_bin_edges(Y, bins=nbins))
+    # Compute AMI
+    AMI = adjusted_mutual_info_score(X_digitised, Y_digitised)
+    return AMI
+
+
+def compute_BiMoronsI(X, Y):
+    X = X.flatten() if X.ndim > 1 else X; Y = Y.flatten() if Y.ndim > 1 else Y
+    # Compute Morons'I Global Bivariate Statistic
+    L = round(np.sqrt(X.shape[0]))
+    Spatial_Weights = lat2W(L, L)
+    MoranI = Moran_BV(X, Y, Spatial_Weights)
+    return MoranI.I, MoranI.p_sim
+
+
+
+''' # Summary of the function compute_NCC_2DFFT(...)
+This function compute_ncc_fft computes the normalized cross-correlation (NCC) between two 2D arrays x and y using FFT.
+It first normalizes the arrays by subtracting the mean and dividing by the standard deviation.'''
+def compute_NCC_2DFFT(x, y, zero_norm=True):
+    std_x = np.std(x)
+    std_y = np.std(y)
+    if std_x < 1e-8 or std_y < 1e-8:
+        return None, None, None, None
+    if zero_norm:
+        x = (x - np.mean(x)) / std_x
+        y = (y - np.mean(y)) / std_y
+    # NCC computed using FFT convolution, with the y array flipped.
+    corr = fftconvolve(x, y[::-1, ::-1], mode='full') / (x.shape[0]*x.shape[1])
+    max_idx = np.unravel_index(np.argmax(corr), corr.shape)
+    zero_shift_idx = (y.shape[0]-1, y.shape[1]-1)
+    return corr, corr[zero_shift_idx], np.max(corr), max_idx
+
+
+
+# Define the worker function to process each time value
+def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_col_labels, calc_AMI, calc_MI, calc_Morans, bins, verbose):
+    # Initialize nested dictionaries for this time value
+    #auto_NCC_dict = defaultdict(lambda: defaultdict(dict))
+    #Structure: auto_NCC_dict[key][column][NCC_key] = value
+    #cross_NCC_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+    # Structure: cross_NCC_dict[key][column1][column2][NCC_key] = value
+    #auto_ZNCC_dict = defaultdict(lambda: defaultdict(dict))
+    #cross_ZNCC_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+
+    # Avoiding lambda functions for better readability and to avoid pickling issues
+    
+    auto_NCC_dict = defaultdict(nested_default_dict)
+    #auto_NCC_dict = recursively_nested_default_dict(2) # 2 levels deep
+    # Structure: cross_NCC_dict[key][column1][column2][NCC_key] = value
+    cross_NCC_dict = defaultdict(double_nested_default_dict)
+    auto_ZNCC_dict = defaultdict(nested_default_dict)  #recursively_nested_default_dict(2) # 2 levels deep
+    cross_ZNCC_dict = defaultdict(double_nested_default_dict)
+    
+    if calc_AMI:
+        #auto_AMI_dict = defaultdict(lambda: defaultdict(dict)) ; cross_AMI_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+        #auto_AMI_dict = recursively_nested_default_dict(2); cross_AMI_dict = recursively_nested_default_dict(3)
+        auto_AMI_dict = defaultdict(nested_default_dict); cross_AMI_dict = defaultdict(double_nested_default_dict)
+    else:
+        auto_AMI_dict = None; cross_AMI_dict = None
+        
+    if calc_MI:
+        #auto_MI_dict = defaultdict(lambda: defaultdict(dict)); cross_MI_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+        #auto_MI_dict = recursively_nested_default_dict(2); cross_MI_dict = recursively_nested_default_dict(3)
+        auto_MI_dict = defaultdict(nested_default_dict); cross_MI_dict = defaultdict(double_nested_default_dict)
+    else:
+        auto_MI_dict = None; cross_MI_dict = None
+    
+    if calc_Morans:
+        auto_Morons_dict = defaultdict(nested_default_dict); cross_Morons_dict = defaultdict(double_nested_default_dict)
+    else:
+        auto_Morons_dict = None; cross_Morons_dict = None
+
+    key = (T, tval, T - float(tval), len(files))  # Common key for all files.
+    safe_print(f"Generating 2D correlation data for T0 = {T}, T1 = {tval}, delay = {T - float(tval)}, L = {L} ....")
+    
+    # Iterate over all files in files, sorted in ascending order of R using regex
+    
+    for file in sorted_files_R(files, ascending=True):
+        # Read the file.
+        Rstr = re.findall(r'R_[\d]+', file)[0]
+        Lfile = int(re.search(r'L_[\d]+', file).group(0).split("_")[1]) if re.search(r'L_[\d]+', file) else None 
+        filetype = re.search(r'FRAME|GAMMA', file).group(0)
+        
+        if Lfile != L:
+            safe_print(f"Warning: L value in file {file} is {Lfile} but expected {L}. Skipping file.")
+            continue
+
+        if(ext == "csv"):
+            df = pan.read_csv(file, header=0)
+        else:
+            try:
+                df = pan.read_table(file, header=0)
+            except Exception as e:
+                safe_print(f"Error: Non-standard extension for file {file} with error message: \n" + str(e))
+                return auto_NCC_dict, cross_NCC_dict, auto_ZNCC_dict, cross_ZNCC_dict, auto_AMI_dict, cross_AMI_dict, auto_MI_dict, cross_MI_dict
+
+        # Modify column names in df to remove leading and trailing whitespaces.
+        df.columns = [col.strip() for col in df.columns]
+        # Remove exclude_col_labels from df.
+        df = df[[col for col in df.columns if col not in exclude_col_labels]]
+
+        df_Znorm = gen_zer0mean_normalised_df(df)  # Generate 0-normalised columns for df.
+            
+        # Get crossfiles with the same T value as tval and R value as Rstr.
+        crossfile_tval = [x for x in crossfiles
+                        if ((m := re.findall(r'T_(\d+)', x)) and m[0] == str(tval)) 
+                        or ((m := re.findall(r'T_([\d]+\.[\d]+)', x)) and m[0] == str(tval))]
+        
+        crossfile_tval = [x for x in crossfile_tval if re.search(r'R_[\d]+', x).group(0) == Rstr]# and re.search(r'FRAME|GAMMA', x).group(0) == filetype]
+        # Get filetype of crossfile_tval and store it in filetype_crossfile.
+        
+        # If no or more than 1 are found, skip the column.
+        if(tval == T):
+            # If tval == T, just do auto-corr with same file.
+            crossfile_tval = [file]
+        
+        
+        if len(crossfile_tval) > 2 or len(crossfile_tval) == 0:
+            safe_print(f"Warning: No or more than 2 crossfile found for T = {tval} and R = {Rstr}. Skipping file.")
+            safe_print(f"Crossfiles found: {crossfile_tval}")
+            continue
+            
+        # Read the crossfile and zero-normalise all columns in the crossfile.
+        for crossfile in crossfile_tval:
+            # Get the filetype of the crossfile.
+            filetype_crossfile = re.search(r'FRAME|GAMMA', crossfile).group(0)
+            
+            if(ext == "csv"):
+                df_cross = pan.read_csv(crossfile, header=0)
+            else:
+                try:
+                    df_cross = pan.read_table(crossfile, header=0)
+                except Exception as e:
+                    safe_print(f"Error: Non-standard extension for file {crossfile} with error message: \n" + str(e))
+                    return auto_NCC_dict, cross_NCC_dict, auto_ZNCC_dict, cross_ZNCC_dict, auto_AMI_dict, cross_AMI_dict, auto_MI_dict, cross_MI_dict
+                    
+            # Modify column names in df_cross to remove leading and trailing whitespaces.
+            df_cross.columns = [col.strip() for col in df_cross.columns]
+            # Remove exclude_col_labels from df_cross.
+            df_cross = df_cross[[col for col in df_cross.columns if col not in exclude_col_labels]]
+            df_cross_Znorm = gen_zer0mean_normalised_df(df_cross)  # Generate 0-normalised columns for df_cross.
+
+            safe_print(f"Calculating 2D correlation for FOCUS file {os.path.basename(file)} with CROSSfile {os.path.basename(crossfile)} at R = {Rstr}...")
+
+            # First auto-NCC and auto-ZNCC: Iterate over all df.columns and calculate the NCC for each column in df.
+            for col in df_Znorm.columns:
+                # If filetypes are different, break the loop and proceed to cross-correlations.
+                # This is to avoid cross-correlating with different filetypes.
+                if filetype != filetype_crossfile:
+                    break
+                # Calculate the NCC for each column in df with the same column in df_cross.
+                if col not in df_cross_Znorm.columns:
+                    safe_print(f"Warning: Column {col} not found in crossfile {os.path.basename(crossfile)}")
+                    continue
+
+                # Also check if the column is entirely zero or flat. If so, skip the column.
+                if all(df_Znorm[col] == 0) or all(df_cross_Znorm[col] == 0):
+                    safe_print(f"Warning: Entirely zero column {col} in FOCUS file {os.path.basename(file)}" + 
+                        f"or CROSSfile {os.path.basename(crossfile)} for T0 = {T}, T1 = {tval} ... Skipping column.")
+                    continue
+
+                safe_print(f"Calculating 2D AUTO Correlation for column {col}...")
+                
+                if(calc_AMI):
+                    # Calculate AMI for each column in df with the same column in df_cross.
+                    AMI = compute_adjusted_mutual_information(df[col].values, df_cross[col].values, bins=bins)
+                    AMI_key = f"AMI{{{col}}}_{Rstr}"
+                    auto_AMI_dict[key][col][AMI_key] = AMI
+                    
+                if(calc_MI):
+                    # Calculate MI for each column in df with the same column in df_cross.
+                    MI = compute_mutual_information(df[col].values, df_cross[col].values, bins=bins)
+                    MI_key = f"MI{{{col}}}_{Rstr}"
+                    auto_MI_dict[key][col][MI_key] = MI
+                
+                if(calc_Morans):
+                    # Calculate Morans I for each column in df with the same column in df_cross.
+                    MoronsI, p_sim = compute_BiMoronsI(df_Znorm[col].values, df_cross_Znorm[col].values)
+                    MoransI_key = f"BVMoransI{{{col}}}_{Rstr}"; MoransI_Pkey = f"BVMoran-P{{{col}}}_{Rstr}"
+                    auto_Morons_dict[key][col][MoransI_key] = MoronsI
+                    auto_Morons_dict[key][col][MoransI_Pkey] = p_sim
+
+                x = df_Znorm[col].values.reshape(int(np.sqrt(len(df_Znorm))), -1)
+                y = df_cross_Znorm[col].values.reshape(int(np.sqrt(len(df_cross_Znorm))), -1)
+
+                NCC_key = f"NCC{{{col}}}_{Rstr}"
+                NCC_index_key = f"NCC-Index{{{col}}}_{Rstr}"
+                ZNCC_key = f"ZNCC{{{col}}}_{Rstr}"
+
+                ncc_map, zncc, peak, peak_idx = compute_NCC_2DFFT(x, y)
+                if zncc is None:
+                    safe_print(f"Warning: Skipping column {col} due to flat or zero data in correlation.")
+                    continue
+                    
+                # Store the NCC data in auto_NCC_dict, and the ZNCC data in auto_ZNCC_dict.
+                auto_NCC_dict[key][col][NCC_key] = peak
+                auto_NCC_dict[key][col][NCC_index_key] = int(peak_idx[0] * L + peak_idx[1])  # Convert to 1D index.
+                auto_ZNCC_dict[key][col][ZNCC_key] = zncc
+            # End of auto-CORR loop.
+
+            safe_print(f"Calculating CROSS Correlation b/w {filetype} and {filetype_crossfile} TYPE FILES...")
+
+            # Next cross-NCC and cross-ZNCC.
+            for i, col1 in enumerate(df_Znorm.columns):
+                if all(df_Znorm[col1] == 0):
+                    safe_print(f"Warning: Entirely zero column {col1} in FOCUS file {os.path.basename(file)} for T0 = {T} ... Skipping column.")
+                    continue
+
+                for j, col2 in enumerate(df_cross_Znorm.columns):
+                    if col1 == col2:
+                        continue
+
+                    # Also check if the column is entirely zero or flat. If so, skip the column.
+                    if all(df_cross_Znorm[col2] == 0):
+                        print(f"Warning: Entirely zero COL: {col2} in CROSSfile {os.path.basename(crossfile)} for T0 = {T}, T1 = {tval} ... Skipping column.")
+                        continue
+
+                    safe_print(f"Calculating 2D CROSS Correlation for columns {col1} VS {col2} ...")
+
+                    x = df_Znorm[col1].values.reshape(int(np.sqrt(len(df_Znorm))), -1)
+                    y = df_cross_Znorm[col2].values.reshape(int(np.sqrt(len(df_cross_Znorm))), -1)
+                    ncc_map, zncc, peak, peak_idx = compute_NCC_2DFFT(x, y)
+
+                    NCC_index_key = f"NCC-Index{{{col1};{col2}}}_{Rstr}"
+                    NCC_key = f"NCC{{{col1};{col2}}}_{Rstr}"
+                    ZNCC_key = f"ZNCC{{{col1};{col2}}}_{Rstr}"
+
+                    if zncc is None:
+                        safe_print(f"Warning: Skipping columns {col1}, {col2} due to flat or zero data.")
+                        continue
+
+                    cross_NCC_dict[key][col1][col2][NCC_key] = peak
+                    cross_NCC_dict[key][col1][col2][NCC_index_key] = int(peak_idx[0] * L + peak_idx[1])
+                    # Convert to 1D index.
+                    cross_ZNCC_dict[key][col1][col2][ZNCC_key] = zncc
+
+                    if(calc_AMI):
+                        # Calculate AMI for each column in df with the same column in df_cross.
+                        AMI = compute_adjusted_mutual_information(df[col1].values, df_cross[col2].values, bins=bins)
+                        AMI_key = f"AMI{{{col1};{col2}}}_{Rstr}"
+                        cross_AMI_dict[key][col1][col2][AMI_key] = AMI
+                        
+                    if(calc_MI):
+                        # Calculate MI for each column in df with the same column in df_cross.
+                        MI = compute_mutual_information(df[col1].values, df_cross[col2].values, bins=bins)
+                        MI_key = f"MI{{{col1};{col2}}}_{Rstr}"
+                        cross_MI_dict[key][col1][col2][MI_key] = MI
+
+                    if(calc_Morans):
+                        # Calculate Morans I for each column in df with the same column in df_cross.
+                        MoronsI, p_sim = compute_BiMoronsI(df_Znorm[col1].values, df_cross_Znorm[col2].values)
+                        MoransI_key = f"BVMoransI{{{col1};{col2}}}_{Rstr}"; MoransI_Pkey = f"BVMoran-P{{{col1};{col2}}}_{Rstr}"
+                        cross_Morons_dict[key][col1][col2][MoransI_key] = MoronsI
+                        cross_Morons_dict[key][col1][col2][MoransI_Pkey] = p_sim
+
+    
+    return auto_NCC_dict, cross_NCC_dict, auto_ZNCC_dict, cross_ZNCC_dict, auto_AMI_dict, cross_AMI_dict, auto_MI_dict, cross_MI_dict, auto_Morons_dict, cross_Morons_dict
+
+
+
+
+
+''' # Summary of the function gen_2DCorr_data(...)
+This function gen_NCC_data will generate auto- and cross-correlation data for the files in files.
+These files are named in the format: FRAME_T_{T}_a_{a_val}_R_{R}.csv or GAMMA_T_{T}_a_{a_val}_R_{R}.csv.
+By iterating over the files in increasing values of R, the column-specific time auto-NCC is generated by auto-correlation of each column in the file,
+with a matching column in crossfiles (if provided), with the same R value as the file.
+The cross-NCC on the other hand consists of two steps:
+1. Pure spatial cross-correlation (at the same time): Cross-correlation of the data in each included column with the data  in another column in the same file.
+2. Spatio-temporal cross-correlation of the data in each included column with the data in another column in a different file (crossfiles) with the same R value as the file.
+The function will generate the NCC data for each column in the files for each file (replicate).
+The auto-NCC (for best shifts with highest peaks) data is stored in a df with the following column structure:
+"t0", "t1", "t-delay", "Rmax", "AVG[NCC[{var}]], ...., "NCC[{var}]_R_0", "NCC-Index[{var}]_R_0" ...., "NCC[{var}]_R_{R_max}", "NCC-Index[{var}]_R_{R_max}"
+where {var} is one of the species names NOT in exclude_col_labels, Rmax is the maximum R value in the files, t0 is the time of the first frame, t1 is the time of the compared frame, 
+and t-delay is the time delay between the two frames.
+The cross-NCC (for best shifts with highest peaks) data is stored in a df with the following column structure:
+"t0", "t1", "t-delay", "Rmax", "AVG[NCC[{var1}][{var2}]]", ...., "AVG[NCC[{var1}][{varN}]]" , "AVG[NCC[{var2}][{var3}]]", ...., "AVG[NCC[{vari}][{vark}]]" , ...., AVG[NCC[{varN-1}][{varN}]],
+"NCC[{var1}][{var2}]_R_0" , "NCC-Index[{var1}][{var2}]_R_0" ...., "NCC[{var1}][{var2}]_R_{R_max}", "NCC-Index[{var1}][{var2}]_R_{R_max}" ...., 
+"NCC[{varN-1}][{varN}]_R_{R_max}", "NCC-Index[{varN-1}][{varN}]_R_{R_max}" ...., "NCC[{varN-1}][{varN}]_R_{R_max}", "NCC-Index[{varN-1}][{varN}]_R_{R_max}"
+where {var1}, {var2}, ... {varN} are the species names NOT in exclude_col_labels, Rmax is the maximum R value in the files, t0 is the time of the first frame, t1 is the time of the compared frame,
+and t-delay is the time delay between the two frames, and i < k (the order of columns in the files).
+The function will also generate the mean NCC data across all files for each column in the files, which is stored in AVG[NCC[{var}]] and AVG[NCC[{var1}][{var2}]] for auto- and cross-NCC respectively.
+
+Similarly, computes the Adjusted Mutual Information (AMI) and Mutual Information (MI) for each column in the files for each file (replicate)
+in the same way as NCC, and stores them in the same column structure as above.
+
+Also the 2D Pearson correlation coefficient in each case corresponds to the zero-shift NCC, store these values in auto-ZNCC and cross-ZNCC dfs with the same column structure as above.
+
+NOTE: ZNCC is the zero-normalised cross-correlation, so columns in the files are normalised to zero mean and unit variance before calculating the ZNCC.
+
+INPUTS:
+files: List of files which are named in the format: FRAME_T_{T}_a_{a_val}_R_{R}.csv or GAMMA_T_{T}_a_{a_val}_R_{R}.csv.
+       These are the focus files for which the auto- and cross-correlation data is to be generated.
+crossfiles: List of all crossfiles which are named in the format: FRAME_T_{T}_a_{a_val}_R_{R}.csv or GAMMA_T_{T}_a_{a_val}_R_{R}.csv.
+    These are the potential files against which auto (over time) and cross-correlation is to be generated.
+pathtodir: Path to the directory where the files are located.
+ext: Extension of the files. Default is "csv".
+exclude_col_labels: List of column labels that are excluded from the analysis, if they exist. Default is ["a_c", "x", "L", "GAM[P(x; t)]"].
+calc_AMI, calc_MI, calc_Morans: Boolean values to indicate whether to calculate AMI, MI and Morans I respectively. 
+    Default is True for AMI, False for MI and Morans I.
+bins: Binning method to use for calculating AMI and MI. Default is "scotts" (Scott's method), 
+    BUT can also be set to "freedman" (Freedman-Diaconis rule) or an integer value for the number of bins.
+verbose: Boolean value to indicate whether to print verbose output. Default is False.
+ncores: Number of cores to use for parallel processing. Default is 1.
+    If ncores > 1, the function will use multiprocessing to parallelise the computation of NCC data across files.
+'''
+
+
+def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv", exclude_col_labels= ["a_c", "x", "L", "GAM[P(x; t)]"], 
+                    calc_AMI = True, calc_MI = False, calc_Morans=False, bins="scotts", verbose=False, ncores=1):
+
+    # Store unique column names present in files in col_labels. Strip elements of any leading or trailing whitespaces.
+    col_labels = [] #L = 0;
+    # Iterate over other files in files, and store unique column names in col_labels.
+    for file in files:
+        if(ext == "csv"):
+            df = pan.read_csv(file, header=0)
+        else:
+            try:
+                df = pan.read_table(file, header=0)
+            except Exception as e:
+                print("Error: Non-standard extension for file " + pathtodir +"/" + file + " with error message: \n" + str(e))
+                return None, None, None, None, None, None, None, None
+        # Modify column names in df to remove leading and trailing whitespaces.
+        df.columns = [col.strip() for col in df.columns]
+        # Remove exclude_col_labels from df.
+        col_labels.extend([col for col in df.columns if col not in exclude_col_labels])
+
+        if file == files[0]:
+            # Get L from the number of rows in the first file.
+            L = int(np.sqrt(len(df))) #int(np.sqrt(len(df[df.columns[0]])))
+            print(f"Found L = {L}.")
+    
+    # Remove duplicates and exclude_col_labels from col_labels.
+    col_labels = list(set(col_labels))
+    col_labels = [col for col in col_labels if col not in exclude_col_labels]
+
+    auto_NCC_cols = ["t0", "t1", "t-delay", "Rmax"] + ["AVG[NCC{" + col + "}]" for col in col_labels] + [y + col + "}_R_" + str(i) for col 
+                                                                                                      in col_labels for y in ["NCC{", "NCC-Index{"] for i in range(0, len(files))]
+    cross_NCC_cols = ["t0", "t1", "t-delay", "Rmax"] + ["AVG[NCC{" + col1 + ";" + col2 + "}]" for col1 
+                    in col_labels for col2 in col_labels if col1 != col2] + [y + col1 + ";" + col2 + "}_R_" + str(i) 
+                    for col1 in col_labels for col2 in col_labels if col1 != col2 for y in ["NCC{", "NCC-Index{"]  for i in range(0, len(files))]
+
+    df_auto_NCC = pan.DataFrame(columns=auto_NCC_cols)
+    df_cross_NCC = pan.DataFrame(columns=cross_NCC_cols)
+
+    df_auto_ZNCC = pan.DataFrame(columns=auto_NCC_cols) # Stores ZNCC (NCC(0,0)) OR 2D Pearson correlation coefficient for each column in the files.
+    df_cross_ZNCC = pan.DataFrame(columns=cross_NCC_cols)
+
+    if calc_AMI:
+        # Drop all columns containing "NCC-Index" from df_auto_AMI, and replace all occurrences of "NCC" with "AMI".
+        auto_AMI_cols = [col.replace("NCC", "AMI") for col in auto_NCC_cols if "NCC-Index" not in col]
+        cross_AMI_cols = [col.replace("NCC", "AMI") for col in cross_NCC_cols if "NCC-Index" not in col]
+        df_auto_AMI = pan.DataFrame(columns=auto_AMI_cols)
+        df_cross_AMI = pan.DataFrame(columns=cross_AMI_cols)
+    else:
+        df_auto_AMI = None
+        df_cross_AMI = None
+
+    if calc_MI:
+        # Drop all columns containing "NCC-Index" from df_auto_MI, and replace all occurrences of "NCC" with "MI".
+        auto_MI_cols = [col.replace("NCC", "MI") for col in auto_NCC_cols if "NCC-Index" not in col]
+        cross_MI_cols = [col.replace("NCC", "MI") for col in cross_NCC_cols if "NCC-Index" not in col]
+        df_auto_MI = pan.DataFrame(columns=auto_MI_cols)
+        df_cross_MI = pan.DataFrame(columns=cross_MI_cols)
+    else:
+        df_auto_MI = None
+        df_cross_MI = None
+
+    if calc_Morans:
+        # Drop all columns containing "NCC-Index" from df_auto_MoransI, and replace all occurrences of "NCC" with "MoransI".
+        auto_MoransI_cols = [col.replace("NCC", "BVMoransI") for col in auto_NCC_cols if "NCC-Index" not in col]
+        cross_MoransI_cols = [col.replace("NCC", "BVMoransI") for col in cross_NCC_cols if "NCC-Index" not in col]
+        df_auto_MoransI = pan.DataFrame(columns=auto_MoransI_cols)
+        df_cross_MoransI = pan.DataFrame(columns=cross_MoransI_cols)
+    else:
+        df_auto_MoransI = None
+        df_cross_MoransI = None
+
+    # Ensure ncores doesn't exceed the number of time values or available CPU cores
+    available_cores = cpu_count()
+    ncores = min(ncores, len(matchT), available_cores)
+    print(f"Using {ncores} cores out of {available_cores} available cores to process {len(matchT)} time values")
+    
+    # Sort matchT in descending order (so t-delay increases over rows)
+    matchT = sorted(matchT, reverse=True)
+    
+    # Prepare worker function with partial to pass all the constant parameters
+    worker_func = functools.partial(
+        process_time_value,
+        files=files,
+        T=T,
+        crossfiles=crossfiles,
+        L=L,
+        col_labels=col_labels,
+        ext=ext,
+        exclude_col_labels=exclude_col_labels,
+        calc_AMI=calc_AMI,
+        calc_MI=calc_MI,
+        calc_Morans=calc_Morans,
+        bins=bins,
+        verbose=verbose
+    )
+    
+    # Initialize empty dictionaries to collect results from parallel processing
+    all_auto_NCC_dict = defaultdict(lambda: defaultdict(dict))
+    all_cross_NCC_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+    all_auto_ZNCC_dict = defaultdict(lambda: defaultdict(dict))
+    all_cross_ZNCC_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+    
+    if calc_AMI:
+        all_auto_AMI_dict = defaultdict(lambda: defaultdict(dict))
+        all_cross_AMI_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+    else:
+        all_auto_AMI_dict = None
+        all_cross_AMI_dict = None
+        
+    if calc_MI:
+        all_auto_MI_dict = defaultdict(lambda: defaultdict(dict))
+        all_cross_MI_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+    else:
+        all_auto_MI_dict = None
+        all_cross_MI_dict = None
+
+    if calc_Morans:
+        all_auto_MoransI_dict = defaultdict(lambda: defaultdict(dict))
+        all_cross_MoransI_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+    else:
+        all_auto_MoransI_dict = None
+        all_cross_MoransI_dict = None
+
+    
+    # Execute the parallel processing
+    if ncores > 1:
+        with Pool(processes=ncores) as pool:
+            results = pool.map(worker_func, matchT)
+            
+        # Collect and merge results from all processes
+        for result in results:
+            auto_NCC_dict, cross_NCC_dict, auto_ZNCC_dict, cross_ZNCC_dict, auto_AMI_dict, cross_AMI_dict, auto_MI_dict, cross_MI_dict, auto_MoransI_dict, cross_MoransI_dict = result
+            
+            # Merge dictionaries
+            for key, col_data in auto_NCC_dict.items():
+                for col, rep_data in col_data.items():
+                    all_auto_NCC_dict[key][col].update(rep_data)
+                    
+            for key, col_data in cross_NCC_dict.items():
+                for col1, col_data_2 in col_data.items():
+                    for col2, rep_data in col_data_2.items():
+                        all_cross_NCC_dict[key][col1][col2].update(rep_data)
+                        
+            for key, col_data in auto_ZNCC_dict.items():
+                for col, rep_data in col_data.items():
+                    all_auto_ZNCC_dict[key][col].update(rep_data)
+                    
+            for key, col_data in cross_ZNCC_dict.items():
+                for col1, col_data_2 in col_data.items():
+                    for col2, rep_data in col_data_2.items():
+                        all_cross_ZNCC_dict[key][col1][col2].update(rep_data)
+            
+            if calc_AMI:
+                for key, col_data in auto_AMI_dict.items():
+                    for col, rep_data in col_data.items():
+                        all_auto_AMI_dict[key][col].update(rep_data)
+                        
+                for key, col_data in cross_AMI_dict.items():
+                    for col1, col_data_2 in col_data.items():
+                        for col2, rep_data in col_data_2.items():
+                            all_cross_AMI_dict[key][col1][col2].update(rep_data)
+            
+            if calc_MI:
+                for key, col_data in auto_MI_dict.items():
+                    for col, rep_data in col_data.items():
+                        all_auto_MI_dict[key][col].update(rep_data)
+                        
+                for key, col_data in cross_MI_dict.items():
+                    for col1, col_data_2 in col_data.items():
+                        for col2, rep_data in col_data_2.items():
+                            all_cross_MI_dict[key][col1][col2].update(rep_data)
+
+            if calc_Morans:
+                for key, col_data in auto_MoransI_dict.items():
+                    for col, rep_data in col_data.items():
+                        all_auto_MoransI_dict[key][col].update(rep_data)
+                        
+                for key, col_data in cross_MoransI_dict.items():
+                    for col1, col_data_2 in col_data.items():
+                        for col2, rep_data in col_data_2.items():
+                            all_cross_MoransI_dict[key][col1][col2].update(rep_data)
+    else:
+        # Sequential processing if ncores is 1
+        for tval in matchT:
+            result = worker_func(tval)
+            auto_NCC_dict, cross_NCC_dict, auto_ZNCC_dict, cross_ZNCC_dict, auto_AMI_dict, cross_AMI_dict, auto_MI_dict, cross_MI_dict, auto_MoransI_dict, cross_MoransI_dict = result
+            
+            # Merge dictionaries
+            for key, col_data in auto_NCC_dict.items():
+                for col, rep_data in col_data.items():
+                    all_auto_NCC_dict[key][col].update(rep_data)
+                    
+            for key, col_data in cross_NCC_dict.items():
+                for col1, col_data_2 in col_data.items():
+                    for col2, rep_data in col_data_2.items():
+                        all_cross_NCC_dict[key][col1][col2].update(rep_data)
+                        
+            for key, col_data in auto_ZNCC_dict.items():
+                for col, rep_data in col_data.items():
+                    all_auto_ZNCC_dict[key][col].update(rep_data)
+                    
+            for key, col_data in cross_ZNCC_dict.items():
+                for col1, col_data_2 in col_data.items():
+                    for col2, rep_data in col_data_2.items():
+                        all_cross_ZNCC_dict[key][col1][col2].update(rep_data)
+            
+            if calc_AMI:
+                for key, col_data in auto_AMI_dict.items():
+                    for col, rep_data in col_data.items():
+                        all_auto_AMI_dict[key][col].update(rep_data)
+                        
+                for key, col_data in cross_AMI_dict.items():
+                    for col1, col_data_2 in col_data.items():
+                        for col2, rep_data in col_data_2.items():
+                            all_cross_AMI_dict[key][col1][col2].update(rep_data)
+            
+            if calc_MI:
+                for key, col_data in auto_MI_dict.items():
+                    for col, rep_data in col_data.items():
+                        all_auto_MI_dict[key][col].update(rep_data)
+                        
+                for key, col_data in cross_MI_dict.items():
+                    for col1, col_data_2 in col_data.items():
+                        for col2, rep_data in col_data_2.items():
+                            all_cross_MI_dict[key][col1][col2].update(rep_data)
+
+            if calc_Morans:
+                for key, col_data in auto_MoransI_dict.items():
+                    for col, rep_data in col_data.items():
+                        all_auto_MoransI_dict[key][col].update(rep_data)
+                        
+                for key, col_data in cross_MoransI_dict.items():
+                    for col1, col_data_2 in col_data.items():
+                        for col2, rep_data in col_data_2.items():
+                            all_cross_MoransI_dict[key][col1][col2].update(rep_data)
+
+            
+
+    # Construct the dataframes from the merged dictionaries
+    # Sort keys by t-delay to ensure rows are ordered by increasing t-delay
+    sorted_keys_auto_NCC = sorted(all_auto_NCC_dict.keys(), key=lambda x: x[2])  # Sort by t-delay (index 2)
+    
+    # Construct dataframes for auto-NCC
+    for key in sorted_keys_auto_NCC:
+        col_data = all_auto_NCC_dict[key]
+        row = {"t0": key[0], "t1": key[1], "t-delay": key[2], "Rmax": key[3]}
+        for var, rep_var_data in col_data.items():
+            NCC_rep_vals = [val for repkey, val in rep_var_data.items() if repkey.startswith("NCC{")]
+            if len(NCC_rep_vals) > 0:
+                row[f"AVG[NCC{{{var}}}]"] = np.mean(NCC_rep_vals)
+            row.update(rep_var_data)
+        df_auto_NCC = pan.concat([df_auto_NCC, pan.DataFrame([row])], ignore_index=True)
+
+    
+    # Construct dataframes for auto-ZNCC
+    sorted_keys = sorted(all_auto_ZNCC_dict.keys(), key=lambda x: x[2])  # Sort by t-delay (index 2)
+    for key in sorted_keys:
+        if key not in all_auto_ZNCC_dict:
+            continue
+        col_data = all_auto_ZNCC_dict[key]
+        row = {"t0": key[0], "t1": key[1], "t-delay": key[2], "Rmax": key[3]}
+        for var, rep_var_data in col_data.items():
+            ZNCC_rep_vals = [val for repkey, val in rep_var_data.items() if repkey.startswith("ZNCC{")]
+            if len(ZNCC_rep_vals) > 0:
+                row[f"AVG[ZNCC{{{var}}}]"] = np.mean(ZNCC_rep_vals)
+            row.update(rep_var_data)
+        df_auto_ZNCC = pan.concat([df_auto_ZNCC, pan.DataFrame([row])], ignore_index=True)
+
+    # Construct dataframes for cross-NCC
+    sorted_keys = sorted(all_cross_NCC_dict.keys(), key=lambda x: x[2])  # Sort by t-delay (index 2)
+    for key in sorted_keys:
+        if key not in all_cross_NCC_dict:
+            continue
+        col_data = all_cross_NCC_dict[key]
+        row = {"t0": key[0], "t1": key[1], "t-delay": key[2], "Rmax": key[3]}
+        for var1, col_data_2 in col_data.items():
+            for var2, rep_var1var2_data in col_data_2.items():
+                NCC_rep_vals = [val for repkey, val in rep_var1var2_data.items() if repkey.startswith("NCC{")]
+                if len(NCC_rep_vals) > 0:
+                    row[f"AVG[NCC{{{var1};{var2}}}]"] = np.mean(NCC_rep_vals)
+                row.update(rep_var1var2_data)
+        df_cross_NCC = pan.concat([df_cross_NCC, pan.DataFrame([row])], ignore_index=True)
+
+    # Construct dataframes for cross-ZNCC
+    sorted_keys = sorted(all_cross_ZNCC_dict.keys(), key=lambda x: x[2])  # Sort by t-delay (index 2)
+    for key in sorted_keys:
+        if key not in all_cross_ZNCC_dict:
+            continue
+        col_data = all_cross_ZNCC_dict[key]
+        row = {"t0": key[0], "t1": key[1], "t-delay": key[2], "Rmax": key[3]}
+        for var1, col_data_2 in col_data.items():
+            for var2, rep_var1var2_data in col_data_2.items():
+                ZNCC_rep_vals = [val for repkey, val in rep_var1var2_data.items() if repkey.startswith("ZNCC{")]
+                if len(ZNCC_rep_vals) > 0:
+                    row[f"AVG[ZNCC{{{var1};{var2}}}]"] = np.mean(ZNCC_rep_vals)
+                row.update(rep_var1var2_data)
+        df_cross_ZNCC = pan.concat([df_cross_ZNCC, pan.DataFrame([row])], ignore_index=True)
+
+    # Construct dataframes for AMI and MI if calculated
+    if calc_AMI and all_auto_AMI_dict is not None:
+        df_auto_AMI = pan.DataFrame(columns=auto_AMI_cols)
+        df_cross_AMI = pan.DataFrame(columns=cross_AMI_cols)
+        
+        
+        # Construct dataframes for auto-AMI
+        sorted_keys = sorted(all_auto_AMI_dict.keys(), key=lambda x: x[2])  # Sort by t-delay (index 2)
+        for key in sorted_keys:
+            col_data = all_auto_AMI_dict[key]
+            row = {"t0": key[0], "t1": key[1], "t-delay": key[2], "Rmax": key[3]}
+            for var, rep_var_data in col_data.items():
+                AMI_rep_vals = [val for repkey, val in rep_var_data.items() if repkey.startswith("AMI{")]
+                if len(AMI_rep_vals) > 0:
+                    row[f"AVG[AMI{{{var}}}]"] = np.mean(AMI_rep_vals)
+                row.update(rep_var_data)
+            df_auto_AMI = pan.concat([df_auto_AMI, pan.DataFrame([row])], ignore_index=True)
+        
+        # Construct dataframes for cross-AMI
+        sorted_keys = sorted(all_cross_AMI_dict.keys(), key=lambda x: x[2])  # Sort by t-delay (index 2)
+        for key in sorted_keys:
+            col_data = all_cross_AMI_dict[key]
+            row = {"t0": key[0], "t1": key[1], "t-delay": key[2], "Rmax": key[3]}
+            for var1, col_data_2 in col_data.items():
+                for var2, rep_var1var2_data in col_data_2.items():
+                    AMI_rep_vals = [val for repkey, val in rep_var1var2_data.items() if repkey.startswith("AMI{")]
+                    if len(AMI_rep_vals) > 0:
+                        row[f"AVG[AMI{{{var1};{var2}}}]"] = np.mean(AMI_rep_vals)
+                    row.update(rep_var1var2_data)
+            df_cross_AMI = pan.concat([df_cross_AMI, pan.DataFrame([row])], ignore_index=True)
+
+    
+    if calc_MI and all_auto_MI_dict is not None:
+        df_auto_MI = pan.DataFrame(columns=auto_MI_cols)
+        df_cross_MI = pan.DataFrame(columns=cross_MI_cols)
+        
+        # Construct dataframes for auto-MI
+        sorted_keys = sorted(all_auto_MI_dict.keys(), key=lambda x: x[2])
+        for key in sorted_keys:
+            col_data = all_auto_MI_dict[key]
+            row = {"t0": key[0], "t1": key[1], "t-delay": key[2], "Rmax": key[3]}
+            for var, rep_var_data in col_data.items():
+                MI_rep_vals = [val for repkey, val in rep_var_data.items() if repkey.startswith("MI{")]
+                if len(MI_rep_vals) > 0:
+                    row[f"AVG[MI{{{var}}}]"] = np.mean(MI_rep_vals)
+                row.update(rep_var_data)
+            df_auto_MI = pan.concat([df_auto_MI, pan.DataFrame([row])], ignore_index=True)
+
+        # Construct dataframes for cross-MI
+        sorted_keys = sorted(all_cross_MI_dict.keys(), key=lambda x: x[2])
+        for key in sorted_keys:
+            col_data = all_cross_MI_dict[key]
+            row = {"t0": key[0], "t1": key[1], "t-delay": key[2], "Rmax": key[3]}
+            for var1, col_data_2 in col_data.items():
+                for var2, rep_var1var2_data in col_data_2.items():
+                    MI_rep_vals = [val for repkey, val in rep_var1var2_data.items() if repkey.startswith("MI{")]
+                    if len(MI_rep_vals) > 0:
+                        row[f"AVG[MI{{{var1};{var2}}}]"] = np.mean(MI_rep_vals)
+                    row.update(rep_var1var2_data)
+            df_cross_MI = pan.concat([df_cross_MI, pan.DataFrame([row])], ignore_index=True)
+
+
+    if calc_Morans and all_auto_MoransI_dict is not None:
+        df_auto_MoransI = pan.DataFrame(columns=auto_MoransI_cols)
+        df_cross_MoransI = pan.DataFrame(columns=cross_MoransI_cols)
+        
+        # Construct dataframes for auto-MoransI
+        sorted_keys = sorted(all_auto_MoransI_dict.keys(), key=lambda x: x[2])
+        for key in sorted_keys:
+            col_data = all_auto_MoransI_dict[key]
+            row = {"t0": key[0], "t1": key[1], "t-delay": key[2], "Rmax": key[3]}
+            for var, rep_var_data in col_data.items():
+                MoransI_rep_vals = [val for repkey, val in rep_var_data.items() if repkey.startswith("BVMoransI{")]
+                if len(MoransI_rep_vals) > 0:
+                    row[f"AVG[BVMoransI{{{var}}}]"] = np.mean(MoransI_rep_vals)
+                row.update(rep_var_data)
+            df_auto_MoransI = pan.concat([df_auto_MoransI, pan.DataFrame([row])], ignore_index=True)
+
+        # Construct dataframes for cross-MoransI
+        sorted_keys = sorted(all_cross_MoransI_dict.keys(), key=lambda x: x[2])
+        for key in sorted_keys:
+            col_data = all_cross_MoransI_dict[key]
+            row = {"t0": key[0], "t1": key[1], "t-delay": key[2], "Rmax": key[3]}
+            for var1, col_data_2 in col_data.items():
+                for var2, rep_var1var2_data in col_data_2.items():
+                    MoransI_rep_vals = [val for repkey, val in rep_var1var2_data.items() if repkey.startswith("BVMoransI{")]
+                    if len(MoransI_rep_vals) > 0:
+                        row[f"AVG[BVMoransI{{{var1};{var2}}}]"] = np.mean(MoransI_rep_vals)
+                    row.update(rep_var1var2_data)
+            df_cross_MoransI = pan.concat([df_cross_MoransI, pan.DataFrame([row])], ignore_index=True)
+        
+    
+
+    # Drop all empty columns from the dataframes
+    df_auto_NCC.dropna(axis=1, how='all', inplace=True)
+    df_cross_NCC.dropna(axis=1, how='all', inplace=True)
+    df_auto_ZNCC.dropna(axis=1, how='all', inplace=True)
+    df_cross_ZNCC.dropna(axis=1, how='all', inplace=True)
+    if df_auto_AMI is not None:
+        df_auto_AMI.dropna(axis=1, how='all', inplace=True)
+    if df_cross_AMI is not None:
+        df_cross_AMI.dropna(axis=1, how='all', inplace=True)
+    if df_auto_MI is not None:
+        df_auto_MI.dropna(axis=1, how='all', inplace=True)
+    if df_cross_MI is not None:
+        df_cross_MI.dropna(axis=1, how='all', inplace=True)
+    if df_auto_MoransI is not None:
+        df_auto_MoransI.dropna(axis=1, how='all', inplace=True)
+    if df_cross_MoransI is not None:
+        df_cross_MoransI.dropna(axis=1, how='all', inplace=True)
+
+    # Warn if duplicate columns exist in the dataframes
+    if df_auto_NCC.columns.duplicated().any():
+        print("WARNING!!!!! : Duplicate columns found in auto-NCC dataframe. These are: " + str(df_auto_NCC.columns[df_auto_NCC.columns.duplicated()]))
+    if df_cross_NCC.columns.duplicated().any():
+        print("WARNING!!!!!: Duplicate columns found in cross-NCC dataframe. These are: " + str(df_cross_NCC.columns[df_cross_NCC.columns.duplicated()]))
+    if df_auto_ZNCC.columns.duplicated().any():
+        print("WARNING!!!!!: Duplicate columns found in auto-ZNCC dataframe. These are: " + str(df_auto_ZNCC.columns[df_auto_ZNCC.columns.duplicated()]))
+    if df_cross_ZNCC.columns.duplicated().any():
+        print("WARNING!!!!!: Duplicate columns found in cross-ZNCC dataframe. These are: " + str(df_cross_ZNCC.columns[df_cross_ZNCC.columns.duplicated()]))
+    if df_auto_AMI is not None and df_auto_AMI.columns.duplicated().any():
+        print("WARNING!!!!!: Duplicate columns found in auto-AMI dataframe. These are: " + str(df_auto_AMI.columns[df_auto_AMI.columns.duplicated()]))
+    if df_cross_AMI is not None and df_cross_AMI.columns.duplicated().any():
+        print("WARNING!!!!!: Duplicate columns found in cross-AMI dataframe. These are: " + str(df_cross_AMI.columns[df_cross_AMI.columns.duplicated()]))
+    if df_auto_MI is not None and df_auto_MI.columns.duplicated().any():
+        print("WARNING!!!!!: Duplicate columns found in auto-MI dataframe. These are: " + str(df_auto_MI.columns[df_auto_MI.columns.duplicated()]))
+    if df_cross_MI is not None and df_cross_MI.columns.duplicated().any():
+        print("WARNING!!!!!: Duplicate columns found in cross-MI dataframe. These are: " + str(df_cross_MI.columns[df_cross_MI.columns.duplicated()]))
+    if df_auto_MoransI is not None and df_auto_MoransI.columns.duplicated().any():
+        print("WARNING!!!!!: Duplicate columns found in auto-MoransI dataframe. These are: " + str(df_auto_MoransI.columns[df_auto_MoransI.columns.duplicated()]))
+    if df_cross_MoransI is not None and df_cross_MoransI.columns.duplicated().any():
+        print("WARNING!!!!!: Duplicate columns found in cross-MoransI dataframe. These are: " + str(df_cross_MoransI.columns[df_cross_MoransI.columns.duplicated()]))
+    
+
+    return df_auto_NCC, df_cross_NCC, df_auto_ZNCC, df_cross_ZNCC, df_auto_AMI, df_cross_AMI, df_auto_MI, df_cross_MI, df_auto_MoransI, df_cross_MoransI
+
+
+
+
 
 def rename(dir, keyword, new_keyword):
     # Rename all files in dir (including the entire filepath) that contain keyword to new_keyword.
@@ -967,6 +1967,7 @@ def gen_MEAN_INDVL_Prelimsfiledata(files, pathtodir="", ext="csv", tmax =None, d
             return None
     
     # Store column names in col_labels. Strip elements of any leading or trailing whitespaces.
+    df = df.reset_index(drop=True)
     df.columns = [col.strip() for col in df.columns]
     col_labels = [col for col in df.columns if col in include_col_labels and col != "t"];
 
@@ -1001,6 +2002,7 @@ def gen_MEAN_INDVL_Prelimsfiledata(files, pathtodir="", ext="csv", tmax =None, d
                 print("Error: Non-standard extension for file " + pathtodir +"/" + files[0] + " with error message: \n" + str(e))
                 return None
         # Modify column names in df to remove leading and trailing whitespaces.
+        df = df.reset_index(drop=True)
         df.columns = [col.strip() for col in df.columns]
         # Remove exclude_col_labels from df.
         df = df[[col for col in df.columns if col in include_col_labels]]

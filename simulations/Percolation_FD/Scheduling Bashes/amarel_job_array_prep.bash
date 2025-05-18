@@ -106,7 +106,7 @@ cd ..
 
 # Use the variables p1, p2, p3, p4, p5, p6, p7, p8, p9 to compile the source files:
 if [ $init -ne 2 ]; then
-    g++ -DSPB=${3} -DINIT=${init} multiSPDP.cpp order_${3}stocDP.cpp -fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
+    g++ -DSPB=${3} -DINIT=${init} multiSPDP.cpp order_${3}stocDP_unity.cpp -fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
 else
     g++ -DSPB=${3} -DINIT=${init} multiSPDP.cpp order_${3}stocDP_burnin.cpp -fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
 fi

@@ -632,7 +632,7 @@ void init_burnin_wrapper(D2Vec_Double &Rho_dt, double a, double a_c, int a_scali
 			a = 0.001675; // Set a to 0.001675 if it is less than this value, when b= 1e-6 (DiC-B6-UNITY).
 	}
 	
-	rain  << a; scaled_rain<< a_scalingfactor*a; Lgrid << L; dPO << dP; t_val << 91201; 
+	rain  << a; scaled_rain<< a_scalingfactor*a; Lgrid << L; dPO << dP; t_val << 88000; 
 	map<string, string> local_input_keys = input_keys; // Copy input_keys to local_input_keys.
 	local_input_keys["T"] = t_val.str(); local_input_keys["a"] = rain.str(); local_input_keys["ascaled"] = scaled_rain.str();
 	local_input_keys["dP"] = dPO.str(); local_input_keys["L"] = Lgrid.str();
@@ -645,9 +645,9 @@ void init_burnin_wrapper(D2Vec_Double &Rho_dt, double a, double a_c, int a_scali
 	vector<int> const_species; //Vector to store species to be initialised with constant values.
 	string csv_filename_pattern; //Filename pattern for csv files.
 
-	const vector<string> initcsv_columns = {"P(x;t)"};
-	for(int s=1; s< Sp; s++)
-			const_species.push_back(s); //Species to be initialised with constant values (ALL EXCEPT VEGETATION).
+	const vector<string> initcsv_columns = {"P(x;t)", "G(x;t)", "Pr(x;t)" };
+	//for(int s=1; s< Sp; s++)
+	//		const_species.push_back(s); //Species to be initialised with constant values (ALL EXCEPT VEGETATION).
 
 	// Check if local_input_folder contains "HEXBLADE"
 	if(local_input_folder.find("HEXBLADE") != std::string::npos)
@@ -1747,7 +1747,7 @@ void calc_gamma_2Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringS
 			if( fr == 0.0)
 			{	continue;	} // No perception radius for this species (indicates vegetation species)
 			if(Rho_avg[s] < eps)
-				{	gamma[s][i] = 1.0; continue;	} // No species left, value assigned doesn't matter.
+				{	gamma[s][i] = 0.0; continue;	} // No species left, value assigned doesn't matter.
 			else if(Rho_avg[s-1] < eps)
 				{	gamma[s][i] = 0.0;	continue; } // No resource left, consumers will advect to extinction.
 			
@@ -1894,7 +1894,7 @@ void save_framefileswrapper(int index, int tot_iter, int j, int thrID,  double t
 	double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double dP, int r, int g, double Gstar /* =-1.*/, double Vstar /* = -1.*/)
 {
 	// FRAME SAVING
-	if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 50000 && t <= 150000 || t >= 50 && t <= 15000 
+	if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 50000 && t <= 150000 || t >= 10 && t <= 15000 
 		|| t== 0)
 	{
 		//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
@@ -2159,7 +2159,7 @@ int save_prelimfileswrapper(int index, int tot_iter, int j, int thrID,  double t
 //Calculates gamma for 3 Sp DP model (details in PDF, 
 // ASSUMING PREDATORS AREN'T DETERRED BY HIGH LOCAL VEGETATION DENSITY)
 void calc_gamma_3Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringSites, D2Vec_Double &Rho_t, D2Vec_Double &gamma,  
-			double (&Rho_avg)[Sp], vector <std::pair<double, int>>& rfrac, double nVeg_frac, int r_max, int L)
+			double (&Rho_avg)[Sp], vector <std::pair<double, int>>& rfrac, vector <std::pair<int, int>>& dtV_counter, double nVeg_frac, int r_max, int L)
 {
 	mutex errorMutex; // Mutex to make error messages thread-safe
 
@@ -2220,7 +2220,7 @@ void calc_gamma_3Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringS
 			if( eff_nR_Perp_size < 1 && fr > 0)
 			{	eff_nR_Perp_size = 1;	} // At least one nearest neighbor (the site itself) is considered.
 			if(Rho_avg[s] < eps)
-				{	gamma[s][i] = 1.0; continue;	} // No species left, value assigned doesn't matter.
+				{	gamma[s][i] = 0.0; continue;	} // No species left, value assigned doesn't matter.
 			else if(Rho_avg[s-1] < eps)
 				{	gamma[s][i] = 0.0;	continue; } // No resource left, consumers will advect to extinction.
 			
@@ -2277,7 +2277,7 @@ void calc_gamma_3Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringS
 
 //Calculates gamma for 3 Sp DP model (details in PDF) [ 0 < ]
 void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec_Double &Rho_t, D2Vec_Double &gamma,  
-			double (&Rho_avg)[Sp], vector <std::pair<double, int>>& rfrac, double nVeg_frac, int r_max, int L)
+			double (&Rho_avg)[Sp], vector <std::pair<double, int>>& rfrac, vector <std::pair<int, int>>& dtV_counter, double nVeg_frac, int r_max, int L)
 {	
 	mutex errorMutex; // Mutex to make error messages thread-safe
 	if(nVeg_frac < 0.35)
@@ -2407,7 +2407,7 @@ void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec
 
 void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double b, double c, double (&D)[Sp], double (&v)[SpB],
     double sigma[], double a_st, double a_end, double a_c, double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], 
-	double chigh[], double clow[], double dt, double dx, double dP, int r, int g, double Gstar /* = -1*/, double Vstar /* = -1*/)
+	int (&dtV)[SpB], double clow[], double dt, double dx, double dP, int r, int g, double Gstar /* = -1*/, double Vstar /* = -1*/)
 {
 	int thrID; //Unique ID for each thread, used for saving files.
 	double epsilon = 1.0e-12; //Small number to avoid division by zero.
@@ -2599,7 +2599,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 		stringstream m1_2;     //To make cout thread-safe as well as non-garbled due to race conditions.
     	m1_2 << "Initial Conditions:\t Per:\t" << perc;
 		for(int s=0; s< Sp; s++)
-			m1_2 << "\t C_Lo[" << s << "]:\t" << clow[s] << "\t C_High[" << s << "]:\t" << chigh[s];
+			m1_2 << "\t C_Lo[" << s << "]:\t" << clow[s];
 		m1_2 << "\t R: " << a << "\n";
 		if(omp_get_thread_num()== 1)
 			cout << m1_2.str();  
@@ -2609,13 +2609,29 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 		poisson_distribution<int> poisson; gamma_distribution <double> gamma_distr; 
 		uniform_real_distribution<double> unif(0.0, 1.0); normal_distribution<double> norm(0.0, 1.0);
 
-		//Define thrID as a random number between 0 and 1000, iff j =0.
-		thrID = (j == 0) ? int(round(unif(rng)*1000)) : thrID; //Random number between 0 and 1000.
+		//Define thrID as a random number between 0 and 10000, iff j =0.
+		thrID = (j == 0) ? int(round(unif(rng)*10000)) : thrID; //Random number between 0 and 1000.
 		double t=0; int index = 0;  //Initialise t
 		int frame_index=0; int po=1; int so =1; int lo=1; int counter =0;
+		vector <std::pair<int, int>> dtV_counter(SpB, {0, 0}); 
+		//Keeps track of dtV[s] and counter%dtV[s] for each species s. Used to determine if species s is updated at time t.
+		// Note counter := t/dt, so counter%dtV[s] = 0 implies t%dtV[s] = 0.
+
+		for (int s=0; s< SpB; s++){	
+			if(dtV[s] == 1)
+				dtV_counter[s] = {1, 0}; //If dtV[s] = 1, then update species s at every time step.
+			else
+			{	dtV_counter[s] = {dtV[s], 0};	} //else update species s at every dtV[s] time step.
+		}
 
 		while( t < t_max + dt)
 		{
+
+			//Update dtV_counter for each species s.
+			for (int s=1; s< SpB; s++)
+			{
+				dtV_counter[s].second = (counter)%dtV_counter[s].first;
+			}
 			// Basic Book-keeping below. Prints frames out to file at given time points. 
 			//Also updates number and avg density of active sites at given time points.
 			if(t == 0 || t >= t_meas[index] -dt/2.0 && t < t_meas[index] +dt/2.0)
@@ -2939,7 +2955,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 			#if SPB == 2
 				calc_gamma_2Sp_NonRefugia(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, nR_fac, r_max_effective, g);
 			#elif SPB == 3
-				calc_gamma_3Sp_NonRefugia(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, nR_fac, r_max_effective, g);
+				calc_gamma_3Sp_NonRefugia(origin_Neighbourhood, DRho, gamma, Rhox_avg, r_frac, dtV_counter, nR_fac, r_max_effective, g);
 			#endif 
 			//Calculates gamma for each species at each site.
 
@@ -3053,12 +3069,21 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 						cerr << m5_2.str();
 					}
 					#endif
+					
+					// Sampling the advection vector from v[s], every dtV[s] time steps.
+					if(dtV_counter[s].second == 0)
+					{
+						//unif = uniform_real_distribution<double>(0.0, 1.0);
+						double ran = unif(rng); //Random number between 0 and 1.
+						v_eff[s][i].first = v[s]*cos(2*PI*ran); v_eff[s][i].second = v[s]*sin(2*PI*ran); //Advection vector in x & y direction.
+					}
 
 					//Next sampling the advection vector from v[s].
 					//unif = uniform_real_distribution<double>(0.0, 1.0);
-					double ran = unif(rng);
-					double vx = v[s]*cos(2*PI*ran); double vy = v[s]*sin(2*PI*ran); //Advection vector.
-					double vx_abs = vx*sgn(vx); double vy_abs = vy*sgn(vy); //Absolute value of advection vector.
+					//double ran = unif(rng);
+					//double vx = v[s]*cos(2*PI*ran); double vy = v[s]*sin(2*PI*ran); //Advection vector.
+					double vx_abs = v_eff[s][i].first*sgn(v_eff[s][i].first); double vy_abs = v_eff[s][i].second*sgn(v_eff[s][i].second); 
+					//Absolute value of advection vector.
 
 					//RECALL: dx1_2 = 1/(dx2); dxb2 = dx/2.0; dx1 = 1/dx;
 					//diff_eff[s].first = (D[s] -(dxb2)*(vx_abs*(1 - dt*dx1*vx_abs)))*dx1_2;
@@ -3092,7 +3117,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 					// Advection corrected diffusion term.
 					double alpha_i = gamma[s][i]*(diff_eff[s].second*(DRho[s][nR2[i][0][0]] + DRho[s][nR2[i][0][1]]) 
 												+ diff_eff[s].first*(DRho[s][nR2[i][1][0]] + DRho[s][nR2[i][1][1]])) 
-									+dx1*(gamma_prime_si)*(vx_abs*DRho[s][nR2[i][1][sgn_index(vx)]]+ vy_abs*DRho[s][nR2[i][0][sgn_index(vy)]]);
+									+dx1*(gamma_prime_si)*(vx_abs*DRho[s][nR2[i][1][sgn_index(v_eff[s][i].first)]]+ vy_abs*DRho[s][nR2[i][0][sgn_index(v_eff[s][i].second)]]);
 					
 					if(alpha_i == 0 && DRho[s][i] == 0) 
 					{
@@ -3407,7 +3432,7 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 
 
 void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, double a_start, double a_end, double a_c, double b,  double c, 
-	double (&D)[Sp], double (&v)[SpB], double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], double ch[], double clo[],
+	double (&D)[Sp], double (&v)[SpB], double sigma[], double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double pR[], int (&dtV)[SpB], double clo[],
 	double dt, double dx, double dP, int r,  int g, double Gstar /*= -1*/, double Vstar /* = -1. */)
 {
 	//init_fullframe(Rho_0, g*g); //Returns Rho_0 with a full initial frame filled with ones.
@@ -3449,6 +3474,9 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 	frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 50, 400, 8, "linspace", true);
 	frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 400, 1200, 9, "linspace", true);
 
+	// For correlation measurement, add linear window from 10 to 4000, with 400 points (spaced 10 apart).
+	//frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 10, 4000, 400, "linspace", true);
+
 
 	if(t_measure[t_measure.size()-1] > 90000)
 	{
@@ -3464,9 +3492,18 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 		frame_tmeas.insert(it, t_frame_linearwindow.begin(), t_frame_linearwindow.end());
 		// Sort the frame_tmeas vector in ascending order and remove duplicates (if any).
 		sort( frame_tmeas.begin(), frame_tmeas.end() );
+
+		// Create a linear window from 80000 to 150000, spaced 250 apart (281 points).
+		vector <double> t_frame_linearwindow2 = linspace(80000, 150000, 281);
+		// Insert into t_measure vector after the element in t_measure that is just less than the first element in t_frame_linearwindow2.
+		auto it2 = std::upper_bound(t_measure.begin(), t_measure.end(), t_frame_linearwindow2[0]);
+		t_measure.insert(it2, t_frame_linearwindow2.begin(), t_frame_linearwindow2.end());
+		// Sort the t_measure vector in ascending order and remove duplicates (if any).
+		sort( t_measure.begin(), t_measure.end() );	
 	}
-	// Remove all duplicate elements in frame_tmeas.
+	// Remove all duplicate elements in frame_tmeas and t_measure.
 	frame_tmeas.erase( unique( frame_tmeas.begin(), frame_tmeas.end() ), frame_tmeas.end() );
+	t_measure.erase( unique( t_measure.begin(), t_measure.end() ), t_measure.end() );
 
   	cout << "Values in t_measure (which is of total size " << t_measure.size() << ") are :" <<endl;
   	for (int i=0; i< t_measure.size(); i++)
@@ -3536,7 +3573,7 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 		 * Namely CExpRho_a is structured as:
 		 * | 	a		|    t 		|     <<Rho1(t)>>x,r			|    Var[<Rho1(t)>x],r    |
 		**/
-		dP_Dornic_2D_MultiSp(CExpRho_a, t_measure, t_max, a_space[i], b, c, D, v, sigma, a_start, a_end, a_c, A,H,E,M, pR, ch, clo, dt, dx, dP, r, g, Gstar, Vstar);
+		dP_Dornic_2D_MultiSp(CExpRho_a, t_measure, t_max, a_space[i], b, c, D, v, sigma, a_start, a_end, a_c, A,H,E,M, pR, dtV, clo, dt, dx, dP, r, g, Gstar, Vstar);
 		//RK4_Wrapper_2D(CExpRho_a, t_measure, t_max, a_space[i], c, gmax, alpha, d, rW, W0, D, K , a_start, a_end, dt, dx, dP, r, g);
 		//expanded_percolationDornic_2D(CExpRho_a, t_measure, Rho_0,  t_max, a_space[i], b, c, D, sigma, dt, dx, r, g);
         //crtexp_DP_Basic(grid_size, comp_data, p_space[i], r_init, length);

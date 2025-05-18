@@ -46,6 +46,10 @@ fi
 # Store the current directory
 curr_dir=$(pwd)
 
+#Get timestamp at the initialisation of the script in format DD{Month}YYYY
+timestamp=$(date +"%d%b%Y")
+echo "Starting screen sessions for jobs in $1 with SpB=$2 and Init_Types=$3 at $timestamp ...."
+
 # Function that checks if starts a new screen session and runs the current job after first checking if a screen with the same name is already running.
 # If a screen session with the same name is running, it will increment the screen_idx_mod variable to use the next screen name in the array.
 # It will also issue a warning message to the user.
@@ -84,15 +88,15 @@ start_screen(){
         else
             p13=$(echo $p13 | tr -d '[:space:]')
         fi
-
     fi
+
     if ! screen -list | grep -q "${screen_names[$screen_index]}"; then
         # Start a new screen session and run the job
         #If init !=2, compile  order_${spb}stoc_test_rietkerk.cpp else compile order_${spb}stoc_burnin_rietkerk.cpp
         if [ $init -ne 2 ]; then
-            screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; g++-14 -DSPB=${spb} -DINIT=${init} rietkerk_bjork_basic.cpp order_${spb}stoc_test_rietkerk.cpp -fopenmp -o ${screen_names[$screen_index]}_${prefix}.out -std=c++23; ./${screen_names[$screen_index]}_${prefix}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 $p11 $p12 &> stderr_${screen_names[$screen_index]}.txt; cd $curr_dir"
+            screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; g++-14 -DSPB=${spb} -DINIT=${init} rietkerk_bjork_basic.cpp order_${spb}stoc_unity_rietkerk.cpp -fopenmp -o ${screen_names[$screen_index]}_${prefix}.out -std=c++23; ./${screen_names[$screen_index]}_${prefix}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 $p11 $p12 &> stderr_${screen_names[$screen_index]}_${timestamp}.txt; cd $curr_dir"
         else
-            screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; g++-14 -DSPB=${spb} -DINIT=${init} rietkerk_bjork_basic.cpp order_${spb}stoc_burnin_rietkerk.cpp -fopenmp -o ${screen_names[$screen_index]}_${prefix}.out -std=c++23; ./${screen_names[$screen_index]}_${prefix}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 $p11 $p12 $p13 &> stderr_${screen_names[$screen_index]}.txt; cd $curr_dir"
+            screen -dmS ${screen_names[$screen_index]} bash -c "cd .. ; g++-14 -DSPB=${spb} -DINIT=${init} rietkerk_bjork_basic.cpp order_${spb}stoc_burnin_rietkerk.cpp -fopenmp -o ${screen_names[$screen_index]}_${prefix}.out -std=c++23; ./${screen_names[$screen_index]}_${prefix}.out $p1 $p2 $p3 $p4 $p5 $p6 $p7 $p8 $p9 $p10 $p11 $p12 $p13 &> stderr_${screen_names[$screen_index]}_${timestamp}.txt; cd $curr_dir"
         fi
         screen_index=$((screen_index+1))
     else

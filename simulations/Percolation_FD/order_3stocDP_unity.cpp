@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
 
   //double p0i = 0.5; double p0j= p0i/200; double p0j= 2.25; double p0m= 8; // In g/m^2
 
-  double k0, k1, k2; double d0, d1, d2, d3, d4; double s0, s1, s2; double v1, v2;//Slightly 
+  double k0, k1, k2; double d0, d1, d2, d3, d4; double s0, s1, s2; double v1, v2; double dtv1, dtv2;
   
   dx= 0.1 ; //From Bonachela et al 2015 (in km)
   d0 = 0.00025/24.0; d1=0.0298; d2= 0.05221; d3 = 0.00025/24.0; d4= 0.025/24.0; //From Bonachela et al 2015 (in km^2/hr)
@@ -42,6 +42,10 @@ int main(int argc, char *argv[])
   // v (m/hr) = 43.706*M^1.772*(1 - e^{-14.27*(M)^(-1.865)}), where M is mass in kg.
   v1 = 0.45427; //In km/hr
   v2 = 0.40587; //In km/hr
+
+  //Time-scale of advection.
+  dtv1 = 0.11817455; //In hr, based on relation ln(dtv_grazer) = 0.2596*ln(M) + 1.8106, where M is mass in kg, and dtv_grazer is in min.
+  dtv2 = 0.765270868; //In hr, based on relation ln(dtv_predator) = 0.7*ln(M) + 0.6032, where M is mass in kg, and dtv_predator is in min.
 
   double D[Sp] ={d0, d1, d2}; //Diffusion coefficients for species.
   double sigma[Sp] ={s0, s1, s2}; //Demographic stochasticity coefficients for species.
@@ -219,7 +223,8 @@ int main(int argc, char *argv[])
 
   set_global_system_params(dt, dx); //Set the global parameters for the simulation.
   cout << "Global parameters set, with dt/2.0 = " << dt2 << " and dx*dx = " << dx2 <<  " and 1/(dx*dx) = " << dx1_2 << "\n";
-  //INITIAL CONDITIONS:
+  int dtV[SpB] = {0, max(1, int(round(dtv1/dt))), max(1, int(round(dtv2/dt)))};
+  cout << "Values of dtV for the grazer and predator are: " << dtV[1] << " and " << dtV[2] << " respectively.\n";
 
   // Equations for MFT E Eqilibrium values  as functions of a (Rainfall).
 
@@ -255,7 +260,7 @@ int main(int argc, char *argv[])
   
   recursive_dir_create("../Data/DP/Stochastic/"+ std::to_string(SpB) +"Sp");
   
-  first_order_critical_exp_delta_stochastic_MultiSp(div, t_max, a_start, a_end, a_c, b, c, D, v, sigma, A, H, E, M, pR, chigh, scaling_factor, dt, dx, dP, r, g, Gstar, -1.0);
+  first_order_critical_exp_delta_stochastic_MultiSp(div, t_max, a_start, a_end, a_c, b, c, D, v, sigma, A, H, E, M, pR, dtV, scaling_factor, dt, dx, dP, r, g, Gstar, -1.0);
   
 
   return 0;

@@ -69,7 +69,7 @@ tmin = 100000; tmax = None;
 indx_vals_t = -5; dt =0.11
 #Extract n largest values of T (within the subset [tmin, tmax] if provided) if indx_vals_t = -n, 
 # n smallest values of T if indx_vals_t = n.
-
+CPU_Ncores = 1; # Number of CPU cores to be used by the script (monothreaded by default).
 dynamic_inspect = False;    # Set to True to stop script periodically and inspect values of parameters and outputs.
 
 
@@ -80,6 +80,8 @@ def set_prelims_inputs():
     parser.add_argument("--default", action="store_true", help="Use default input values for the script.")
     # Boolean flag for dynamic input values.
     parser.add_argument("--dynamic", action="store_true", help="Use dynamic input values for the script.")
+    #Number of CPU cores to be used by the script (monothreaded by default).
+    parser.add_argument("--CPUCores", type=int, help="Number of CPU cores to be used by the script (monothreaded by default).")
     # List of prefixes to be used in the subdirectory names in out_dir.
     parser.add_argument("--prefixes", nargs="+", help="List of prefixes to be used in the subdirectory names in out_dir.")
     # Root directory containing the original data files.
@@ -101,7 +103,7 @@ def set_prelims_inputs():
     # Parse the arguments.
     args = parser.parse_args()
 
-    global prefixes, root_dir, out_dir_noprefix, dP, Geq, Veq, L, indx_vals_t, dt, dynamic_inspect
+    global prefixes, root_dir, out_dir_noprefix, dP, Geq, Veq, L, indx_vals_t, dt, dynamic_inspect, CPU_Ncores
 
     # Set the input values.
     if args.default:
@@ -120,6 +122,7 @@ def set_prelims_inputs():
         print("L: " + str(L))
         print("indx_vals_t: " + str(indx_vals_t))
         print(f"dt: {dt}")
+        print(f"Also note, using {CPU_Ncores}/{os.cpu_count()} CPU cores for the script.")
         print("=====================================================================================\n")
         prefixes = input("Enter a list of prefixes to be used in the subdirectory names in out_dir: ").split()
         root_dir = input("Enter the root directory containing the original data files: ")
@@ -133,6 +136,7 @@ def set_prelims_inputs():
         L = [int(l) for l in L]
         indx_vals_t = int(input("Enter the value of indx_vals_t: "))
         dt = float(input("Enter the value of dt in the subdirectory names in root_dir: "))
+        CPU_Ncores = int(input("Enter the number of CPU cores to be used by the script (monothreaded by default): "))
         dynamic_inspect = True
         return
     
@@ -176,6 +180,12 @@ def set_prelims_inputs():
                 dt = float(args.dt)
             except ValueError:
                 print("No valid value for dt provided. Terminating script..."); sys.exit(1)
+        if args.CPUCores:
+            try:
+                CPU_Ncores = int(args.CPUCores)
+                CPU_Ncores = CPU_Ncores if CPU_Ncores <= os.cpu_count() else os.cpu_count()
+            except ValueError:
+                print("Invalid core selection. Setting CPU cores to 1..."); CPU_Ncores = 1
 
         print("prefixes: " + str(prefixes))
         print("root_dir: " + root_dir)
@@ -186,6 +196,7 @@ def set_prelims_inputs():
         print("L: " + str(L))
         print("indx_vals_t: " + str(indx_vals_t))
         print(f"dt: {dt}")
+        print(f"Also note, using {CPU_Ncores}/{os.cpu_count()} CPU cores for the script.")
 
         return
 
@@ -416,75 +427,99 @@ def main():
 
                     t_range = find_timerange(files, a, indx_vals_t, tmin, tmax)
 
+                    # Finding jID values in files which contain a_{a} in their name.
+                    jiD_range= [ re.findall(r'jID_[\d]+' , f)[0] if re.findall(r'jID_[\d]+' , f) else "jID_-1" for f in files
+                                if (re.findall(r'a_[\d]*[.][\d]+' , f) and  re.findall(r'a_[\d]*[.][\d]+' , f)[0] == "a_" + str(a))
+                                or (re.findall(r'a_[\d]+' , f) and  re.findall(r'a_[\d]+' , f)[0] == "a_" + str(a))]
+                    # Extract jiD values from jiD_range.
+                    jiD_vals = sorted([int(re.sub("jID_", "", j)) for j in jiD_range]); 
+                    # Remove duplicates from jiD_vals, and append -1 at the end to indicate possible frames with no jiD data.
+                    jiD_vals = np.unique(jiD_vals); jiD_vals = np.append(jiD_vals, -1)
+
                     print("Processing: " + savedir)
 
-                    for t in t_range:
-                        #Get all files in parent directory that begin with the above (but not subdirectories).
-                        selectedfiles = glob.glob(sub + "/TimeSeries/PRELIM_*_G_" + str(g) + "_T_" + str(t) +"*_a_" + str(a) + "_*.csv")
-                        t_subdir = outdir
-                        # Recursively create t_subdir (and parent directories) if it doesn't exist.
-                        #Path(t_subdir).mkdir(parents=True, exist_ok=True)
-                        print("Processing t= " + str(t))
-                        
-                        # Copy all files in files to t_subdir, with new names and avoiding conflicts.
-                        # If a file with the same name exists in t_subdir, rename the file to avoid conflicts.
-                        # This renaming will be done by sending the conflicting file name to a function that will rename it.
+                    for jiD in jiD_vals:    # Loop over jiD values first.
+                        for t in t_range:
+                            #Get all files in parent directory that begin with the above (but not subdirectories).
+                            if jiD != -1:
+                                selectedfiles = glob.glob(sub + "/TimeSeries/PRELIM_*_G_" + str(g) + "_T_" + str(t) +"*_a_" + str(a) + "*_jID_" + str(jiD) + "*.csv")
+                            else:
+                                # RECALL- A file with jiD = -1 indicates that the file does not contain unique jiD data.
+                                selectedfiles = [f for f in  glob.glob(sub + "/TimeSeries/PRELIM_*_G_" + str(g) + "_T_" + str(t) +"*_a_" + str(a) + "_*.csv") 
+                                                 if "jID" not in f]
+                            # If selectedfiles is empty, skip the loop over t.
+                            if len(selectedfiles) == 0:
+                                continue
+                            t_subdir = outdir
+                            # Recursively create t_subdir (and parent irectories) if it doesn't exist.
+                            #Path(t_subdir).mkdir(parents=True, exist_ok=True)
+                            print("Processing t= " + str(t))
+                            
+                            # Copy all files in files to t_subdir, with new names and avoiding conflicts.
+                            # If a file with the same name exists in t_subdir, rename the file to avoid conflicts.
+                            # This renaming will be done by sending the conflicting file name to a function that will rename it.
 
-                        for source_file in selectedfiles:
-                            source_filename = os.path.basename(source_file)
-                            # Change source_filename as follows:
-                            # Source file name is of the form "PRELIM_TSERIES*_G_{g}_T_{T}_dt_{dt}_a_{a_val}_*_R_{R}_*.csv"
-                            # Change it to "FRAME_T_{T}_a_{a_val}_R_{R}.csv"
+                            for source_file in selectedfiles:
+                                source_filename = os.path.basename(source_file)
+                                # Change source_filename as follows:
+                                # Source file name is of the form "PRELIM_TSERIES*_G_{g}_T_{T}_dt_{dt}_a_{a_val}_*_R_{R}_*.csv"
+                                # Change it to "FRAME_T_{T}_a_{a_val}_R_{R}.csv"
 
-                            # First extract T, a_val, R from source_filename.
-                            T = t; a_val = a; R = int(re.findall(r'[\d]+' , source_filename)[-1])
-                            # Find filetype of source_filename, which are the characters between the first and second underscore.
-                            filetype = source_filename.split("_")[1]
-                            # Now create new filename.
-                            out_filename = filetype + "_T_" + str(T) + "_a_" + str(a_val) + "_R_" + str(R) + ".csv"
-                            outfile = t_subdir + out_filename
-                            #Check if outfile already exists.
-                            #fd_source = os.open(source_file, os.O_RDONLY);
-                            #print("Status of source file: " + str(os.fstat(fd_source)))
-                            if os.path.exists(outfile):
-                                print("Warning: File " + out_filename + " already exists, and conflicts with source file: "
-                                       + source_filename + ". Renaming file.")
-                                # First check if outfile is the same as source_file (this is done by looking at the attributes of the files (filesize etc)).
-                                # If they are the same, skip the file.
-                                for out_f in glob.glob(t_subdir + "*.csv"):
-
-                                    if os.path.samefile(source_file, out_f):
-                                        print("WARNING!!!: File " + outfile + " is the same as " + source_file + ". Skipping file.")
-                                        continue
-
-                                    fd_source = os.open(source_file, os.O_RDONLY);
-                                    fd_outfile = os.open(out_f, os.O_RDONLY);
-                                    if os.fstat(fd_source).st_ino == os.fstat(fd_outfile).st_ino:
-                                        print("WARNING!!!: File " + outfile + " is the same as " + source_file + ". Skipping file.")
-                                        continue
-
-                                    os.close(fd_source)
-                                    os.close(fd_outfile)
-                                    
-                                # If outfile already exists, rename it to avoid conflicts.
-                                max_R = max([int(re.findall(r'[\d]+' , f)[-1]) for f in glob.glob(t_subdir + filetype + "_T_" + str(T) + "_a_" + str(a_val) + "*.csv")])
-                                out_filename = filetype + "_T_" + str(T) + "_a_" + str(a_val) + "_R_" + str(max_R + 1) + ".csv"
+                                # First extract T, a_val, R from source_filename.
+                                T = t; a_val = a; R = int(re.findall(r'[\d]+' , source_filename)[-1])
+                                # Find filetype of source_filename, which are the characters before the first "_"
+                                filetype = source_filename.split("_")[1]
+                                # Now create new filename.
+                                out_filename = filetype + "_T_" + str(T) + "_a_" + str(a_val) + "_R_" + str(R) + ".csv"
+                                '''
+                                if re.search("GAMMA", source_filename):
+                                    out_filename = "GAMMA_T_%g_a_%g" %(T, a_val) + "_R_" + str(R) + ".csv"
+                                else:
+                                    out_filename = "FRAME_T_%g_a_%g" %(T, a_val) + "_R_" + str(R) + ".csv"
+                                '''
                                 outfile = t_subdir + out_filename
+                                #Check if outfile already exists.
+                                #fd_source = os.open(source_file, os.O_RDONLY);
+                                #print("Status of source file: " + str(os.fstat(fd_source)))
+                                if os.path.exists(outfile):
+                                    print("Warning: File " + out_filename + " already exists, and conflicts with source file: "
+                                        + source_filename + ". Renaming file.")
+                                    # First check if outfile is the same as source_file (this is done by looking at the attributes of the files (filesize etc)).
+                                    # If they are the same, skip the file.
+                                    for out_f in glob.glob(t_subdir + "*.csv"):
 
-                            # Copy source_file to outfile.
-                            try:
-                                shutil.copy2(source_file, outfile)
-                            except shutil.Error as e:
-                                print("Error: Could not copy file " + source_file + "\tto:\n" + outfile + "with error message: \n" + str(e))
-                                print("Skipping file.")
-                                continue
-                            except FileNotFoundError as e:
-                                print("Error: Could not find file " + source_file + "  with error message: \n" + str(e))
-                                print("Skipping file.")
-                                continue
-                        # This is the end of the loop over source_file in selectedfiles.
+                                        if os.path.samefile(source_file, out_f):
+                                            print("WARNING!!!: File " + outfile + " is the same as " + source_file + ". Skipping file.")
+                                            continue
 
-                    # This is the end of the loop over t in t_range.
+                                        fd_source = os.open(source_file, os.O_RDONLY);
+                                        fd_outfile = os.open(out_f, os.O_RDONLY);
+                                        if os.fstat(fd_source).st_ino == os.fstat(fd_outfile).st_ino:
+                                            print("WARNING!!!: File " + outfile + " is the same as " + source_file + ". Skipping file.")
+                                            continue
+
+                                        os.close(fd_source)
+                                        os.close(fd_outfile)
+                                        
+                                    # If outfile already exists, rename it to avoid conflicts.
+                                    max_R = max([int(re.findall(r'[\d]+' , f)[-1]) for f in glob.glob(t_subdir + filetype + "_T_" + str(T) + "_a_" + str(a_val) + "*.csv")])
+                                    out_filename = filetype + "_T_" + str(T) + "_a_" + str(a_val) + "_R_" + str(max_R + 1) + ".csv"
+                                    outfile = t_subdir + out_filename
+
+                                # Copy source_file to outfile.
+                                try:
+                                    shutil.copy2(source_file, outfile)
+                                except shutil.Error as e:
+                                    print("Error: Could not copy file " + source_file + "\tto:\n" + outfile + "with error message: \n" + str(e))
+                                    print("Skipping file.")
+                                    continue
+                                except FileNotFoundError as e:
+                                    print("Error: Could not find file " + source_file + "  with error message: \n" + str(e))
+                                    print("Skipping file.")
+                                    continue
+                            # This is the end of the loop over source_file in selectedfiles.
+
+                        # This is the end of the loop over t in t_range.
 
                     #Create a timeseries_vals.txt file by looking at all files matching outdir + "*.csv" and extracting the values of T.
                     test_txt_RW(outdir, "*.csv", "T", ["[\d]*[.][\d]+", "[\d]+"], savefile= "TimeSeries_vals.txt")

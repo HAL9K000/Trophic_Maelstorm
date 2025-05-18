@@ -11,8 +11,8 @@
 # timestamp to avoid overwrites of previously existing data.
 
 # Main script
-if [[ $# -lt 4 || $# -gt 5 ]]; then
-    echo "Usage: $0 <Path/to/dir/inputs/reorganise_dir.txt> <Path/to/dir/inputs/reorganise_prelims_dir.txt> <time_gap_in_hours> <stop_iter> [Optional: Path/to/optionalcommands.txt]"
+if [[ $# -lt 4 || $# -gt 6 ]]; then
+    echo "Usage: $0 <Path/to/dir/inputs/reorganise_dir.txt> <Path/to/dir/inputs/reorganise_prelims_dir.txt> <time_gap_in_hours> <stop_iter> [Optional: Path/to/optionalcommands.txt  <ncores>]"
     exit 1
 fi
 
@@ -25,6 +25,7 @@ in_par_prelims_file="$2"
 time_gap_hours="$3"
 stop_iter="$4"
 commands_file="$5"         # Optional file with commands to execute (will be empty if not provided)
+ncores="$6"            # Optional number of CPU cores to pass to the Python script (will be empty if not provided)
 current_iter=0
 
 # Convert time gap from hours to seconds
@@ -164,9 +165,14 @@ while [[ $current_iter -lt $stop_iter ]]; do
             # Adding outdir to created_outdirs dictionary.
             created_outdirs["$outdir"]=1    
         fi
-
-        # Run the Python script
-        python3.11 reorganise_dir.py $line
+        # Check if ncores is provided as numeric argument
+        if [[ -n "$ncores" && "$ncores" =~ ^[0-9]+$ ]]; then
+            # Pass ncores to the Python script
+            python3.11 reorganise_dir.py $line --CPUCores "$ncores"
+        else
+            # Run the Python script without ncores
+            python3.11 reorganise_dir.py $line
+        fi
         if [[ $? -ne 0 ]]; then
             log_error "Python script reorganise_dir.py failed for line: $line"
             continue
@@ -222,8 +228,14 @@ while [[ $current_iter -lt $stop_iter ]]; do
             created_outdirs["$outdir"]=1    
         fi
 
-        # Run the Python script
-        python3.11 reorganise_prelims_dir.py $line
+        # Check if ncores is provided as numeric argument
+        if [[ -n "$ncores" && "$ncores" =~ ^[0-9]+$ ]]; then
+            # Pass ncores to the Python script
+            python3.11 reorganise_prelims_dir.py $line --CPUCores "$ncores"
+        else
+            # Run the Python script without ncores
+            python3.11 reorganise_prelims_dir.py $line
+        fi
         if [[ $? -ne 0 ]]; then
             log_error "Python script reorganise_prelims_dir.py failed for line: $line"
             continue

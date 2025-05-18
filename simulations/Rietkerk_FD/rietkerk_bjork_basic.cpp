@@ -677,6 +677,14 @@ void init_exprtk_readCSVcolumns_frame(D2Vec_Double &array, vector<int> &const_in
             header_map[col_name] = col_idx++;
         }
 
+		/**  Print the header map for debugging
+		stringstream m1;
+		m1 << "Header map for file: " << filename;
+		for (const auto &pair : header_map)
+			m1 << "\n" << pair.first << " : " << pair.second;
+		cerr << m1.str(); cout << m1.str();
+		*/
+
         // Verify that all columns in read_cols are present in the CSV header
         for (const auto &col : read_cols) 
 		{
@@ -827,7 +835,7 @@ void init_exprtk_readCSVcolumns_frame(D2Vec_Double &array, vector<int> &const_in
 
 void init_burnin_wrapper(D2Vec_Double &Rho_dt, double a, double a_c, double dP, double perc,  int L, int r, double c_spread[] )
 {
-	stringstream  rain, dPO, Lgrid, t_val; rain  << a; Lgrid << L; dPO << dP; t_val << 91201; 
+	stringstream  rain, dPO, Lgrid, t_val; rain  << a; Lgrid << L; dPO << dP; t_val << 88000; 
 	map<string, string> local_input_keys = input_keys; // Copy input_keys to local_input_keys.
 	local_input_keys["T"] = t_val.str(); local_input_keys["a"] = rain.str(); local_input_keys["dP"] = dPO.str();
 	local_input_keys["L"] = Lgrid.str();
@@ -855,9 +863,9 @@ void init_burnin_wrapper(D2Vec_Double &Rho_dt, double a, double a_c, double dP, 
 	{
 		///**INPUT Filename Patterns are of the form: FRAME_T_{}_a_{}_R_{}.csv (WHEN READING RIETKERK FRAMES)
 		csv_filename_pattern = input_prefix + t_val.str() + "_a_" + rain.str() + "_R_";
-		initcsv_columns_temp = {"P(x;t)", "W(x;t)", "O(x;t)"}; //Columns to be read from csv file.
-		for(int s=1; s< SpB; s++)
-			const_species.push_back(s); //Species to be initialised with constant values.
+		initcsv_columns_temp = {"P(x;t)", "G(x;t)", "Pr(x;t)", "W(x;t)", "O(x;t)"}; //Columns to be read from csv file.
+		//for(int s=1; s< SpB; s++)
+		//	const_species.push_back(s); //Species to be initialised with constant values.
 		//*/
 	}
 
@@ -2529,7 +2537,7 @@ void calc_gamma_2Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringS
 			if( fr == 0.0)
 			{	continue;	} // No perception radius for this species (indicates vegetation species)
 			if(Rho_avg[s] < eps)
-				{	gamma[s][i] = 1.0; continue;	} // No species left, value assigned doesn't matter.
+				{	gamma[s][i] = 0.0; continue;	} // No species left, value assigned doesn't matter.
 			else if(Rho_avg[s-1] < eps)
 				{	gamma[s][i] = 0.0;	continue; } // No resource left, consumers will advect to extinction.
 			
@@ -3149,7 +3157,7 @@ void calc_gamma_3Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringS
 			if( eff_nR_Perp_size < 1 && fr > 0)
 			{	eff_nR_Perp_size = 1;	} // At least one nearest neighbor (the site itself) is considered.
 			if(Rho_avg[s] < eps)
-				{	gamma[s][i] = 1.0; continue;	} // No species left, value assigned doesn't matter.
+				{	gamma[s][i] = 0.0; continue;	} // No species left, value assigned doesn't matter.
 			else if(Rho_avg[s-1] < eps)
 				{	gamma[s][i] = 0.0;	continue; } // No resource left, consumers will advect to extinction.
 			
@@ -3566,8 +3574,8 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 		poisson_distribution<int> poisson; gamma_distribution <double> gamma_distr; 
 		uniform_real_distribution<double> unif(0.0, 1.0); normal_distribution<double> norm(0.0, 1.0);
 
-		//Define thrID as a random number between 0 and 1000, iff j =0.
-		thrID = (j == 0) ? int(round(unif(rng)*1000)) : thrID; //Random number between 0 and 1000.
+		//Define thrID as a random number between 0 and 10000, iff j =0.
+		thrID = (j == 0) ? int(round(unif(rng)*10000)) : thrID; //Random number between 0 and 1000.
 		double t=0; int index = 0;  //Initialise t
 		int frame_index=0; int po=1; int so =1; int lo=1; int counter =0;
 		vector <std::pair<int, int>> dtV_counter(SpB, {0, 0}); 
@@ -4357,6 +4365,9 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 	frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 50, 400, 8, "linspace", true);
 	frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 400, 1200, 9, "linspace", true);
 
+	// For correlation measurement, add linear window from 10 to 4000, with 400 points (spaced 10 apart).
+	//frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 10, 4000, 400, "linspace", true);
+
 
 	if(t_measure[t_measure.size()-1] > 90000)
 	{
@@ -4372,9 +4383,18 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 		frame_tmeas.insert(it, t_frame_linearwindow.begin(), t_frame_linearwindow.end());
 		// Sort the frame_tmeas vector in ascending order and remove duplicates (if any).
 		sort( frame_tmeas.begin(), frame_tmeas.end() );
+
+		// Create a linear window from 80000 to 150000, spaced 250 apart (281 points).
+		vector <double> t_frame_linearwindow2 = linspace(80000, 150000, 281);
+		// Insert into t_measure vector after the element in t_measure that is just less than the first element in t_frame_linearwindow2.
+		auto it2 = std::upper_bound(t_measure.begin(), t_measure.end(), t_frame_linearwindow2[0]);
+		t_measure.insert(it2, t_frame_linearwindow2.begin(), t_frame_linearwindow2.end());
+		// Sort the t_measure vector in ascending order and remove duplicates (if any).
+		sort( t_measure.begin(), t_measure.end() );	
 	}
-	// Remove all duplicate elements in frame_tmeas.
+	// Remove all duplicate elements in frame_tmeas and t_measure.
 	frame_tmeas.erase( unique( frame_tmeas.begin(), frame_tmeas.end() ), frame_tmeas.end() );
+	t_measure.erase( unique( t_measure.begin(), t_measure.end() ), t_measure.end() );
 
   	cout << "Values in t_measure (which is of total size " << t_measure.size() << ") are :" <<endl;
   	for (int i=0; i< t_measure.size(); i++)
