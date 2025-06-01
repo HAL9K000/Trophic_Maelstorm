@@ -1,53 +1,3 @@
-import os
-import regex as re
-from pathlib import Path
-import glob
-import time
-import shutil
-import sys
-import argparse
-import copy
-import warnings
-from multiprocessing import Pool, cpu_count, Queue, Lock
-import functools
-import secrets
-from collections import defaultdict
-
-import GPU_glow_up as gpu
-
-# Importing necessary libraries
-np = gpu.np
-signal = gpu.signal
-fft = gpu.fft
-
-interpolate = gpu.interpolate
-stats = gpu.stats
-
-# For type checking and constants - use direct CPU access
-_np_base = gpu._cpu_np  # Access the underlying numpy module
-
-# CPU-only modules
-esda_moran = gpu.cpu_safe_import("esda.moran")
-libpysal_weights = gpu.cpu_safe_import("libpysal.weights")
-#from esda_moran import Moran_BV
-#from libpysal_weights import Queen, KNN, lat2W
-
-# Import specific interpolation functions
-#from interpolate import InterpolatedUnivariateSpline, CubicSpline
-
-
-# RAPIDs handles CPU fallback by default, so no need for additional handling here.
-import pandas as pan
-from sklearn.cluster import KMeans
-from sklearn.mixture import GaussianMixture
-from skimage.metrics import structural_similarity as ssim
-from sklearn.metrics import mutual_info_score , normalized_mutual_info_score
-from sklearn.metrics import adjusted_mutual_info_score
-
-
-
-
-'''
 import numpy as np
 import os
 import pandas as pan
@@ -81,7 +31,6 @@ import functools
 
 
 import secrets
-'''
 rng = np.random.default_rng(secrets.randbits(128))
 
 print_lock = Lock()
@@ -98,14 +47,7 @@ A detailed description of each function is provided below.
 class SkipFile(Exception):
     pass
 
-# If you need to check for both CPU and GPU arrays:
-def is_array(obj):
-    """Check if object is either a CPU numpy array or GPU cupy array"""
-    if isinstance(obj, _np_base.ndarray):
-        return True
-    if gpu.GPU_AVAILABLE and gpu.is_gpu_array(obj):
-        return True
-    return False
+
 
 
 # Multi-thread safe-print function using lock
@@ -225,7 +167,7 @@ def gen_interpolated_df(df1, df2, compare_col_label):
     for col in interpolate_cols:
         # Generate a cubic spline interpolation of each such column in df2 with respect to compare_col_label.
         try:
-            cs = interpolate.CubicSpline(df2[compare_col_label], df2[col])
+            cs = CubicSpline(df2[compare_col_label], df2[col])
         except Exception as e:
             print("Error: Could not generate cubic spline interpolation for column " + col + " with error message: \n" + str(e))
             return None
@@ -458,7 +400,11 @@ def gen_MEAN_INDVL_Colsfiledata(files, pathtodir="", ext="csv", exclude_col_labe
         Rstr = re.findall(r'R_[\d]+', file)[0]
         #R = int(re.search(r'R_[\d]+', file).group(0).split("_")[1])
         if(ext == "csv"):
-            df = pan.read_csv(file, header=0)
+            try:
+                df = pan.read_csv(file, header=0)
+            except Exception as e:
+                print("Error for file " + pathtodir +"/" + file + " with error message: \n" + str(e))
+                return None
         else:
             try:
                 df = pan.read_table(file, header=0)
@@ -852,7 +798,7 @@ def gen_potential_well_data(files, pathtodir="", ext="csv", exclude_col_labels= 
                 df_local_minima["MIN_POT[" + col + "]"] = pan.Series(min_pot);
                 continue
 
-            cs = interpolate.InterpolatedUnivariateSpline(eval_range, potential_well, k=3)
+            cs = InterpolatedUnivariateSpline(eval_range, potential_well, k=3)
             # Find the local minima.
             cs_1st_derivative = cs.derivative()
             cs_2nd_derivative = cs.derivative(n=2)
@@ -910,9 +856,8 @@ def compute_mutual_information(X, Y, bins="scotts"):
             if( nbins > 256):
                 #print(f"X bin width: {bw_X}, Y bin width: {bw_Y}, X range: {X.max() - X.min()}, Y range: {Y.max() - Y.min()}")
                 #print(f"nbins: {nbins}")
-                print(f"Warning: Number of bins is too high. Setting nbins to 256.") 
-                #+ f"Consider using a smaller bin width or a different binning method.")
-                
+                print(f"Warning: Number of bins = {nbins} is too high. Setting nbins to 256.")
+                #print(f"Consider using a smaller bin width or a different binning method.")
                 nbins = 256
 
         elif isinstance(bins, int) or isinstance(bins, float):
@@ -927,7 +872,7 @@ def compute_mutual_information(X, Y, bins="scotts"):
             print(f"X min: {X.min()}, X max: {X.max()}") ; print(f"Y min: {Y.min()}, Y max: {Y.max()}")
             return 0
     except TypeError as e:
-            print(f"Error: {e} for X and Y. Setting nBins to {256}.")
+            print(f"Error: {e} for X and Y. Setting nBins to {100}.")
             nbins = 256
         
     '''# OLD APPROACH: Compute the histogram of the joint distribution of X and Y.
@@ -969,8 +914,8 @@ def compute_normalised_mutual_information(X, Y, bins="scotts"):
             nbins = max(1, int(np.ceil(data_range / min_bw)))
 
             if( nbins > 256):
-                print(f"WARNING: Number of bins = {nbins} is too high. Setting nbins to 256.")# +
-                      #f"Consider using a smaller bin width or a different binning method.")
+                print(f"WARNING: Number of bins = {nbins} is too high. Setting nbins to 256.") 
+                      #+ f"Consider using a smaller bin width or a different binning method.")
                 nbins = 256
 
         elif isinstance(bins, int) or isinstance(bins, float):
@@ -1064,8 +1009,8 @@ def compute_BiMoronsI(X, Y):
     X = X.flatten() if X.ndim > 1 else X; Y = Y.flatten() if Y.ndim > 1 else Y
     # Compute Morons'I Global Bivariate Statistic
     L = round(np.sqrt(X.shape[0]))
-    Spatial_Weights = libpysal_weights.lat2W(L, L)
-    MoranI = esda_moran.Moran_BV(X, Y, Spatial_Weights)
+    Spatial_Weights = lat2W(L, L)
+    MoranI = Moran_BV(X, Y, Spatial_Weights)
     return MoranI.I, MoranI.p_sim
 
 
@@ -1082,7 +1027,7 @@ def compute_NCC_2DFFT(x, y, zero_norm=True):
         x = (x - np.mean(x)) / std_x
         y = (y - np.mean(y)) / std_y
     # NCC computed using FFT convolution, with the y array flipped.
-    corr = signal.fftconvolve(x, y[::-1, ::-1], mode='full') / (x.shape[0]*x.shape[1])
+    corr = fftconvolve(x, y[::-1, ::-1], mode='full') / (x.shape[0]*x.shape[1])
     max_idx = np.unravel_index(np.argmax(corr), corr.shape)
     zero_shift_idx = (y.shape[0]-1, y.shape[1]-1)
     return corr, corr[zero_shift_idx], np.max(corr), max_idx
@@ -1426,8 +1371,8 @@ def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv",
 
     if calc_Morans:
         # Drop all columns containing "NCC-Index" from df_auto_MoransI, and replace all occurrences of "NCC" with "MoransI".
-        auto_MoransI_cols = [col.replace("NCC", "BVMoransI") for col in auto_NCC_cols if "NCC-Index" not in col]
-        cross_MoransI_cols = [col.replace("NCC", "BVMoransI") for col in cross_NCC_cols if "NCC-Index" not in col]
+        auto_MoransI_cols = [col.replace("NCC", "MoransI") for col in auto_NCC_cols if "NCC-Index" not in col]
+        cross_MoransI_cols = [col.replace("NCC", "MoransI") for col in cross_NCC_cols if "NCC-Index" not in col]
         df_auto_MoransI = pan.DataFrame(columns=auto_MoransI_cols)
         df_cross_MoransI = pan.DataFrame(columns=cross_MoransI_cols)
     else:
@@ -1796,11 +1741,11 @@ def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv",
     
 
     return df_auto_NCC, df_cross_NCC, df_auto_ZNCC, df_cross_ZNCC, df_auto_AMI, df_cross_AMI, df_auto_MI, df_cross_MI, df_auto_MoransI, df_cross_MoransI
-    
-    
 
 
-# =============================== FUNCTIONS SPECIFIC TO FILES PROCESSING ============================
+
+
+
 
 def rename(dir, keyword, new_keyword):
     # Rename all files in dir (including the entire filepath) that contain keyword to new_keyword.
@@ -1962,7 +1907,7 @@ def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], 
     df_fft = pan.DataFrame() # Create an empty dataframe to store the FFT results
     peak_df = pan.DataFrame() if report_maxima else None # Create an empty dataframe to store the peak results if report_maxima is True
     df_timeseries.columns = [col.strip() for col in df_timeseries.columns] # Remove leading and trailing whitespaces from column names
-    print(f"gen_1D_HarmonicFreq_Prelimsdata: Processing {len(df_timeseries)} rows and {len(df_timeseries.columns)} columns.")
+    
     # Check first if X is an array-like structure (np.array, list, df[col], etc.) or a string.
     if isinstance(X, (np.ndarray, list)):
         # If X is an array-like structure, check if it has the same length as the dataframe.
@@ -1985,7 +1930,6 @@ def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], 
         else:
             print(f"Error: X={X} is not in the columns. Please provide a valid X label.")
             return None, None
-    print(f"gen_1D_HarmonicFreq_Prelimsdata: X-values are {Xvalues} with length {len(Xvalues)}.")
     # Dro
     # Next remove exclude_Y_cols from df_timeseries
     Y_cols = [col for col in df_timeseries.columns if col not in exclude_Y_cols and col != X and col not in df_timeseries.index.names]
@@ -2038,7 +1982,7 @@ def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], 
 
             # Next fit a cubic spline to the FFT result.
             if maxima_finder == "cubic_spline":
-                cs = interpolate.InterpolatedUnivariateSpline(df_fft[f"k({X})"], df_fft[f"FFT{{{col}}}"], k=3)
+                cs = InterpolatedUnivariateSpline(df_fft[f"k({X})"], df_fft[f"FFT{{{col}}}"], k=3)
                 # Find the local minima.
                 cs_1st_derivative = cs.derivative()
                 cs_2nd_derivative = cs.derivative(n=2)
@@ -2055,7 +1999,7 @@ def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], 
             elif maxima_finder == "find_peaks":
                 # Use scipy's find_peaks to find the local maxima
                 
-                peaks, _ = signal.find_peaks(df_fft[f"FFT{{{col}}}"], height=thresh)
+                peaks, _ = find_peaks(df_fft[f"FFT{{{col}}}"], height=thresh)
                 peak_frequencies = df_fft[f"k({X})"].iloc[peaks].values
                 peak_fft_values = df_fft[f"FFT{{{col}}}"].iloc[peaks].values
                 # Create (frequency, value) pairs and sort
@@ -2245,8 +2189,8 @@ def gen_MEAN_INDVL_Prelimsfiledata(files, pathtodir="", ext="csv", tmax =None, d
             except Exception as e:
                 print("Error: Non-standard extension for file " + pathtodir +"/" + files[0] + " with error message: \n" + str(e))
                 return None
-        # Modify column names in df to remove leading and trailing whitespaces.
         df = df.reset_index(drop=True)
+        # Modify column names in df to remove leading and trailing whitespaces.
         df.columns = [col.strip() for col in df.columns]
         # Remove exclude_col_labels from df.
         df = df[[col for col in df.columns if col in include_col_labels]]
@@ -2286,6 +2230,25 @@ def gen_MEAN_INDVL_Prelimsfiledata(files, pathtodir="", ext="csv", tmax =None, d
             
         
         Rstr = re.findall(r'R_[\d]+', file)[0]
+
+        #print(f"Col-labels: {col_labels}")
+        #print(f"Rstr: {Rstr}")
+        #print(f"Pooled_df columns: {pooled_df.columns}")
+        #print(pooled_df.head())
+        #print(pooled_df.tail())
+        #print(pooled_df.describe())
+        #print("-------------------------------------")
+        #print(f"File: {file}")
+        #print(f"File columns: {df.columns}"); 
+        #print(f"File index: {df.index}");
+        #print(df.head())
+        #print(df.tail())
+        #print(df.describe())
+        #print("-------------------------------------")
+        #print("File columns unique:" + str(df.columns.unique()))
+        #print("Pooled_df columns unique:" + str(pooled_df.columns.unique()))
+        #print("File column value counts:" + str(df[col_labels].nunique()))
+
         
         for col in col_labels:
 
@@ -2320,4 +2283,3 @@ def gen_MEAN_INDVL_Prelimsfiledata(files, pathtodir="", ext="csv", tmax =None, d
         df_file["t"] = pooled_df["t"]
     
     return df_file
-        

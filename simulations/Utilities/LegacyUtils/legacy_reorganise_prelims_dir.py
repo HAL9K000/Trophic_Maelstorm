@@ -1,19 +1,3 @@
-import os
-import regex as re
-from pathlib import Path
-import glob
-import shutil
-import sys
-import argparse
-import copy
-import warnings
-import time
-
-import GPU_glow_up as gpu
-from GPU_glow_up import to_cpu, to_gpu, np, fft, signal, interpolate, stats
-from glow_up import *
-
-'''
 import numpy as np
 import os
 import pandas as pan
@@ -25,9 +9,11 @@ import sys
 import argparse
 import copy
 import warnings
-#import scipy.stats as stats
-from glow_up import *
-'''
+import time
+
+import scipy.stats as stats
+
+from legacy_glow_up import *
 
 # Show the first FutureWarning that occurs in the script, then ignore all future FutureWarnings.
 warnings.simplefilter(action='once', category=FutureWarning)
@@ -64,7 +50,6 @@ The script accepts the following arguments:
 7. indx_vals_t: Extract n largest values of T in each sub-directory if indx_vals_t = -n, n smallest values of T if indx_vals_t = n.
 
 '''
-
 
 prefixes =["DiC-NREF-1.1HI", "DiC-NREF-0.5LI", "DiC-NREF-0.1LI"]#, "DiC-NEW"]
 #prefixes =["DiC-NREF-HI", "DiC-NREF-LI"]
@@ -214,7 +199,6 @@ def set_prelims_inputs():
         print(f"Also note, using {CPU_Ncores}/{os.cpu_count()} CPU cores for the script.")
 
         return
-
 
 
 
@@ -578,41 +562,15 @@ def main():
 
 set_prelims_inputs()
 
-if(gpu.GPU_AVAILABLE):
-    # If GPU is True, set the GPU environment variable to use the GPU.
-    #os.environ["CUDA_VISIBLE_DEVICES"] = "0" # Set to the GPU device number you want to use.
-    print("Using GPU for processing...")
-    # Set up a timer to measure the time taken for processing.
-    try:
-        start_time_GPU = gpu._cupy.cuda.Event()
-        end_time_GPU = gpu._cupy.cuda.Event()
-        start_time_GPU.record()
-    except Exception as e:
-        print("Error: Could not set up GPU timer with error message: \n" + str(e))
-        start_time_GPU = None; end_time_GPU = None
-        start_time_CPU = time.time(); end_time_CPU = None
-else:
-    print("Using CPU for processing...")
-    # Set up a timer to measure the time taken for processing.
-    start_time_CPU = time.time()
-    end_time_CPU = None
 
+
+print("Using CPU for processing...")
+# Set up a timer to measure the time taken for processing.
+start_time_CPU = time.time()
 if __name__ == "__main__":
     main()
     post_process(prefixes)
 
-
-if(gpu.GPU_AVAILABLE):
-    # If GPU is True, record the end time and print the time taken for processing in s
-    try:
-        end_time_GPU.record()
-        end_time_GPU.synchronize()
-        elapsed_time_GPU = start_time_GPU.elapsed_time(end_time_GPU) / 1000.0  # Convert ms to s
-        print(f"Time taken for processing with GPU: {elapsed_time_GPU:.3f} seconds")
-    except Exception as e:
-         pass
-    
 end_time_CPU = time.time()
 elapsed_time_CPU = end_time_CPU - start_time_CPU
 print(f"Time reported by CPU: {elapsed_time_CPU:.3f} seconds")
-

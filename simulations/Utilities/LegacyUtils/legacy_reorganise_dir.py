@@ -1,20 +1,3 @@
-import os
-import regex as re
-from pathlib import Path
-import glob
-import shutil
-import sys
-import argparse
-import copy
-import warnings
-import time
-
-from GPU_glow_up import to_cpu, to_gpu, asnumpy, asarray, is_gpu_array
-import GPU_glow_up as gpu
-
-from glow_up import *
-
-'''
 import numpy as np
 import os
 import pandas as pan
@@ -26,13 +9,12 @@ import sys
 import argparse
 import copy
 import warnings
+import time
 
 import scipy.stats as stats
 from scipy.interpolate import CubicSpline
 
-from glow_up import *
-'''
-
+from legacy_glow_up import *
 
 # Show the first FutureWarning that occurs in the script, then ignore all future FutureWarnings.
 warnings.simplefilter(action='once', category=FutureWarning)
@@ -40,7 +22,7 @@ warnings.simplefilter(action='once', category=pan.errors.PerformanceWarning)
 
 
 '''
-This script reorganises the directory structure of the data files in the Rietkerk/DP model.
+This script reorganises the directory structure of the data files in the Rietkerk model.
 The original directory structure (filepaths) are as follows if jID (unique ID assigned to each replicate) is present in the filename:
 root_dir/{PREFIX}*_dP_{dP}_Geq_{Geq}/FRAME_*_G_{g}_T_{T}_*_a_{a_val}_*_jID_{jID}_*_R_{R}.csv OR
 root_dir/{PREFIX}*_dP_{dP}_Veq_{Veq}/FRAME_*_G_{g}_T_{T}_*_a_{a_val}_*_jID_{jID}_*_R_{R}.csv
@@ -96,10 +78,9 @@ indx_vals_t = -25
 #Extract n largest values of T if indx_vals_t = -n, 
 # n smallest values of T if indx_vals_t = n.
 tmin = None; tmax = None;
-CPU_Ncores = 10; # Number of CPU cores to be used by the script (monothreaded by default).
 GPU = False;    # Set to True to use GPU for the script. 
 dynamic_inspect = False;    # Set to True to stop script periodically and inspect values of parameters and outputs.
-
+CPU_Ncores = 1; # Number of CPU cores to be used by the script (monothreaded by default).
 def set_frames_input():
     parser = argparse.ArgumentParser(description='Reorganise directory structure of data files in Rietkerk model.')
     # Boolean flag for dynamic input values.
@@ -130,7 +111,7 @@ def set_frames_input():
         for sub in subdir:
             print(sub)
 
-        print(f"NOTE : Currently, the script is set to use {CPU_Ncores} CPU cores, with {os.cpu_count()} CPU cores available.")
+        print(f"NOTE: Currently, the script is set to use {CPU_Ncores} CPU cores, with {os.cpu_count()} CPU cores available.")
 
         print("Do you wish to provide new values for the following parameters? (y/n)")
         print("out_dir_noprefix: " + out_dir_noprefix)
@@ -355,8 +336,8 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
                         sel_T_files, Tmax, matched_t_vals + [Tmax], crossfiles, pathtodir=subdirpath, ext="csv", ncores= CPU_Ncores,
                         exclude_col_labels= ["a_c", "x", "L", "W(x; t)", "O(x; t)", "GAM[P(x; t)]"], bins="scotts", calc_AMI = True, calc_MI = True, calc_Morans= True)
                 
-                # If not None, save the dfs to csv files in subdirpath/T_{Tmax}/2DCorr/FFT/
-                Path(subdirpath + "/T_" + str(Tmax) + "/2DCorr/FFT").mkdir(parents=True, exist_ok=True)
+                # If not None, save the dfs to csv files in subdirpath/T_{Tmax}/2DCorr/
+                Path(subdirpath + "/T_" + str(Tmax) + "/2DCorr").mkdir(parents=True, exist_ok=True)
 
                 try:
                     
@@ -364,11 +345,7 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
                         # Get max delay by reading largest value in "t-delay" column in auto_NCCdf and round it to the nearest integer.
                         auto_NCCdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/Auto_NCC_TD_{round(auto_NCCdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
                         # Next, get the harmonic frequencies of the correlation dfs.
-                        try:
-                            fftsig_auto_NCCdf, fftpeaks_auto_NCCdf  = gen_1D_HarmonicFreq_Prelimsdata(auto_NCCdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
-                        except Exception as e:
-                            print(f"Error inside gen_1D_HarmonicFreq_Prelimsdata: {e}")
-                            exit(1) 
+                        fftsig_auto_NCCdf, fftpeaks_auto_NCCdf  = gen_1D_HarmonicFreq_Prelimsdata(auto_NCCdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
                         # Save the harmonic frequencies to a csv file in subdirpath/T_{Tmax}/2DCorr/
                         try:
                             if fftsig_auto_NCCdf is not None:
@@ -435,11 +412,25 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
 
                     if auto_MIdf is not None:
                         auto_MIdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/Auto_MI_TD_{round(auto_MIdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
-                        #fftsig_auto_MIdf, fftpeaks_auto_MIdf  = gen_1D_HarmonicFreq_Prelimsdata(auto_MIdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
+                        fftsig_auto_MIdf, fftpeaks_auto_MIdf  = gen_1D_HarmonicFreq_Prelimsdata(auto_MIdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
+                        try:
+                            if fftsig_auto_MIdf is not None:
+                                fftsig_auto_MIdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/FFT/FFTSig_Auto_MI_TD_{round(auto_MIdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
+                            if fftpeaks_auto_MIdf is not None:
+                                fftpeaks_auto_MIdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/FFT/HarmonicPeaks_Auto_MI_TD_{round(auto_MIdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
+                        except Exception as e:
+                            print(f"Error: Could not write FFT PEAK data for AUTO MI to " + subdirpath + "/T_" + str(Tmax) + "/2DCorr/FFT/ with error message: \n" + str(e))
 
                     if cross_MIdf is not None:
                         cross_MIdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/Cross_MI_TD_{round(cross_MIdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
-                        #fftsig_cross_MIdf, fftpeaks_cross_MIdf  = gen_1D_HarmonicFreq_Prelimsdata(cross_MIdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
+                        fftsig_cross_MIdf, fftpeaks_cross_MIdf  = gen_1D_HarmonicFreq_Prelimsdata(cross_MIdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
+                        try:
+                            if fftsig_cross_MIdf is not None:
+                                fftsig_cross_MIdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/FFT/FFTSig_Cross_MI_TD_{round(cross_MIdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
+                            if fftpeaks_cross_MIdf is not None:
+                                fftpeaks_cross_MIdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/FFT/HarmonicPeaks_Cross_MI_TD_{round(cross_MIdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
+                        except Exception as e:
+                            print(f"Error: Could not write FFT PEAK data for CROSS MI to " + subdirpath + "/T_" + str(Tmax) + "/2DCorr/FFT/ with error message: \n" + str(e))
 
                     if auto_Moransdf is not None:
                         auto_Moransdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/Auto_BVMoransI_TD_{round(auto_Moransdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
@@ -465,7 +456,6 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
                 except Exception as e:
                     print("Error: Could not write 2DCorr data to " + subdirpath + "/T_" + str(Tmax) + "/2DCorr/ with error message: \n" + str(e))
 
-
                 # Finally concatenate the dfs for each subdirectory.
                 subdir_auto_NCCdf = pan.concat([subdir_auto_NCCdf, auto_NCCdf], axis=0, ignore_index=True)
                 subdir_cross_NCCdf = pan.concat([subdir_cross_NCCdf, cross_NCCdf], axis=0, ignore_index=True)
@@ -475,6 +465,10 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
                 subdir_cross_AMIdf = pan.concat([subdir_cross_AMIdf, cross_AMIdf], axis=0, ignore_index=True)
                 subdir_auto_MIdf = pan.concat([subdir_auto_MIdf, auto_MIdf], axis=0, ignore_index=True)
                 subdir_cross_MIdf = pan.concat([subdir_cross_MIdf, cross_MIdf], axis=0, ignore_index=True)
+
+                print("\n=====================================================================================================\n")
+                print(f"Done post-IMG-processing files in subdirectory: {subdirpath} for T = {Tmax}.\n")
+                print("=====================================================================================================\n")
             
             # Done with all files in subdirpath that contain files of the form /T_{T}/FRAME*.csv.
 
@@ -504,6 +498,7 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
                 
             except Exception as e:
                 print("Error: Could not write 2DCorr data to " + subdirpath + "/2DCorr/ with error message: \n" + str(e))
+
 
 
 
@@ -547,7 +542,7 @@ def post_process_gamma(prefixes= []):
             '''# Find potential well data in files using gen_potential_well_data.
             # Save the potential well data to a csv file in subdirpath/Pot_Well.
             # If evaluate_local_minima is True, also save the local minima data to a csv file in subdirpath/Gamma_Pot_Well.
-            '''
+            
             df_kde, df_local_minima = gen_potential_well_data(files, pathtodir=subdirpath, ext="csv",
                     exclude_col_labels= ["a_c", "x", "L"], Tmin = 50000, evaluate_local_minima= True, bins =100)
             Path(subdirpath + "/Gamma_Pot_Well").mkdir(parents=True, exist_ok=True)
@@ -616,7 +611,7 @@ def post_process(prefixes= []):
             
             #'''
 
-            '''# Find max R in files.
+            # Find max R in files.
             Rvals=[]; find_vals(files, ["R_[\d]+"], Rvals) 
             # Assumes R is an integer and files are of the form "FRAME_T_{T}_a_{a_val}_R_{R}.csv"
             maxR = max([int(re.sub("R_", "", r)) for r in Rvals])
@@ -629,7 +624,7 @@ def post_process(prefixes= []):
                 print("Error: Could not write maxR to */" + os.path.basename(subdirpath) + "/maxR.txt with error message: \n" + str(e))
             #'''
 
-            '''# Find Mean for each column in each file in files and the mean across all files for each column using gen_MEAN_INDVL_Colsfiledata.
+            # Find Mean for each column in each file in files and the mean across all files for each column using gen_MEAN_INDVL_Colsfiledata.
             # Save this df to a txt file in subdirpath.
             df_replicates = gen_MEAN_INDVL_Colsfiledata(files, pathtodir=subdirpath, ext="csv")
             try:
@@ -639,7 +634,7 @@ def post_process(prefixes= []):
                 print("Error: Could not write MEAN_REPLICATES to " + subdirpath + "/MEAN_REPLICATES.txt with error message: \n" + str(e))
             #'''
 
-            # Finds the power spectrum of each column in each file using gen_FFT_PowerSpectra.
+            '''# Finds the power spectrum of each column in each file using gen_FFT_PowerSpectra.
             # Bin_mask : "auto" (use GMMs to find thresholds), "read" (read thresholds from files in savedir/BIN_MASKS/{files}.txt), 
             # or None (no thresholding).
             df_fft_power = gen_FFT_PowerSpectra(files, pathtodir=subdirpath, ext="csv", Tmin = 150000, Tmax = 240000, bin_mask= "auto", 
@@ -654,6 +649,7 @@ def post_process(prefixes= []):
                     df_fft_power.to_csv(subdirpath + "/FFT_PowerSpect/FFT_POWERspectra.csv", sep=",", index=False, header=True)
             except Exception as e:
                 print("Error: Could not write FFT_PowerSpectra to " + subdirpath + "/FFT_PowerSpect/FFT_PowerSpectra.csv with error message: \n" + str(e))
+            #'''
             
             '''# Find potential well data in files using gen_potential_well_data.
             # Save the potential well data to a csv file in subdirpath/Pot_Well.
@@ -929,50 +925,26 @@ set_frames_input()
 
 
 
-if(gpu.GPU_AVAILABLE):
+if(GPU):
     # If GPU is True, set the GPU environment variable to use the GPU.
     #os.environ["CUDA_VISIBLE_DEVICES"] = "0" # Set to the GPU device number you want to use.
     print("Using GPU for processing...")
-    # Set up a timer to measure the time taken for processing.
-    try:
-        start_time_GPU = gpu._cupy.cuda.Event()
-        end_time_GPU = gpu._cupy.cuda.Event()
-        start_time_GPU.record()
-    except Exception as e:
-        print("Error: Could not set up GPU timer with error message: \n" + str(e))
-        start_time_GPU = None; end_time_GPU = None
-        start_time_CPU = time.time(); end_time_CPU = None
-else:
-    print("Using CPU for processing...")
-    # Set up a timer to measure the time taken for processing.
-    start_time_CPU = time.time()
-    end_time_CPU = None
-    
+    #from GPU_glow_up import *
 
+print("Using CPU for processing...")
+# Set up a timer to measure the time taken for processing.
+start_time_CPU = time.time()
+#end_time_CPU = None
 if __name__ == "__main__":
     #main()
     #post_process(prefixes)
     #post_process_gamma(prefixes)
-    post_imgprocess(prefixes= prefixes, Trange=[82000.1, 84000, 86000, 88000, 90000, 92000, 94000, 96000, 98000, 100000], largest_T_only= True)
+    post_imgprocess(prefixes= prefixes, Trange=[0, 4001], largest_T_only= True)
 
-
-if(gpu.GPU_AVAILABLE):
-    # If GPU is True, record the end time and print the time taken for processing in s
-    try:
-        end_time_GPU.record()
-        end_time_GPU.synchronize()
-        elapsed_time_GPU = start_time_GPU.elapsed_time(end_time_GPU) / 1000.0  # Convert ms to s
-        print(f"Time taken for processing with GPU: {elapsed_time_GPU:.3f} seconds")
-    except Exception as e:
-         pass
 end_time_CPU = time.time()
 elapsed_time_CPU = end_time_CPU - start_time_CPU
 print(f"Time reported by CPU: {elapsed_time_CPU:.3f} seconds")
 
-
-
-#post_process_gamma(prefixes)
-#dir = "\\\\?\\D:\\cygwin64\\home\\koust\\Code\\Trophic_Maelstorm\\simulations\\Data\\Remote\\Rietkerk\\Frames\\Stochastic\\3Sp\\DDM_DiC_BURNIN_0.025-0.065_dP_30000_Geq_4.802";
 #rename(dir, "_RANDDDMDiCBURNIN_ThreeSp_P_c_DP", "")
 
 #dir = "../Data/Remote/Test_Rietkerk_Frames/Stochastic/3Sp/Reorganised/StandardParam_20_100/DiC_BURNIN_/"

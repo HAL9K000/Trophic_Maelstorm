@@ -2840,128 +2840,68 @@ void save_framefileswrapper(int index, int tot_iter, int j, int thrID,  double t
     double dP, int r, int g, double Gstar /* =-1.*/, double Vstar /* = -1.*/)
 {
 	// FRAME SAVING
-	if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 50000 && t <= 150000 || t >= 50 && t <= 15000 
-		|| t== 0)
-	{
-		//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
-		
-		stringstream L, tm ,d3, p1, rini, gm, a1, a2, Dm0, Dm1, Dm2, alph, w0t, aij, hij, dix, dimitri, sig0, sig1, geq, veq, thr_ID;
 
-		L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; dix << setprecision(2) << dx;
-		rini << j; Dm0 << D[0]*pow(10.0, 7.0); Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2]; thr_ID << thrID; 
-		a1 << a_st; a2  << a_end; sig0 << sigma[0]; sig1 << sigma[1]; dimitri  << dP; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
-		//gm << setprecision(3) << gmax; w0t << setprecision(3) << W0; alph << setprecision(3) << alpha; aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1]; 
-		// Three replicates are over.
+	//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
+	
+	stringstream L, tm ,d3, p1, rini, gm, a1, a2, Dm0, Dm1, Dm2, alph, w0t, aij, hij, dix, dimitri, sig0, sig1, geq, veq, thr_ID;
 
-		string parendir = "";
+	L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(4) << a; dix << setprecision(2) << dx;
+	rini << j; Dm0 << D[0]*pow(10.0, 7.0); Dm1 << setprecision(3) << D[1]; Dm2 << setprecision(3) << D[2]; thr_ID << thrID; 
+	a1 << a_st; a2  << a_end; sig0 << sigma[0]; sig1 << sigma[1]; dimitri  << dP; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
+	//gm << setprecision(3) << gmax; w0t << setprecision(3) << W0; alph << setprecision(3) << alpha; aij << setprecision(3) << A[0][1]; hij << setprecision(3) << H[0][1]; 
+	// Three replicates are over.
 
-		// Creating a file instance called output to store output data as CSV.
-		if(Gstar != -1)
-			parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
-		else if(Vstar != -1)
-			parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str();
-		else
-			parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
-		
-		string filenamePattern = frame_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str()
+	string parendir = "";
+
+	// Creating a file instance called output to store output data as CSV.
+	if(Gstar != -1)
+		parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str();
+	else if(Vstar != -1)
+		parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str();
+	else
+		parendir = frame_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
+	
+	string filenamePattern = frame_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str()
+	+ "_a_" + p1.str()  + "_D1_"+ Dm1.str() + "_jID_"+ thr_ID.str() + "_dx_"+ dix.str() + "_R_";
+	//Next, designate the naive filename
+	string filename = filenamePattern + rini.str() + ".csv";
+
+	#if SPB > 1
+		string gammafilenamePattern = gamma_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() 
 		+ "_a_" + p1.str()  + "_D1_"+ Dm1.str() + "_jID_"+ thr_ID.str() + "_dx_"+ dix.str() + "_R_";
-		//Next, designate the naive filename
-		string filename = filenamePattern + rini.str() + ".csv";
+	#endif
+	
+	/** // SAVE ALL FRAMES
+	save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+	#if SPB > 1 // Save gamma frames.
+		save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
+	#endif
+	stringstream m3;
+	m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
+	cout << m3.str();
+	// */
+	
 
-		#if SPB > 1
-			string gammafilenamePattern = gamma_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() 
-			+ "_a_" + p1.str()  + "_D1_"+ Dm1.str() + "_jID_"+ thr_ID.str() + "_dx_"+ dix.str() + "_R_";
-		#endif
-		
-		/** // SAVE ALL FRAMES
-		save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
-		#if SPB > 1 // Save gamma frames.
-			save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
-		#endif
-		stringstream m3;
-		m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
-		cout << m3.str();
-		// */
-		
-
-		// SAVE SELECTED FRAMES
-		/** FRAME SAVING STRATEGY FOR LOW DT (DT ~ 0.01)
-		if(t < 250)
+	// SAVE SELECTED FRAMES
+	/** FRAME SAVING STRATEGY FOR LOW DT (DT ~ 0.01)
+	if(t < 250)
+	{
+		//Only save one in 4 frames here.
+		if(index%4 ==0 || t== 0)
 		{
-			//Only save one in 4 frames here.
-			if(index%4 ==0 || t== 0)
-			{
-				save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
-				#if SPB > 1 // Save gamma frames.
-					save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
-				#endif
-				stringstream m3;
-				m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
-				cout << m3.str(); 
-			}
+			save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+			#if SPB > 1 // Save gamma frames.
+				save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
+			#endif
+			stringstream m3;
+			m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
+			cout << m3.str(); 
 		}
-		else if(t >= 250 && t < 600)
-		{	//Only save one in two frames here.
-			if(index%2 ==0)
-			{
-				save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
-				#if SPB > 1 // Save gamma frames.
-					save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
-				#endif
-				stringstream m3;
-				m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
-				cout << m3.str(); 
-			}
-		} //*/
-
-		/** PREVIOUS FRAME SAVING STRATEGY (DT ~ 0.1)
-		if(t < 760)
+	}
+	else if(t >= 250 && t < 600)
+	{	//Only save one in two frames here.
+		if(index%2 ==0)
 		{
-			//Only save one in three frames here.
-			if(index%3 ==2 || t== 0)
-			{
-				save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
-				#if SPB > 1 // Save gamma frames.
-					save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
-				#endif
-				stringstream m3;
-				m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
-				cout << m3.str();
-			}
-		}
-		else if(t >= 760 && t < 6000)
-		{	//Only save one in two frames here.
-			if(index%2 ==0)
-			{
-				save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
-				#if SPB > 1 // Save gamma frames.
-					save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
-				#endif
-
-				stringstream m3;
-				m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
-				cout << m3.str(); 
-			}
-		}//*/
-
-		///** FRAME SAVING STRATEGY FOR DT WITH FRAME_MEAS WITH LINEAR WINDOWS
-		if(t > 1500 && t < 6000)
-		{	//Only save one in two frames here.
-			if(index%2 ==0)
-			{
-				save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
-				#if SPB > 1 // Save gamma frames.
-					save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
-				#endif
-
-				stringstream m3;
-				m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
-				cout << m3.str(); 
-			}
-		}
-		else
-		{
-			//Save all frames here.
 			save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
 			#if SPB > 1 // Save gamma frames.
 				save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
@@ -2970,9 +2910,67 @@ void save_framefileswrapper(int index, int tot_iter, int j, int thrID,  double t
 			m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
 			cout << m3.str(); 
 		}
-		//*/
-		
+	} //*/
+
+	/** PREVIOUS FRAME SAVING STRATEGY (DT ~ 0.1)
+	if(t < 760)
+	{
+		//Only save one in three frames here.
+		if(index%3 ==2 || t== 0)
+		{
+			save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+			#if SPB > 1 // Save gamma frames.
+				save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
+			#endif
+			stringstream m3;
+			m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << endl;
+			cout << m3.str();
+		}
 	}
+	else if(t >= 760 && t < 6000)
+	{	//Only save one in two frames here.
+		if(index%2 ==0)
+		{
+			save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+			#if SPB > 1 // Save gamma frames.
+				save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
+			#endif
+
+			stringstream m3;
+			m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
+			cout << m3.str(); 
+		}
+	}//*/
+
+	///** FRAME SAVING STRATEGY FOR DT WITH FRAME_MEAS WITH LINEAR WINDOWS
+	if(t > 1500 && t < 6000)
+	{	//Only save one in two frames here.
+		if(index%2 ==0)
+		{
+			save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+			#if SPB > 1 // Save gamma frames.
+				save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
+			#endif
+
+			stringstream m3;
+			m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
+			cout << m3.str(); 
+		}
+	}
+	else
+	{
+		//Save all frames here.
+		save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
+		#if SPB > 1 // Save gamma frames.
+			save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
+		#endif
+		stringstream m3;
+		m3 << "FRAME SAVED at time:\t" << t << " for Thread Rank:\t " << omp_get_thread_num() << "  with a_value:\t" << a << " and Replicate:\t" << j << "\n";
+		cout << m3.str(); 
+	}
+	//*/
+	
+
 	//
 }
 
@@ -2986,114 +2984,113 @@ int save_prelimfileswrapper(int index, int tot_iter, int j, int thrID,  double t
 {
 
 	// BLOCK FOR CALCULATING AND TEMP PRELIMINARY FRAMES
-	if( index == int(tot_iter*0.85) || index == int(tot_iter*0.9) || index == int(tot_iter*0.95) || index == int(tot_iter-1))
-	{
-		// In this case, copy the first "index" rows of rho_rep_avg_var to a new 2D vector, update the values using var_mean_incremental_surv_runs()
-		// and save to file.
-		D2Vec_Double rho_rep_avg_var_temp(index+1, vector<double> (Sp4_1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
-		//std::copy(rho_rep_avg_var.begin(), rho_rep_avg_var.begin() + index, rho_rep_avg_var_temp.begin());
-		var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index+1, 0);
+	
+	// In this case, copy the first "index" rows of rho_rep_avg_var to a new 2D vector, update the values using var_mean_incremental_surv_runs()
+	// and save to file.
+	D2Vec_Double rho_rep_avg_var_temp(index+1, vector<double> (Sp4_1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+	//std::copy(rho_rep_avg_var.begin(), rho_rep_avg_var.begin() + index, rho_rep_avg_var_temp.begin());
+	var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index+1, 0);
 
-		#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
-			D2Vec_Double gamma_mov_avg_temp(index+1, vector<double> (int(Rho_Mov[0].size()) + 1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
-			// Get cols_per_sp by dividing the number of columns in Rho_Mov by the number of species (SpB).
-			int cols_per_sp = int(Rho_Mov[0].size()/SpB);
-			generic_SPBmean_surv_runs(gamma_mov_avg_temp, Rho_Mov, index+1, cols_per_sp, 0);
-			//Time is stored in the first column.
-			for(int i=0; i < index+1; i++)
-				gamma_mov_avg_temp[i][0] = t_meas[i];
-
-		#endif
-
-
+	#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
+		D2Vec_Double gamma_mov_avg_temp(index+1, vector<double> (int(Rho_Mov[0].size()) + 1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+		// Get cols_per_sp by dividing the number of columns in Rho_Mov by the number of species (SpB).
+		int cols_per_sp = int(Rho_Mov[0].size()/SpB);
+		generic_SPBmean_surv_runs(gamma_mov_avg_temp, Rho_Mov, index+1, cols_per_sp, 0);
 		//Time is stored in the first column.
 		for(int i=0; i < index+1; i++)
-			rho_rep_avg_var_temp[i][0] = t_meas[i];
+			gamma_mov_avg_temp[i][0] = t_meas[i];
 
-		//Finally save to file.
-		stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, geq, veq, jID; // cgm, sig0;
-		a1 << a_st; a2 << a_end;
-		L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(5) << a; dimitri << dP; jID << thrID;
-		rini << j; Dm << setprecision(4) << D[2]; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
+	#endif
 
-		string parendir= "";
-		if(Gstar != -1)
-			parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str() + "/TimeSeries";
-		else if(Vstar != -1)
-			parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str() + "/TimeSeries";
-		else
-			parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/TimeSeries";
 
-		//double ran_jid = (unif(rng)*1000.0)/1000.0; jID << ran_jid; // Random number between 0 and 1.
-		
-		string filenamePattern = replicate_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
-		"_jID_"+ jID.str() + "_R_";
+	//Time is stored in the first column.
+	for(int i=0; i < index+1; i++)
+		rho_rep_avg_var_temp[i][0] = t_meas[i];
 
-		save_prelimframe(rho_rep_avg_var_temp, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
+	//Finally save to file.
+	stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, geq, veq, jID; // cgm, sig0;
+	a1 << a_st; a2 << a_end;
+	L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(5) << a; dimitri << dP; jID << thrID;
+	rini << j; Dm << setprecision(4) << D[2]; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
 
-		#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
-		string filenamePattern_mov = movement_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
-		"_jID_"+ jID.str() + "_R_";
-		save_prelimframe(gamma_mov_avg_temp, parendir, filenamePattern_mov, a, a_st, a_end, t, dt, dx, dP, j, g, movmheader, false, false);
-		#endif
+	string parendir= "";
+	if(Gstar != -1)
+		parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str() + "/TimeSeries";
+	else if(Vstar != -1)
+		parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str() + "/TimeSeries";
+	else
+		parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/TimeSeries";
 
-		
+	//double ran_jid = (unif(rng)*1000.0)/1000.0; jID << ran_jid; // Random number between 0 and 1.
+	
+	string filenamePattern = replicate_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+	"_jID_"+ jID.str() + "_R_";
 
-		// Check if no vegetation is left at this current index. If so, break out of the while loop.
-		if( Rho_M[index][0] == 0.0)
-		{
-			stringstream m3_1;
-			m3_1 << "RUN-TIME WARNING: ZERO Active VEG sites for TIME [t, a, thr, j]\t" 
-			<< t << " , " << a << " , " << omp_get_thread_num()  << " , " << j << " Skipping to next replicate .... \n"; 
-			cout << m3_1.str(); cerr << m3_1.str();
+	save_prelimframe(rho_rep_avg_var_temp, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
 
-			//Next save future preliminary frames with 0.0 values for population densities after this time point.
-			int index_prelim_range[4] = {int(tot_iter*0.85), int(tot_iter*0.9), int(tot_iter*0.95), int(tot_iter-1)};
-			int iter_index =0;
-			for(int iter_index =0; iter_index < 4; iter_index++)
-			{	
-				int new_index = index_prelim_range[iter_index];
-				if( index > new_index)
-					continue; //Skip to next iteration if index is greater than the current range.
-				// In this case, copy the first "index" rows of rho_rep_avg_var to a new 2D vector, update the values using var_mean_incremental_surv_runs()
-				// and save to file.
-				D2Vec_Double rho_rep_avg_var_future_temp(new_index+1, vector<double> (Sp4_1, 0.0)); 
-				//Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
-				var_mean_incremental_surv_runs(rho_rep_avg_var_future_temp, Rho_M, new_index+1, 0);
-				stringstream tm_future; tm_future << t_meas[new_index]; // Time at which the frame is saved.
+	#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
+	string filenamePattern_mov = movement_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+	"_jID_"+ jID.str() + "_R_";
+	save_prelimframe(gamma_mov_avg_temp, parendir, filenamePattern_mov, a, a_st, a_end, t, dt, dx, dP, j, g, movmheader, false, false);
+	#endif
 
+	
+
+	// Check if no vegetation is left at this current index. If so, break out of the while loop.
+	if( Rho_M[index][0] == 0.0)
+	{
+		stringstream m3_1;
+		m3_1 << "RUN-TIME WARNING: ZERO Active VEG sites for TIME [t, a, thr, j]\t" 
+		<< t << " , " << a << " , " << omp_get_thread_num()  << " , " << j << " Skipping to next replicate .... \n"; 
+		cout << m3_1.str(); cerr << m3_1.str();
+
+		//Next save future preliminary frames with 0.0 values for population densities after this time point.
+		int index_prelim_range[5] = {int(tot_iter*0.6), int(tot_iter*0.85), int(tot_iter*0.9), int(tot_iter*0.95), int(tot_iter-1)};
+		int iter_index =0;
+		for(int iter_index =0; iter_index < 5; iter_index++)
+		{	
+			int new_index = index_prelim_range[iter_index];
+			if( index > new_index)
+				continue; //Skip to next iteration if index is greater than the current range.
+			// In this case, copy the first "index" rows of rho_rep_avg_var to a new 2D vector, update the values using var_mean_incremental_surv_runs()
+			// and save to file.
+			D2Vec_Double rho_rep_avg_var_future_temp(new_index+1, vector<double> (Sp4_1, 0.0)); 
+			//Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+			var_mean_incremental_surv_runs(rho_rep_avg_var_future_temp, Rho_M, new_index+1, 0);
+			stringstream tm_future; tm_future << t_meas[new_index]; // Time at which the frame is saved.
+
+			//Time is stored in the first column.
+			for(int i=0; i < new_index+1; i++)
+				rho_rep_avg_var_future_temp[i][0] = t_meas[i];
+
+			string filenamePattern_future = replicate_prefix + L.str() + "_T_" + tm_future.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+			"_jID_"+ jID.str() + "_R_";
+
+			//Finally save to file.
+			save_prelimframe(rho_rep_avg_var_future_temp, parendir, filenamePattern_future, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
+
+			#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
+				D2Vec_Double gamma_mov_avg_future_temp(new_index+1, vector<double> (int(Rho_Mov[0].size()) + 1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+				// Get cols_per_sp by dividing the number of columns in Rho_Mov by the number of species (SpB).
+				int cols_per_sp = int(Rho_Mov[0].size()/SpB);
+				generic_SPBmean_surv_runs(gamma_mov_avg_future_temp, Rho_Mov, new_index+1, cols_per_sp, 0);
 				//Time is stored in the first column.
 				for(int i=0; i < new_index+1; i++)
-					rho_rep_avg_var_future_temp[i][0] = t_meas[i];
+					gamma_mov_avg_future_temp[i][0] = t_meas[i];
 
-				string filenamePattern_future = replicate_prefix + L.str() + "_T_" + tm_future.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+				string filenamePattern_mov_future = movement_prefix + L.str() + "_T_" + tm_future.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
 				"_jID_"+ jID.str() + "_R_";
+				save_prelimframe(gamma_mov_avg_future_temp, parendir, filenamePattern_mov_future, a, a_st, a_end, t, dt, dx, dP, j, g, movmheader, false, false);
+				vector<vector<double>>().swap(gamma_mov_avg_future_temp); //Flush temp out of memory.
+			#endif
 
-				//Finally save to file.
-				save_prelimframe(rho_rep_avg_var_future_temp, parendir, filenamePattern_future, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
-
-				#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
-					D2Vec_Double gamma_mov_avg_future_temp(new_index+1, vector<double> (int(Rho_Mov[0].size()) + 1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
-					// Get cols_per_sp by dividing the number of columns in Rho_Mov by the number of species (SpB).
-					int cols_per_sp = int(Rho_Mov[0].size()/SpB);
-					generic_SPBmean_surv_runs(gamma_mov_avg_future_temp, Rho_Mov, new_index+1, cols_per_sp, 0);
-					//Time is stored in the first column.
-					for(int i=0; i < new_index+1; i++)
-						gamma_mov_avg_future_temp[i][0] = t_meas[i];
-
-					string filenamePattern_mov_future = movement_prefix + L.str() + "_T_" + tm_future.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
-					"_jID_"+ jID.str() + "_R_";
-					save_prelimframe(gamma_mov_avg_future_temp, parendir, filenamePattern_mov_future, a, a_st, a_end, t, dt, dx, dP, j, g, movmheader, false, false);
-					vector<vector<double>>().swap(gamma_mov_avg_future_temp); //Flush temp out of memory.
-				#endif
-
-				vector<vector<double>>().swap(rho_rep_avg_var_future_temp); //Flush temp out of memory.
-			}
-			return 1; //Indicate that the current replicate has no vegetation left at this time point (and break out of the while loop).
+			vector<vector<double>>().swap(rho_rep_avg_var_future_temp); //Flush temp out of memory.
 		}
+		return 1; //Indicate that the current replicate has no vegetation left at this time point (and break out of the while loop).
+	}
 
-		vector<vector<double>>().swap(rho_rep_avg_var_temp); //Flush temp out of memory.
-	} 
+	vector<vector<double>>().swap(rho_rep_avg_var_temp); //Flush temp out of memory.
+	 
 	// */
 
 	return 0;
@@ -3267,13 +3264,15 @@ void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec
 			if( eff_nR_Perp_size < 1 && fr > 0)
 			{	eff_nR_Perp_size = 1;	} // At least one nearest neighbor (the site itself) is considered.
 			if(Rho_avg[s] < eps)
-				{	gamma[s][i] = 1.0; continue;	} // No species left, value assigned doesn't matter.
+				{	gamma[s][i] = 0.0; continue;	} // No species left, value assigned doesn't matter.
 			else if(Rho_avg[s-1] < eps)
 				{	gamma[s][i] = 0.0;	continue; } // No resource left, consumers will advect to extinction.
 
+			/** 
 			if(dtV_counter[s].first != 1 && dtV_counter[s].second != 0)
 			{	continue;	} 
 			//Skip this species if it is not updated at this time step (depending on advection timescale)
+			//*/
 			
 			// Gamma for grazers (indexed 1)
 			if (s == 1)
@@ -3651,11 +3650,14 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 				vector<double>().swap(temp_alt); //Flush temp out of memory.0
 
 				// Saving frames to file at given time points.
-				int break_flag = save_prelimfileswrapper(index, tot_iter, j, thrID, t, dt, dx, Rho_dt, DRho, Rho_M, Rho_Mov, rho_rep_avg_var,
-					t_meas, gamma, v_eff, t_max, a, c, gmax, alpha, rW, W0, D, v, K, sigma, a_st, a_end, a_c, A,H,E,M, 
-    				dP, r, g, Gstar /* =-1.*/, Vstar /* = -1.*/);
-				if( break_flag == 1)
-					break; //Finish negotiations as all basal species are dead.
+				if( index == int(tot_iter*0.6) || index == int(tot_iter*0.85) || index == int(tot_iter*0.9) || index == int(tot_iter*0.95) || index == int(tot_iter-1))
+				{
+					int break_flag = save_prelimfileswrapper(index, tot_iter, j, thrID, t, dt, dx, Rho_dt, DRho, Rho_M, Rho_Mov, rho_rep_avg_var,
+						t_meas, gamma, v_eff, t_max, a, c, gmax, alpha, rW, W0, D, v, K, sigma, a_st, a_end, a_c, A,H,E,M, 
+						dP, r, g, Gstar /* =-1.*/, Vstar /* = -1.*/);
+					if( break_flag == 1)
+						break; //Finish negotiations as all basal species are dead.
+				}
 
 				//vector <double> temp_1= {DRho[0].begin(),DRho[0].end()}; //Rho_dt for species '0'
 				//double rhox_DR = occupied_sites_of_vector(temp_1, g*g); //Finds number of occupied at given t.
@@ -3677,9 +3679,13 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			if(t == 0 || t >= frame_tmeas[frame_index] -dt/2.0 && t < frame_tmeas[frame_index] +dt/2.0)
 			{
 				// Saving frames to file at given time points.
-				save_framefileswrapper(frame_index, frame_tot_iter, j, thrID, t, dt, dx, Rho_dt, DRho, rho_rep_avg_var,
+				if(frame_index >= frame_tot_iter -10 &&  frame_index <= frame_tot_iter-1  ||  t >= 50000 && t <= 150000 
+					|| t >= 50 && t <= 15000 || t== 0)
+				{
+					save_framefileswrapper(frame_index, frame_tot_iter, j, thrID, t, dt, dx, Rho_dt, DRho, rho_rep_avg_var,
 					frame_tmeas, gamma, v_eff, t_max, a, c, gmax, alpha, rW, W0, D, v, K, sigma, a_st, a_end, a_c, A,H,E,M, 
 					dP, r, g, Gstar /* =-1.*/, Vstar /* = -1.*/);
+				}
 				frame_index+=1;
 			}
 			//Basic Dornic  Integration of Linear & Stochastic Term
@@ -3907,12 +3913,12 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					//Next sampling the advection vector from v[s].
 					//unif = uniform_real_distribution<double>(0.0, 1.0);
 
-
+					#if defined(LOCUST_WIND) 
+					// Set grazer advection vector to max of absolute value of wind speed and v[s].
 					// Sampling the advection vector from v[s], every dtV[s] time steps.
 					if(dtV[s] == 1 || dtV_counter[s].second == 0)
 					{
-						#if defined(LOCUST_WIND) 
-						// Set grazer advection vector to max of absolute value of wind speed and v[s].
+						
 						if (s == 1 && (wind_speed.first != 0.0 || wind_speed.second != 0.0)) 
 						{
     						// Use wind speed if it has at least one non-zero component
@@ -3924,25 +3930,14 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 							double ran = unif(rng);
 							v_eff[s][i].first = v[s]*cos(2*PI*ran); v_eff[s][i].second = v[s]*sin(2*PI*ran); //Advection vector (vx, vy).
 						}
-						#else
-
+						
+					}
+					#else
 						double ran = unif(rng);
 						//double vx = v[s]*cos(2*PI*ran); double vy = v[s]*sin(2*PI*ran); //Advection vector.
 						v_eff[s][i].first = v[s]*cos(2*PI*ran); v_eff[s][i].second = v[s]*sin(2*PI*ran); //Advection vector (vx, vy).
-
-						#endif
-					}
-
-					#if defined(DEBUG)
-					if(counter%50000 == 0 && counter == i% (16*g))
-					{
-						stringstream m5_2;     //To make cout thread-safe as well as non-garbled due to race conditions.
-						m5_2 << "STATUS UPDATE AT TIME [t, thr, i, j]\t" << t << " , " << omp_get_thread_num() << " , " << i << " , " << j 
-						<< "\t DORNIC VALUE OF SP " << s << " UPDATED WITH RHO*(I,t): " << DRho[s][i] 
-						<< " and (vx, vy):  [" <<  v_eff[s][i].first << " , " << v_eff[s][i].second << "] \n"; cout << m5_2.str();
-						cerr << m5_2.str();
-					}
 					#endif
+
 
 					//double vx = v_eff[s][i].first; double vy = v_eff[s][i].second; //Advection vector.
 					double vx_abs = v_eff[s][i].first*sgn(v_eff[s][i].first); double vy_abs = v_eff[s][i].second*sgn(v_eff[s][i].second); //Absolute value of advection vector.
@@ -3965,6 +3960,17 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 					if(diff_eff[s].second < diff_coefficient[0])
 						diff_eff[s].second = diff_coefficient[0];
 					// If the effective diffusion coefficient is less than D[0]/dx2, set it to D[0]/dx2.
+
+					#if defined(DEBUG)
+					if(counter%50000 == 0 && counter == i% (16*g))
+					{ 
+						stringstream m5_2;     //To make cout thread-safe as well as non-garbled due to race conditions.
+						m5_2 << "STATUS UPDATE AT TIME [t, thr, i, j]\t" << t << " , " << omp_get_thread_num() << " , " << i << " , " << j 
+						<< "\t DORNIC VALUE OF SP " << s << " UPDATED WITH RHO*(I,t): " << DRho[s][i] 
+						<< " and (vx, vy):  [" <<  v_eff[s][i].first << " , " << v_eff[s][i].second << "] \n"; cout << m5_2.str();
+						cerr << m5_2.str();
+					}
+					#endif
 					
 
 					// RECALL:	nR2[i][0][0] = i - g; nR2[i][0][1] = i + g;  nR2[i][1][0] = i - 1; nR2[i][1][1] = i + 1; 
@@ -4384,8 +4390,8 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 		// Sort the frame_tmeas vector in ascending order and remove duplicates (if any).
 		sort( frame_tmeas.begin(), frame_tmeas.end() );
 
-		// Create a linear window from 80000 to 150000, spaced 250 apart (281 points).
-		vector <double> t_frame_linearwindow2 = linspace(80000, 150000, 281);
+		// Create a linear window from 80000 to 150000, spaced 500 apart (141 points).
+		vector <double> t_frame_linearwindow2 = linspace(80000, 150000, 141);
 		// Insert into t_measure vector after the element in t_measure that is just less than the first element in t_frame_linearwindow2.
 		auto it2 = std::upper_bound(t_measure.begin(), t_measure.end(), t_frame_linearwindow2[0]);
 		t_measure.insert(it2, t_frame_linearwindow2.begin(), t_frame_linearwindow2.end());
