@@ -8,7 +8,21 @@ import argparse
 import copy
 import warnings
 import time
+#import multiprocessing
 
+print(f"REORGANISE_DIR: PID={os.getpid()}, __name__={__name__}")
+import traceback
+print(f"STACK TRACE for PID {os.getpid()}:")
+traceback.print_stack()
+print("=" * 50)
+
+''''
+# Determine GPU usage from environment variable
+if os.getenv("USE_GPU", "0") == "1":
+    if __name__ == "__main__":
+        multiprocessing.set_start_method('spawn', force=True)  
+        # Ensure spawn method for compatibility as "fork" is incompatible
+'''
 from GPU_glow_up import to_cpu, to_gpu, asnumpy, asarray, is_gpu_array
 import GPU_glow_up as gpu
 

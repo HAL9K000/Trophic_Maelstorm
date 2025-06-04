@@ -1749,7 +1749,7 @@ def analyse_FRAME_CORRdata(indir, out_dir, prefixes=[], a_vals=[], focus_T_vals 
         
 
 def analyse_FRAME_FFTCORRdata(indir, out_dir, prefixes=[], a_vals=[], focus_T_vals =[], analType = "NCC", corrsubdir="2DCorr/FFT/",
-                           filename = "HarmonicPeaks_{corrType}_{analType}_TD_*.csv", var_labels= "deduce", a_scaling = 1):
+                           filename = "HarmonicPeaks_{corrType}_{analType}_TD_*.csv", var_labels= "deduce", harm_peaks_index=[0,1,2], a_scaling = 1):
     
     autosavefilename = f"FFTPIQUES_AUTOCORR-2D_{analType}_fTmax_{focus_T_vals[-1]}"
     crosssavefilename = f"FFTPIQUES_CROSSCORR-2D_{analType}_fTmax_{focus_T_vals[-1]}"
@@ -1837,64 +1837,84 @@ def analyse_FRAME_FFTCORRdata(indir, out_dir, prefixes=[], a_vals=[], focus_T_va
             for T0 in focus_T_vals:
                 T0 = int(T0) if float(T0).is_integer() else T0
 
-                # Extracting the auto data for the current T0 value.
-                try:
-                    auto_data_T0 = auto_FFTPeakdata.loc[(slice(None), slice(None), T0, slice(None)), :]
-                except KeyError:
-                    print(f"No AUTO data found for {Pre} at T0 = {T0}. Skipping....")
-                    continue
+                # If harm_peaks_index is not None or an empty list/array, then iterate over the indices "i"
+                # and extract the "ith" ( i % 10) rows from the auto_FFTPeakdata DataFrame.
                 
-                # Create save directory for the plots.
-                savepngdir_auto = out_dir + f"{Pre}/2DCorrelation/BoxViolin/L_{g}/dP_{dP}/Geq_{Geq}/T0_{T0}/FFTTime/"
-                Path(savepngdir_auto).mkdir(parents=True, exist_ok=True)
-                # Create subplots of shape (p, p) where p is round(sqrt(len(auto_FFTPeakvariables)))
-                #p_auto = len(auto_FFTPeakvariables)// SPB + 1; q_auto = SPB
-                p_auto = len(auto_FFTPeakvariables)//4 + 1; q_auto = 4
-                fig_auto, axs_auto = plt.subplots(p_auto, q_auto, figsize = set_figsizeGrid(p_auto, q_auto), sharex = True, sharey = True)
-
-
-                # Flatten the axs array for easier indexing.
-                axs_auto = axs_auto.flatten()
-                # Loop over the variables and plot the data.
-                for s in range(len(auto_FFTPeakvariables)):
-                    # Plotting the auto data
-                    ax_auto = axs_auto[s] if len(auto_FFTPeakvariables) > 1 else axs_auto
-                    # For each species, plot the second and third columns
-                    print(f"Plotting AUTO {analType}{{{auto_FFTPeakvariables[s]}}}] for {Pre} at T0 = {T0}.")
-                    # First plotting the average of all time periods corresponding to individual replicates vs a value.
-                    ax_auto.scatter(auto_data_T0.index.get_level_values('a'),
-                                    auto_data_T0["PEAK-TIMEPERIOD-REPAVG{" + analType + "{" + auto_FFTPeakvariables[s] + r"}}"],
-                                    label = r"$\delta T[\mu_{R}(FFT_{i}($" + auto_FFTPeakvariables[s] + r"$))]$", color = colours[s % len(colours)],
-                                    marker = 'o', s = 20, alpha = 0.85)
-
-                    #Next plotting the time period of AVG (average of all replicates timeseries) vs a value.
-                    ax_auto.scatter(auto_data_T0.index.get_level_values('a'), 
-                                    auto_data_T0["PEAK-TIMEPERIOD[AVG[" + analType + "{" + auto_FFTPeakvariables[s] + "}]]"],
-                                    label = r"$\delta T[FFT(\mu_{R}($" + auto_FFTPeakvariables[s] + r"$))]$", color = colours_med[s % len(colours_med)],
-                                    marker = 'o', s = 20, alpha = 0.75)
-                    # Plotting the individual replicates in a light grey shade.
-                    Rmax = int(auto_data_T0.index.get_level_values('maxR').max())
-                    for R in range(0, Rmax):
-                        # Check if the column exists and is not empty before plotting.
-                        if ( f"PEAK-TIMEPERIOD[{analType}{{{auto_FFTPeakvariables[s]}}}_R_{R}]" in auto_data_T0.columns 
-                            and not auto_data_T0[f"PEAK-TIMEPERIOD[{analType}{{{auto_FFTPeakvariables[s]}}}_R_{R}]"].isnull().all() ):
-                            #print(f"Plotting R {analType}[{auto_FFTPeakvariables[s]}]_R_{R} for {Pre} at a = {a}, T0 = {T0}.")
-                            ax_auto.scatter(auto_data_T0.index.get_level_values('a'),
-                                            auto_data_T0[f"PEAK-TIMEPERIOD[{analType}{{{auto_FFTPeakvariables[s]}}}_R_{R}]"],
-                                            color = "grey", marker = 'o', s = 15, alpha = 0.35)
+                # Check if harm_peaks_index is a list or array with integer values.
+                if not ( isinstance(harm_peaks_index, (list, np.ndarray)) 
+                        and all(isinstance(i, int) for i in harm_peaks_index)):
+                    print(f"harm_peaks_index is not a valid list or array of integers. Using default harm_peaks_index = [0, 1, 2].")
+                    harm_peaks_index = [0, 1, 2]  # Default values if not provided or invalid.
                     
-                    # TODO: Implement 95% CI as infill area for the scatter plot.
+                for harm_indx in harm_peaks_index:
+                    # Extract the ith (i % 10) rows from the auto_FFTPeakdata DataFrame.
+                    try:
+                        auto_data_T0 = auto_FFTPeakdata.loc[(slice(None), slice(None), T0, slice(None)), :]
+                    except KeyError:
+                        print(f"No AUTO data found for {Pre} at T0 = {T0}. Skipping....")
+                        continue
+                    # Extract the ith (i % 10) rows from the auto_FFTPeakdata DataFrame.
+                    # If harm_indx is -1, then we simply plot all the data for that T0 value.
+                    if harm_indx == -1:
+                        print(f"Plotting ALL AUTO PEAK data (Superimposed) for {Pre} at T0 = {T0}....")
+                    if harm_indx != -1:
+                        try:
+                            auto_data_T0 = auto_data_T0.iloc[harm_indx % 10, :]
+                        except IndexError:
+                            print(f"No AUTO data found for {Pre} at T0 = {T0} for harm_peaks_index = {harm_indx}. Skipping....")
+                            continue
+                
+                    
+                    # Create save directory for the plots.
+                    savepngdir_auto = out_dir + f"{Pre}/2DCorrelation/BoxViolin/L_{g}/dP_{dP}/Geq_{Geq}/T0_{T0}/FFTTime/"
+                    Path(savepngdir_auto).mkdir(parents=True, exist_ok=True)
+                    # Create subplots of shape (p, p) where p is round(sqrt(len(auto_FFTPeakvariables)))
+                    #p_auto = len(auto_FFTPeakvariables)// SPB + 1; q_auto = SPB
+                    p_auto = len(auto_FFTPeakvariables)//4 + 1; q_auto = 4
+                    fig_auto, axs_auto = plt.subplots(p_auto, q_auto, figsize = set_figsizeGrid(p_auto, q_auto), sharex = True, sharey = True)
 
-                    # Set the title and labels for the plot.
-                    ax_auto.set_title(r"$\delta T($ " + analType + "[" + auto_FFTPeakvariables[s] + r"]) vs a")
-                    ax_auto.set_xlabel(r'R $(mm/hr)$')
-                    ax_auto.set_ylabel(r'Recovery Time Period $\delta T$')
-                    ax_auto.legend()
-                # End of s loop
-                fig_auto.suptitle(r"Recovery Time Periods for " + analType + f" data at T0 = {T0} for {Pre}, dP = {dP}, Geq = {Geq}")
-                plt.tight_layout()
-                plt.savefig(savepngdir_auto + f"{autosavefilename}.png")
-                plt.show(); plt.close()
+                    # Flatten the axs array for easier indexing.
+                    axs_auto = axs_auto.flatten()
+                    # Loop over the variables and plot the data.
+                    for s in range(len(auto_FFTPeakvariables)):
+                        # Plotting the auto data
+                        ax_auto = axs_auto[s] if len(auto_FFTPeakvariables) > 1 else axs_auto
+                        # For each species, plot the second and third columns
+                        print(f"Plotting AUTO {analType}{{{auto_FFTPeakvariables[s]}}}] for {Pre} at T0 = {T0}.")
+                        # First plotting the average of all time periods corresponding to individual replicates vs a value.
+                        ax_auto.scatter(auto_data_T0.index.get_level_values('a'),
+                                        auto_data_T0["PEAK-TIMEPERIOD-REPAVG{" + analType + "{" + auto_FFTPeakvariables[s] + r"}}"],
+                                        label = r"$\delta T[\mu_{R}(FFT_{i}($" + auto_FFTPeakvariables[s] + r"$))]$", color = colours[s % len(colours)],
+                                        marker = 'o', s = 20, alpha = 0.85)
+
+                        #Next plotting the time period of AVG (average of all replicates timeseries) vs a value.
+                        ax_auto.scatter(auto_data_T0.index.get_level_values('a'), 
+                                        auto_data_T0["PEAK-TIMEPERIOD[AVG[" + analType + "{" + auto_FFTPeakvariables[s] + "}]]"],
+                                        label = r"$\delta T[FFT(\mu_{R}($" + auto_FFTPeakvariables[s] + r"$))]$", color = colours_med[s % len(colours_med)],
+                                        marker = 'o', s = 20, alpha = 0.75)
+                        # Plotting the individual replicates in a light grey shade.
+                        Rmax = int(auto_data_T0.index.get_level_values('maxR').max())
+                        for R in range(0, Rmax):
+                            # Check if the column exists and is not empty before plotting.
+                            if ( f"PEAK-TIMEPERIOD[{analType}{{{auto_FFTPeakvariables[s]}}}_R_{R}]" in auto_data_T0.columns 
+                                and not auto_data_T0[f"PEAK-TIMEPERIOD[{analType}{{{auto_FFTPeakvariables[s]}}}_R_{R}]"].isnull().all() ):
+                                #print(f"Plotting R {analType}[{auto_FFTPeakvariables[s]}]_R_{R} for {Pre} at a = {a}, T0 = {T0}.")
+                                ax_auto.scatter(auto_data_T0.index.get_level_values('a'),
+                                                auto_data_T0[f"PEAK-TIMEPERIOD[{analType}{{{auto_FFTPeakvariables[s]}}}_R_{R}]"],
+                                                color = "grey", marker = 'o', s = 15, alpha = 0.35)
+                        
+                        # TODO: Implement 95% CI as infill area for the scatter plot.
+
+                        # Set the title and labels for the plot.
+                        ax_auto.set_title(r"$\delta T($ " + analType + "[" + auto_FFTPeakvariables[s] + r"]) vs a")
+                        ax_auto.set_xlabel(r'R $(mm/hr)$')
+                        ax_auto.set_ylabel(r'Recovery Time Period $\delta T$')
+                        ax_auto.legend()
+                    # End of s loop
+                    fig_auto.suptitle(r"Recovery Time Periods for " + analType + f" data at T0 = {T0} for {Pre}, dP = {dP}, Geq = {Geq}")
+                    plt.tight_layout()
+                    plt.savefig(savepngdir_auto + f"{autosavefilename}_Peak_{harm_indx}.png")
+                    plt.show(); plt.close()
 
             # End of T0 loop
         

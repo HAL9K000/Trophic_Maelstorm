@@ -1,4 +1,5 @@
 import os
+import traceback
 import regex as re
 from pathlib import Path
 import glob
@@ -8,12 +9,19 @@ import sys
 import argparse
 import copy
 import warnings
-from multiprocessing import Pool, cpu_count, Queue, Lock
+#from multiprocessing import Pool, cpu_count, Queue, Lock, get_start_method
 import functools
 import secrets
 from collections import defaultdict
+from contextlib import contextmanager
+
+print(f"GLOW_UP: PID={os.getpid()}, __name__={__name__}, importing...")
+#print(f"STACK TRACE for PID {os.getpid()}:")
+#traceback.print_stack()
+#print("=" * 50)
 
 import GPU_glow_up as gpu
+from joblib import Parallel, delayed, parallel_backend, cpu_count
 
 # Importing necessary libraries
 np = gpu.np
@@ -84,7 +92,7 @@ import secrets
 '''
 rng = np.random.default_rng(secrets.randbits(128))
 
-print_lock = Lock()
+#print_lock = Lock()
 
 '''
 This script contains a set of utility functions that can be used to read and write text files, read and write csv files,
@@ -94,6 +102,25 @@ in the Utilities directory.
 A detailed description of each function is provided below.
 '''
 
+
+@contextmanager
+def managed_pool(pool_processes=None):
+    from multiprocessing import Pool, cpu_count, Queue, Lock, get_start_method
+    """Context manager for safe pool handling"""
+    if pool_processes is None:
+        pool_processes = cpu_count()
+    
+    pool = None
+    try:
+        pool = Pool(processes=pool_processes)
+        yield pool
+    except Exception as e:
+        print(f"Pool creation failed: {e}")
+        yield None
+    finally:
+        if pool is not None:
+            pool.close()
+            pool.join()
 
 class SkipFile(Exception):
     pass
@@ -109,12 +136,14 @@ def is_array(obj):
 
 
 # Multi-thread safe-print function using lock
+'''
 def safe_print(*args, **kwargs):
     print_lock.acquire()
     try:
         print(*args, **kwargs)
     finally:
         print_lock.release()
+'''
 
 # Replacing Lambda functions for defaultdict initialisation to avoid pickling issues with multiprocessing
 def default_dict():
@@ -176,20 +205,7 @@ def find_timerange(files, a, indx, min_t = None, max_t = None):
         return T_vals
     return T_vals[indx:] if indx < 0 else T_vals[:indx]
 
-'''# Summary of the function gen_interpolated_df(...)
-gen_interpolated_df(df1, df2, compare_col) generates an interpolated dataframe of df2 with respect to df1, based on the values in compare_col_label.
-The function first checks if compare_col_label is an existing column in both df1 and df2. If it is not, the function will return an error (None).
 
-Next the function will do the follows:
-1.) It will create a Pandas dataframe with the same columns as df2 called df_interpolate, with df_interpolate[compare_col_label] = df1[compare_col_label].
-1.) It will iterate over all the columns in df2, barring compare_col_label, and will 
-generate a cubic spline interpolation of each such column in df2 with respect to compare_col_label.
-2.) It will use the cubic spline interpolation to evaluate the interpolated values of each column in df2 
-at the values of compare_col_label in df1 (stored in df_interpolate[compare_col_label]).
-3.) These interpolated values will be stored in the corresponding columns in df_interpolate.
-4.) The function will return df_interpolate.
-5.) If the function encounters an error while generating the cubic spline interpolation, it will return None.
-'''
 
 ''' Summary of the function freedman_diaconis_bin_width(...): Compute Freedman-Diaconis bin width.'''
 def freedman_diaconis_bin_width(data):
@@ -211,6 +227,21 @@ def scotts_bin_width(data):
         return np.nan
     return 3.5 * std / np.cbrt(n)
 
+
+'''# Summary of the function gen_interpolated_df(...)
+gen_interpolated_df(df1, df2, compare_col) generates an interpolated dataframe of df2 with respect to df1, based on the values in compare_col_label.
+The function first checks if compare_col_label is an existing column in both df1 and df2. If it is not, the function will return an error (None).
+
+Next the function will do the follows:
+1.) It will create a Pandas dataframe with the same columns as df2 called df_interpolate, with df_interpolate[compare_col_label] = df1[compare_col_label].
+1.) It will iterate over all the columns in df2, barring compare_col_label, and will 
+generate a cubic spline interpolation of each such column in df2 with respect to compare_col_label.
+2.) It will use the cubic spline interpolation to evaluate the interpolated values of each column in df2 
+at the values of compare_col_label in df1 (stored in df_interpolate[compare_col_label]).
+3.) These interpolated values will be stored in the corresponding columns in df_interpolate.
+4.) The function will return df_interpolate.
+5.) If the function encounters an error while generating the cubic spline interpolation, it will return None.
+'''
 def gen_interpolated_df(df1, df2, compare_col_label):
     
     # Check if compare_col_label is an existing column in both df1 and df2. If it is not, return an error.
@@ -874,7 +905,7 @@ def gen_potential_well_data(files, pathtodir="", ext="csv", exclude_col_labels= 
     return (df_kde, df_local_minima) if evaluate_local_minima else (df_kde, None)
 
 
-def compute_mutual_information(X, Y, bins="scotts"):
+def compute_mutual_information(X, Y, bins="scotts", verbose= False):
     # x, y should be 1D arrays, if not, flatten them
     X = X.flatten() if X.ndim > 1 else X; Y = Y.flatten() if Y.ndim > 1 else Y
     # If bins is numeric, use it as the number of bins. If bins is a string, set bins using Scott's method.
@@ -910,7 +941,8 @@ def compute_mutual_information(X, Y, bins="scotts"):
             if( nbins > 256):
                 #print(f"X bin width: {bw_X}, Y bin width: {bw_Y}, X range: {X.max() - X.min()}, Y range: {Y.max() - Y.min()}")
                 #print(f"nbins: {nbins}")
-                print(f"Warning: Number of bins is too high. Setting nbins to 256.") 
+                if verbose:
+                    print(f"Warning: Number of bins is too high. Setting nbins to 256.") 
                 #+ f"Consider using a smaller bin width or a different binning method.")
                 
                 nbins = 256
@@ -944,7 +976,7 @@ def compute_mutual_information(X, Y, bins="scotts"):
     return MI
 
 
-def compute_normalised_mutual_information(X, Y, bins="scotts"):
+def compute_normalised_mutual_information(X, Y, bins="scotts", verbose=False):
     # x, y should be 1D arrays, if not, flatten them
     X = X.flatten() if X.ndim > 1 else X; Y = Y.flatten() if Y.ndim > 1 else Y
 
@@ -969,7 +1001,8 @@ def compute_normalised_mutual_information(X, Y, bins="scotts"):
             nbins = max(1, int(np.ceil(data_range / min_bw)))
 
             if( nbins > 256):
-                print(f"WARNING: Number of bins = {nbins} is too high. Setting nbins to 256.")# +
+                if verbose:
+                    print(f"WARNING: Number of bins = {nbins} is too high. Setting nbins to 256.")# +
                       #f"Consider using a smaller bin width or a different binning method.")
                 nbins = 256
 
@@ -994,7 +1027,7 @@ def compute_normalised_mutual_information(X, Y, bins="scotts"):
     NMI = normalized_mutual_info_score(X_digitised, Y_digitised)
     return NMI
 
-def compute_adjusted_mutual_information(X, Y, bins="scotts"):
+def compute_adjusted_mutual_information(X, Y, bins="scotts", verbose=False):
     # x, y should be 1D arrays, if not, flatten them
     X = X.flatten() if X.ndim > 1 else X; Y = Y.flatten() if Y.ndim > 1 else Y
 
@@ -1033,7 +1066,8 @@ def compute_adjusted_mutual_information(X, Y, bins="scotts"):
             nbins = max(1, int(np.ceil(data_range / min_bw)))
 
             if( nbins > 256):
-                print(f"WARNING: Number of bins = {nbins} is too high. Setting nbins to 256") 
+                if verbose:
+                    print(f"WARNING: Number of bins = {nbins} is too high. Setting nbins to 256") 
                       #+ f"Consider using a smaller bin width or a different binning method.")
                 nbins = 256
 
@@ -1128,8 +1162,8 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
         auto_Morons_dict = None; cross_Morons_dict = None
 
     key = (T, tval, T - float(tval), len(files))  # Common key for all files.
-    safe_print(f"Generating 2D correlation data for T0 = {T}, T1 = {tval}, delay = {T - float(tval)}, L = {L} ....")
-    
+    #safe_print(f"Generating 2D correlation data for T0 = {T}, T1 = {tval}, delay = {T - float(tval)}, L = {L} ....")
+    print(f"Generating 2D correlation data for T0 = {T}, T1 = {tval}, delay = {T - float(tval)}, L = {L} ....")
     # Iterate over all files in files, sorted in ascending order of R using regex
     
     for file in sorted_files_R(files, ascending=True):
@@ -1139,7 +1173,8 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
         filetype = re.search(r'FRAME|GAMMA', file).group(0)
         
         if Lfile != L:
-            safe_print(f"Warning: L value in file {file} is {Lfile} but expected {L}. Skipping file.")
+            #safe_print(f"Warning: L value in file {file} is {Lfile} but expected {L}. Skipping file.")
+            print(f"Warning: L value in file {file} is {Lfile} but expected {L}. Skipping file.")
             continue
 
         if(ext == "csv"):
@@ -1148,7 +1183,8 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
             try:
                 df = pan.read_table(file, header=0)
             except Exception as e:
-                safe_print(f"Error: Non-standard extension for file {file} with error message: \n" + str(e))
+                #safe_print(f"Error: Non-standard extension for file {file} with error message: \n" + str(e))
+                print(f"Error: Non-standard extension for file {file} with error message: \n" + str(e))
                 return auto_NCC_dict, cross_NCC_dict, auto_ZNCC_dict, cross_ZNCC_dict, auto_AMI_dict, cross_AMI_dict, auto_MI_dict, cross_MI_dict
 
         # Modify column names in df to remove leading and trailing whitespaces.
@@ -1173,8 +1209,9 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
         
         
         if len(crossfile_tval) > 2 or len(crossfile_tval) == 0:
-            safe_print(f"Warning: No or more than 2 crossfile found for T = {tval} and R = {Rstr}. Skipping file.")
-            safe_print(f"Crossfiles found: {crossfile_tval}")
+            print(f"Warning: No or more than 2 crossfile found for T = {tval} and R = {Rstr}. Skipping file.")
+            #safe_print(f"Crossfiles found: {crossfile_tval}")
+            print(f"Crossfiles found: {crossfile_tval}")
             continue
             
         # Read the crossfile and zero-normalise all columns in the crossfile.
@@ -1188,7 +1225,8 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
                 try:
                     df_cross = pan.read_table(crossfile, header=0)
                 except Exception as e:
-                    safe_print(f"Error: Non-standard extension for file {crossfile} with error message: \n" + str(e))
+                    #safe_print(f"Error: Non-standard extension for file {crossfile} with error message: \n" + str(e))
+                    print(f"Error: Non-standard extension for file {crossfile} with error message: \n" + str(e))
                     return auto_NCC_dict, cross_NCC_dict, auto_ZNCC_dict, cross_ZNCC_dict, auto_AMI_dict, cross_AMI_dict, auto_MI_dict, cross_MI_dict
                     
             # Modify column names in df_cross to remove leading and trailing whitespaces.
@@ -1197,7 +1235,8 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
             df_cross = df_cross[[col for col in df_cross.columns if col not in exclude_col_labels]]
             df_cross_Znorm = gen_zer0mean_normalised_df(df_cross)  # Generate 0-normalised columns for df_cross.
 
-            safe_print(f"Calculating 2D correlation for FOCUS file {os.path.basename(file)} with CROSSfile {os.path.basename(crossfile)} at R = {Rstr}...")
+            #safe_print(f"Calculating 2D correlation for FOCUS file {os.path.basename(file)} with CROSSfile {os.path.basename(crossfile)} at R = {Rstr}...")
+            print(f"Calculating 2D correlation for FOCUS file {os.path.basename(file)} with CROSSfile {os.path.basename(crossfile)} at R = {Rstr}...")
 
             # First auto-NCC and auto-ZNCC: Iterate over all df.columns and calculate the NCC for each column in df.
             for col in df_Znorm.columns:
@@ -1207,26 +1246,30 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
                     break
                 # Calculate the NCC for each column in df with the same column in df_cross.
                 if col not in df_cross_Znorm.columns:
-                    safe_print(f"Warning: Column {col} not found in crossfile {os.path.basename(crossfile)}")
+                    #safe_print(f"Warning: Column {col} not found in crossfile {os.path.basename(crossfile)}")
+                    print(f"Warning: Column {col} not found in crossfile {os.path.basename(crossfile)}")
                     continue
 
                 # Also check if the column is entirely zero or flat. If so, skip the column.
                 if all(df_Znorm[col] == 0) or all(df_cross_Znorm[col] == 0):
-                    safe_print(f"Warning: Entirely zero column {col} in FOCUS file {os.path.basename(file)}" + 
+                    #safe_print(f"Warning: Entirely zero column {col} in FOCUS file {os.path.basename(file)}" + 
+                    print(f"Warning: Entirely zero column {col} in FOCUS file {os.path.basename(file)}" + 
                         f"or CROSSfile {os.path.basename(crossfile)} for T0 = {T}, T1 = {tval} ... Skipping column.")
+                        
                     continue
 
-                safe_print(f"Calculating 2D AUTO Correlation for column {col}...")
+                #safe_print(f"Calculating 2D AUTO Correlation for column {col}...")
+                print(f"Calculating 2D AUTO Correlation for column {col}...")
                 
                 if(calc_AMI):
                     # Calculate AMI for each column in df with the same column in df_cross.
-                    AMI = compute_adjusted_mutual_information(df[col].values, df_cross[col].values, bins=bins)
+                    AMI = compute_adjusted_mutual_information(df[col].values, df_cross[col].values, bins=bins, verbose=verbose)
                     AMI_key = f"AMI{{{col}}}_{Rstr}"
                     auto_AMI_dict[key][col][AMI_key] = AMI
                     
                 if(calc_MI):
                     # Calculate MI for each column in df with the same column in df_cross.
-                    MI = compute_mutual_information(df[col].values, df_cross[col].values, bins=bins)
+                    MI = compute_mutual_information(df[col].values, df_cross[col].values, bins=bins, verbose=verbose)
                     MI_key = f"MI{{{col}}}_{Rstr}"
                     auto_MI_dict[key][col][MI_key] = MI
                 
@@ -1246,7 +1289,8 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
 
                 ncc_map, zncc, peak, peak_idx = compute_NCC_2DFFT(x, y)
                 if zncc is None:
-                    safe_print(f"Warning: Skipping column {col} due to flat or zero data in correlation.")
+                    #safe_print(f"Warning: Skipping column {col} due to flat or zero data in correlation.")
+                    print(f"Warning: Skipping column {col} due to flat or zero data in correlation.")
                     continue
                     
                 # Store the NCC data in auto_NCC_dict, and the ZNCC data in auto_ZNCC_dict.
@@ -1254,13 +1298,17 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
                 auto_NCC_dict[key][col][NCC_index_key] = int(peak_idx[0] * L + peak_idx[1])  # Convert to 1D index.
                 auto_ZNCC_dict[key][col][ZNCC_key] = zncc
             # End of auto-CORR loop.
+            # Similar process for cross-CORR.
 
-            safe_print(f"Calculating CROSS Correlation b/w {filetype} and {filetype_crossfile} TYPE FILES...")
+            #safe_print(f"Calculating CROSS Correlation b/w {filetype} and {filetype_crossfile} TYPE FILES...")
+            if verbose:
+                print(f"Calculating CROSS Correlation b/w {filetype} and {filetype_crossfile} TYPE FILES...")
 
             # Next cross-NCC and cross-ZNCC.
             for i, col1 in enumerate(df_Znorm.columns):
                 if all(df_Znorm[col1] == 0):
-                    safe_print(f"Warning: Entirely zero column {col1} in FOCUS file {os.path.basename(file)} for T0 = {T} ... Skipping column.")
+                    #safe_print(f"Warning: Entirely zero column {col1} in FOCUS file {os.path.basename(file)} for T0 = {T} ... Skipping column.")
+                    print(f"Warning: Entirely zero column {col1} in FOCUS file {os.path.basename(file)} for T0 = {T} ... Skipping column.")
                     continue
 
                 for j, col2 in enumerate(df_cross_Znorm.columns):
@@ -1272,7 +1320,8 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
                         print(f"Warning: Entirely zero COL: {col2} in CROSSfile {os.path.basename(crossfile)} for T0 = {T}, T1 = {tval} ... Skipping column.")
                         continue
 
-                    safe_print(f"Calculating 2D CROSS Correlation for columns {col1} VS {col2} ...")
+                    #safe_print(f"Calculating 2D CROSS Correlation for columns {col1} VS {col2} ...")
+                    print(f"Calculating 2D CROSS Correlation for columns {col1} VS {col2} ...")
 
                     x = df_Znorm[col1].values.reshape(int(np.sqrt(len(df_Znorm))), -1)
                     y = df_cross_Znorm[col2].values.reshape(int(np.sqrt(len(df_cross_Znorm))), -1)
@@ -1283,7 +1332,8 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
                     ZNCC_key = f"ZNCC{{{col1};{col2}}}_{Rstr}"
 
                     if zncc is None:
-                        safe_print(f"Warning: Skipping columns {col1}, {col2} due to flat or zero data.")
+                        #safe_print(f"Warning: Skipping columns {col1}, {col2} due to flat or zero data.")
+                        print(f"Warning: Skipping columns {col1}, {col2} due to flat or zero data.")
                         continue
 
                     cross_NCC_dict[key][col1][col2][NCC_key] = peak
@@ -1293,13 +1343,13 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
 
                     if(calc_AMI):
                         # Calculate AMI for each column in df with the same column in df_cross.
-                        AMI = compute_adjusted_mutual_information(df[col1].values, df_cross[col2].values, bins=bins)
+                        AMI = compute_adjusted_mutual_information(df[col1].values, df_cross[col2].values, bins=bins, verbose=verbose)
                         AMI_key = f"AMI{{{col1};{col2}}}_{Rstr}"
                         cross_AMI_dict[key][col1][col2][AMI_key] = AMI
                         
                     if(calc_MI):
                         # Calculate MI for each column in df with the same column in df_cross.
-                        MI = compute_mutual_information(df[col1].values, df_cross[col2].values, bins=bins)
+                        MI = compute_mutual_information(df[col1].values, df_cross[col2].values, bins=bins, verbose=verbose)
                         MI_key = f"MI{{{col1};{col2}}}_{Rstr}"
                         cross_MI_dict[key][col1][col2][MI_key] = MI
 
@@ -1314,7 +1364,46 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
     return auto_NCC_dict, cross_NCC_dict, auto_ZNCC_dict, cross_ZNCC_dict, auto_AMI_dict, cross_AMI_dict, auto_MI_dict, cross_MI_dict, auto_Morons_dict, cross_Morons_dict
 
 
-
+'''# Summary of the function process_time_value_joblib_wrapper(...)
+This function is a Joblib-compatible wrapper for process_time_value. 
+Handles GPU arrays and returns nested defaultdicts.
+It sets up a different CUDA stream for each worker if available, allowing for better isolation and performance.
+It also catches exceptions and returns empty defaultdict structures on error.'''
+def process_time_value_joblib_wrapper(tval, files, T, crossfiles, L, col_labels, ext,
+                                    exclude_col_labels, calc_AMI, calc_MI, calc_Morans, 
+                                    bins, verbose, worker_id=None):
+    try:
+        # Optional: Set thread-specific GPU context if available
+        if gpu.GPU_AVAILABLE and worker_id is not None:
+            # Recall cupy can
+            # Each worker can have its own stream for better isolation
+            with gpu._cupy.cuda.Stream(non_blocking=True):
+                result = process_time_value(tval, files, T, crossfiles, L, col_labels, ext,
+                                          exclude_col_labels, calc_AMI, calc_MI, calc_Morans, 
+                                          bins, verbose)
+        else:
+            result = process_time_value(tval, files, T, crossfiles, L, col_labels, ext,
+                                      exclude_col_labels, calc_AMI, calc_MI, calc_Morans, 
+                                      bins, verbose)
+        
+        return result
+        
+    except Exception as e:
+        warnings.warn(f"Error processing time value {tval}: {e}")
+        # Return empty defaultdict structure on error
+        empty_result = (
+            defaultdict(nested_default_dict), #auto_NCC_dict
+            defaultdict(double_nested_default_dict), #cross_NCC_dict
+            defaultdict(nested_default_dict), #auto_ZNCC_dict
+            defaultdict(double_nested_default_dict), #cross_ZNCC_dict
+            defaultdict(nested_default_dict) if calc_AMI else None, #auto_AMI_dict
+            defaultdict(double_nested_default_dict) if calc_AMI else None, #cross_AMI_dict
+            defaultdict(lambda: defaultdict(dict)) if calc_MI else None, #auto_MI_dict
+            defaultdict(lambda: defaultdict(lambda: defaultdict(dict))) if calc_MI else None, #cross_MI_dict
+            defaultdict(lambda: defaultdict(dict)) if calc_Morans else None, #auto_Morons_dict
+            defaultdict(lambda: defaultdict(lambda: defaultdict(dict))) if calc_Morans else None #cross_Morons_dict
+        )
+        return empty_result
 
 
 ''' # Summary of the function gen_2DCorr_data(...)
@@ -1439,9 +1528,12 @@ def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv",
     ncores = min(ncores, len(matchT), available_cores)
     print(f"Using {ncores} cores out of {available_cores} available cores to process {len(matchT)} time values")
     
+    # Use threading backend for GPU compatibility
+    joblib_backend = 'threading' if gpu.GPU_AVAILABLE else 'loky'
+    print(f"NOTE- USING Joblib Backend: {joblib_backend}")
     # Sort matchT in descending order (so t-delay increases over rows)
     matchT = sorted(matchT, reverse=True)
-    
+    '''#OLD MULTIPROCESSING CODE
     # Prepare worker function with partial to pass all the constant parameters
     worker_func = functools.partial(
         process_time_value,
@@ -1458,7 +1550,7 @@ def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv",
         bins=bins,
         verbose=verbose
     )
-    
+    '''
     # Initialize empty dictionaries to collect results from parallel processing
     all_auto_NCC_dict = defaultdict(lambda: defaultdict(dict))
     all_cross_NCC_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
@@ -1489,9 +1581,29 @@ def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv",
     
     # Execute the parallel processing
     if ncores > 1:
+        ''' OLD MULTIPROCESSING CODE
         with Pool(processes=ncores) as pool:
+        #with managed_pool(pool_processes=ncores) as pool:
             results = pool.map(worker_func, matchT)
-            
+        '''
+        #with joblib.Parallel(n_jobs=ncores, backend=joblib_backend) as parallel:
+        #    results = parallel(joblib.delayed(worker_func)(tval) for tval in matchT)
+        # End of parallel processing
+
+        # Execute parallel processing with specified backend
+        with parallel_backend(joblib_backend, n_jobs=ncores):
+            results = Parallel(
+                batch_size="auto",
+                verbose=10 if verbose else 0  # Joblib verbosity
+            )([
+                    delayed(process_time_value_joblib_wrapper)(
+                    tval, files, T, crossfiles, L, col_labels, ext,
+                    exclude_col_labels, calc_AMI, calc_MI, calc_Morans, bins, verbose,
+                    worker_id=i % ncores if ncores > 0 else 0
+                    ) for i, tval in enumerate(matchT)
+            ])
+        # End of parallel processing
+
         # Collect and merge results from all processes
         for result in results:
             auto_NCC_dict, cross_NCC_dict, auto_ZNCC_dict, cross_ZNCC_dict, auto_AMI_dict, cross_AMI_dict, auto_MI_dict, cross_MI_dict, auto_MoransI_dict, cross_MoransI_dict = result
@@ -1547,7 +1659,9 @@ def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv",
     else:
         # Sequential processing if ncores is 1
         for tval in matchT:
-            result = worker_func(tval)
+            #result = worker_func(tval)
+            result = process_time_value_joblib_wrapper(tval, files, T, crossfiles, L, col_labels, ext,
+                    exclude_col_labels, calc_AMI, calc_MI, calc_Morans, bins, verbose)
             auto_NCC_dict, cross_NCC_dict, auto_ZNCC_dict, cross_ZNCC_dict, auto_AMI_dict, cross_AMI_dict, auto_MI_dict, cross_MI_dict, auto_MoransI_dict, cross_MoransI_dict = result
             
             # Merge dictionaries
@@ -1971,25 +2085,26 @@ def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], 
             print(f"Error: Length of provided X-array ({len(X)}) does not match the length of the dataframe ({len(df_timeseries)}).")
             return None, None
         # If it matches, set Xvalues to X.
+        df_timeseries["FFT_X"] = Xvalues  # Add X as a column to the dataframe for FFT processing.
+        X = "FFT_X"  # Set X to the new column name for further processing.
     elif isinstance(X, str):
         # If X_as_index, check if df is MultiIndex, and if so, set X as provided X label, else if single index, set X as the single index.
         if X in df_timeseries.columns:
             Xvalues = df_timeseries[X].values
-        
-        elif X_as_index:
-            if X in df_timeseries.index.names:
-                df_timeseries = df_timeseries.reset_index(level=X) if isinstance(df_timeseries.index, pan.MultiIndex) else df_timeseries.reset_index()
-            else:
-                print(f"Error: X={X} is not in the columns, index or MultiIndex levels. Please provide a valid X label or pass as np.linspace.")
-                return None, None
+        elif X in df_timeseries.index.names:
+            df_timeseries = df_timeseries.reset_index(level=X) if isinstance(df_timeseries.index, pan.MultiIndex) else df_timeseries.reset_index()
         else:
-            print(f"Error: X={X} is not in the columns. Please provide a valid X label.")
+            print(f"Error: X={X} is not in the columns, index or MultiIndex levels. Please provide a valid X label or pass as np.linspace.")
             return None, None
+
     print(f"gen_1D_HarmonicFreq_Prelimsdata: X-values are {Xvalues} with length {len(Xvalues)}.")
     # Dro
-    # Next remove exclude_Y_cols from df_timeseries
+    # Next remove exclude_Y_cols from df_timeseries (and add X to the column if it is a string).
     Y_cols = [col for col in df_timeseries.columns if col not in exclude_Y_cols and col != X and col not in df_timeseries.index.names]
-    df_timeseries = df_timeseries[[X] + Y_cols]
+    if isinstance(X, str):
+        df_timeseries = df_timeseries[[X] + Y_cols]
+    else:
+        df_timeseries = df_timeseries[Y_cols]  
 
     # Replace missing values with 0.0
     df_timeseries.fillna(0.0, inplace=True)
@@ -1997,10 +2112,23 @@ def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], 
     # Also check if Xvalues is linearly spaced (i.e. std of the differences is < 1)
     if np.std(np.diff(Xvalues)) > 1:
         print(f"Error: Detected X-values are not linearly spaced. Please provide a valid X array reference.")
-        print(f"X-values: {Xvalues}")
+        #print(f"X-values: {Xvalues}")
         print(f"X-diff: {np.diff(Xvalues)}")
         print(f"X-diff-std: {np.std(np.diff(Xvalues))}")
-        return None, None
+        #return None, None
+        # Try interpolating df_timeseries to a linear space, using gen_interpolated_df()
+        print("WARNING: Interpolating time values in file to generate a standardised time range.")
+        # First generate a linear space of X values using max and min values of df_timeseries[X]
+        Xvalues = np.linspace(np.min(Xvalues), np.max(Xvalues), len(df_timeseries))
+        # Save Xvalues as column "X" in a new temp dataframe called df_temp
+        df_temp = pan.DataFrame({X: Xvalues})
+        df_timeseries = gen_interpolated_df(df_temp, df_timeseries, X)
+        if df is None:
+            print(f"Error: Interpolation failed at {pathtodir}, with compare_label={X}")
+            return None, None
+        Xvalues = df_timeseries[X].values  # Update Xvalues to the new interpolated values
+        print(f"Interpolation successful. New Xvalues length: {len(Xvalues)}, with STD of differences: {np.std(np.diff(Xvalues))}")
+
 
     df_fft[f"k({X})"] = np.fft.fftfreq(len(Xvalues), d=(Xvalues[1] - Xvalues[0]))[:len(Xvalues)//2] 
     # Get the positive frequencies corresponding to the FFT result

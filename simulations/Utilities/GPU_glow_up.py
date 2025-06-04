@@ -9,6 +9,12 @@ import warnings
 from functools import wraps
 import importlib
 
+print(f"GPU_GLOW_UP: PID={os.getpid()}, __name__={__name__}, importing...")
+import traceback
+#print(f"STACK TRACE for PID {os.getpid()}:")
+#traceback.print_stack()
+#print("=" * 50)
+
 # Determine GPU usage from environment variable
 USE_CUDA = os.getenv("USE_GPU", "0") == "1"
 GPU_AVAILABLE = False
@@ -44,6 +50,7 @@ if USE_CUDA:
                 warnings.warn(f"RAPIDs libraries not found: {e}. Using CuPy only for GPU acceleration...")
         elif sys.platform.startswith("win"):
             warnings.warn("RAPIDs libraries are not supported on Windows, using CuPy only for GPU support.")
+        
     except ImportError as e:
         warnings.warn(f"Error importing GPU libraries: {e}. Falling back to CPU usage.")
         USE_CUDA = False
@@ -52,7 +59,7 @@ if USE_CUDA:
 # Utlity functions and wrapper modules
 """Recursively convert GPU arrays to CPU arrays."""
 def to_cpu(obj):
-    
+    #SOME STUFF
     if not GPU_AVAILABLE:
         return obj
     if hasattr(_cupy, 'ndarray') and isinstance(obj, _cupy.ndarray):
@@ -67,7 +74,7 @@ def to_cpu(obj):
 
 """Convert CPU arrays (iterators) to GPU arrays where possible."""
 def to_gpu(obj):
-    
+    #SOME STUFF
     if not GPU_AVAILABLE:
         return obj
     if hasattr(_cupy, 'ndarray') and isinstance(obj, _cupy.ndarray):
