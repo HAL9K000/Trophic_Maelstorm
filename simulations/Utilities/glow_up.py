@@ -5,23 +5,33 @@ from pathlib import Path
 import glob
 import time
 import shutil
+import psutil
 import sys
 import argparse
 import copy
 import warnings
 #from multiprocessing import Pool, cpu_count, Queue, Lock, get_start_method
 import functools
+from functools import lru_cache
 import secrets
 from collections import defaultdict
 from contextlib import contextmanager
+
+
 
 print(f"GLOW_UP: PID={os.getpid()}, __name__={__name__}, importing...")
 #print(f"STACK TRACE for PID {os.getpid()}:")
 #traceback.print_stack()
 #print("=" * 50)
 
-import GPU_glow_up as gpu
-from joblib import Parallel, delayed, parallel_backend, cpu_count
+import slick as gpu
+import threading
+from joblib import Parallel, delayed, parallel_backend, cpu_count, Memory
+
+if gpu.DASK_AVAILABLE:
+    # Set up global Dask Client and configure it.
+    dask_Client = gpu._dask_Client
+    dask_LocalCluster = gpu._dask_LocalCluster
 
 # Importing necessary libraries
 np = gpu.np
@@ -30,6 +40,9 @@ fft = gpu.fft
 
 interpolate = gpu.interpolate
 stats = gpu.stats
+asarray = gpu.asarray
+asnumpy = gpu.asnumpy
+is_gpu_array = gpu.is_gpu_array
 
 # For type checking and constants - use direct CPU access
 _np_base = gpu._cpu_np  # Access the underlying numpy module
@@ -44,16 +57,29 @@ libpysal_weights = gpu.cpu_safe_import("libpysal.weights")
 #from interpolate import InterpolatedUnivariateSpline, CubicSpline
 
 
-# RAPIDs handles CPU fallback by default, so no need for additional handling here.
-import pandas as pan
-from sklearn.cluster import KMeans
-from sklearn.mixture import GaussianMixture
-from skimage.metrics import structural_similarity as ssim
-from sklearn.metrics import mutual_info_score , normalized_mutual_info_score
-from sklearn.metrics import adjusted_mutual_info_score
 
-
-
+#import pandas as pan
+if gpu.GPU_AVAILABLE and not gpu.RAPIDS_AVAILABLE:
+    # If GPU acceleration is available but RAPIDS is not, wrap imports to be cpu-safe.
+    sklearn_cluster = gpu.cpu_safe_import("sklearn.cluster")
+    sklearn_mixture = gpu.cpu_safe_import("sklearn.mixture")
+    skimage_metrics = gpu.cpu_safe_import("skimage.metrics")
+    sklearn_metrics = gpu.cpu_safe_import("sklearn.metrics")
+    pandas = gpu.cpu_safe_import("pandas"); pan= pandas
+    KMeans = sklearn_cluster.KMeans
+    GaussianMixture = sklearn_mixture.GaussianMixture
+    ssim = skimage_metrics.structural_similarity
+    mutual_info_score = sklearn_metrics.mutual_info_score
+    normalized_mutual_info_score = sklearn_metrics.normalized_mutual_info_score
+    adjusted_mutual_info_score = sklearn_metrics.adjusted_mutual_info_score
+else:
+    # RAPIDs handles CPU fallback by default, so no need for additional handling here.
+    from sklearn.cluster import KMeans
+    from sklearn.mixture import GaussianMixture
+    from skimage.metrics import structural_similarity as ssim
+    from sklearn.metrics import mutual_info_score , normalized_mutual_info_score
+    from sklearn.metrics import adjusted_mutual_info_score
+    import pandas as pan
 
 '''
 import numpy as np
@@ -165,6 +191,30 @@ def sorted_files_R(files,  ascending=True):
     sorted_files = sorted(files, key=lambda x: int(re.sub("R_", "", re.findall(r'R_[\d]+', x)[0])))
     return sorted_files if ascending else sorted_files[::-1]
 
+
+#-------------------------- Defining cached functions for Dask performance --------------------------
+# Libpysal weight functions are computationally expensive, so we cache them for the last 8 L vals to avoid recomputation.
+@lru_cache(maxsize=16)
+def cached_libpysalweights_lat2W(L):
+    return libpysal_weights.lat2W(L, L)
+
+# Set up cache directory for joblib Memory.
+pysal_cache_dir = os.path.expanduser("~/.cache/libpysal_weights")
+os.makedirs(pysal_cache_dir, exist_ok=True)
+print(f"Using libpysal weights cache directory: {pysal_cache_dir}...."); time.sleep(1)
+
+memory = Memory(location=pysal_cache_dir, verbose=1)
+
+#@memory.cache
+#def cached_libpysalweights_lat2W(L):
+#    return libpysal_weights.lat2W(L, L)
+
+def clear_libpysal_cache():
+    print(f"[libpysal cache] Clearing cache at {pysal_cache_dir} ...")
+    memory.clear(warn=False)
+
+#-------------------------- End of cached functions for Dask performance --------------------------
+
 '''# Summary of the function find_timerange(...)
     This function finds all T values in provided "files" (a list of files that may or may not be from the same directory)
     that have a_val = a. (t-values can be float or integer). It then extracts the "indx" smallest or largest values of T 
@@ -219,12 +269,21 @@ def freedman_diaconis_bin_width(data):
 
 """Summary of the function scotts_bin_width(...): Compute Scott's bin width."""
 def scotts_bin_width(data):
-    
+    #print("Using Scott's bin width...")
+    #print(f"Data type: {type(data)}")
+    #print(f"NP finite check: {np.isfinite(data).all()}")
+    mask = np.isfinite(data)
+    #print(f"IS CUPY instance data: {isinstance(data, gpu._cupy.ndarray)}")
+    #print(f"Is CUPY instance mask: {isinstance(mask, gpu._cupy.ndarray)}")
     data = data[np.isfinite(data)]  # remove NaNs/infs
     std = np.std(data)
+    #print(f"Calculated standard deviation: {std}")
     n = len(data)
+    #print(f"Number of data points: {data.size}")
+    #print(f"Calculated number of data points: {n}")
     if std == 0 or n == 0:
         return np.nan
+    #print(f"Calculated Scott's bin width: {3.5 * std / np.cbrt(n)}")
     return 3.5 * std / np.cbrt(n)
 
 
@@ -611,7 +670,10 @@ def gen_FFT_PowerSpectra(files, pathtodir="", ext="csv", bin_mask= None, exclude
         
         # Resize each column in the files to a square matrix of size L x L.
         if Lval == "infer":
-            L = int(np.sqrt(max([len(df[col]) for col in col_labels])))
+            #L = int(np.sqrt(max([len(df[col]) for col in col_labels]))) SEVERE CUDA PERFORMANCE HIT
+            L = round(asnumpy(max([len(df[col]) for col in col_labels]))**0.5)
+            # Recall asnumpy() returns a numpy array from a cupy array.
+            # Or if already int, string or float, it will return the same value.
         else:
             L = Lval
 
@@ -645,7 +707,7 @@ def gen_FFT_PowerSpectra(files, pathtodir="", ext="csv", bin_mask= None, exclude
                     gmm = GaussianMixture(n_components=2, covariance_type='full', random_state=rng.integers(0, 1000))
                     gmm.fit(data)
                     # Set threshold as the mean of the means of the two clusters.
-                    thresholds.loc[0, col] = np.mean(gmm.means_.flatten())
+                    thresholds.loc[0, col] = float(np.mean(gmm.means_.flatten()))
                 # Print all thresholds.
                 print(f"Thresholds for file {filename} are: \n" + str(thresholds))
                 # Save the binarised mask in <path_to_dir>/BIN_MASKS/.
@@ -909,7 +971,7 @@ def compute_mutual_information(X, Y, bins="scotts", verbose= False):
     # x, y should be 1D arrays, if not, flatten them
     X = X.flatten() if X.ndim > 1 else X; Y = Y.flatten() if Y.ndim > 1 else Y
     # If bins is numeric, use it as the number of bins. If bins is a string, set bins using Scott's method.
-
+    #print(f"Computing MI...")
     # Print the shapes of X and Y
     #print(f"X shape: {X.shape}, Y shape: {Y.shape}")
     # Also print the means and stds of X and Y
@@ -973,6 +1035,7 @@ def compute_mutual_information(X, Y, bins="scotts", verbose= False):
     Y_digitised = np.digitize(Y, bins=np.histogram_bin_edges(Y, bins=nbins))
     MI = mutual_info_score(X_digitised, Y_digitised)
     #'''
+    #print(f"Mutual Information between X and Y: {MI} for bins = {nbins} using {bins} method.")
     return MI
 
 
@@ -1029,31 +1092,29 @@ def compute_normalised_mutual_information(X, Y, bins="scotts", verbose=False):
 
 def compute_adjusted_mutual_information(X, Y, bins="scotts", verbose=False):
     # x, y should be 1D arrays, if not, flatten them
+    #print(f"Is X CUPY array? {isinstance(X, gpu._cupy.ndarray)}")
+    #print(f"Is X NUMPY array? {isinstance(X, _np_base.ndarray)}")
     X = X.flatten() if X.ndim > 1 else X; Y = Y.flatten() if Y.ndim > 1 else Y
-
+    #print("Working on AMI...")
     # Print the shapes of X and Y
     #print(f"X shape: {X.shape}, Y shape: {Y.shape}")
-    # Also print the means and stds of X and Y
-    # Print 25 and 75 percentiles of X and Y
     #print(f"X 25th percentile: {np.percentile(X, 25)}, X 75th percentile: {np.percentile(X, 75)}")
     #print(f"Y 25th percentile: {np.percentile(Y, 25)}, Y 75th percentile: {np.percentile(Y, 75)}")
     #print(f"X min: {X.min()}, X max: {X.max()}") ; print(f"Y min: {Y.min()}, Y max: {Y.max()}")
 
-    # Also print first 10 elements of X and Y
-    #print(f"X first 10 elements: {X[:10]}") ; print(f"Y first 10 elements: {Y[:10]}")
-
-    # Also print last 10 elements of X and Y
-    #print(f"X last 10 elements: {X[-10:]}"); print(f"Y last 10 elements: {Y[-10:]}")
-
     # If bins is numeric, use it as the number of bins. If bins is a string, set bins using Scott's method.
     try:
         if isinstance(bins, str):
-            
+            #print(f"Using {bins} method for binning...")
             if bins == 'freedman':
                 # Use Freedman-Diaconis rule to determine the number of bins.
                 bw_X = freedman_diaconis_bin_width(X); bw_Y = freedman_diaconis_bin_width(Y);
             elif bins == 'scotts':
                 # Use Scott's method to determine the number of bins.
+                #print(f"Is X CUPY array? {isinstance(X, gpu._cupy.ndarray)}")
+                #print(f"Is X NUMPY array? {isinstance(X, _np_base.ndarray)}")
+                #print(f"Is Y CUPY array? {isinstance(Y, gpu._cupy.ndarray)}")
+                #print(f"Is Y NUMPY array? {isinstance(Y, _np_base.ndarray)}")
                 bw_X = scotts_bin_width(X); bw_Y = scotts_bin_width(Y);
             else:
                 raise TypeError(f"Invalid binning method {bins}. Use 'freedman' or 'scotts' or integer value.")
@@ -1061,10 +1122,13 @@ def compute_adjusted_mutual_information(X, Y, bins="scotts", verbose=False):
             if np.isnan(bw_X) or np.isnan(bw_Y) or bw_X <= 0 or bw_Y <= 0:
                 raise ValueError("Invalid bin width calculated. Check if data is constant, empty or near constant.")
             # Both dataset partitions NEED TO have the same number of bins.
+            #print("Ascertaining minimum bin width for X and Y...")
             min_bw = min(bw_X, bw_Y);
+            #print(f"Getting data range for X and Y...")
             data_range = max(X.max() - X.min(), Y.max() - Y.min())
+            
             nbins = max(1, int(np.ceil(data_range / min_bw)))
-
+            #print(f"Calculating number of bins... as nbins = {nbins}.")
             if( nbins > 256):
                 if verbose:
                     print(f"WARNING: Number of bins = {nbins} is too high. Setting nbins to 256") 
@@ -1085,21 +1149,35 @@ def compute_adjusted_mutual_information(X, Y, bins="scotts", verbose=False):
     except TypeError as e:
             print(f"Error: {e} for X and Y. Setting nBins to {256}.")
             nbins = 256
+            print(f"STACK TRACE for PID {os.getpid()}:")
+            traceback.print_stack()
+            print("=" * 80)
+            #exit(1)
+
 
     # Discretize the data into bins
+    #print(f"Digitising data into {nbins} bins...")
     X_digitised = np.digitize(X, bins=np.histogram_bin_edges(X, bins=nbins))
     Y_digitised = np.digitize(Y, bins=np.histogram_bin_edges(Y, bins=nbins))
     # Compute AMI
+    #print(f"Computing AMI for X and Y with {nbins} bins...")
     AMI = adjusted_mutual_info_score(X_digitised, Y_digitised)
+    #print(f"AMI for X and Y with {nbins} bins: {AMI}")
     return AMI
 
 
 def compute_BiMoronsI(X, Y):
     X = X.flatten() if X.ndim > 1 else X; Y = Y.flatten() if Y.ndim > 1 else Y
     # Compute Morons'I Global Bivariate Statistic
-    L = round(np.sqrt(X.shape[0]))
-    Spatial_Weights = libpysal_weights.lat2W(L, L)
+    #print(f"Is X CUPY array? {isinstance(X, gpu._cupy.ndarray)}")
+    #print(f"Calculating L for Bi-variate Moran's I ...")
+    #L = int(np.round(np.sqrt(X.shape[0]))) AGNOSTIC, BUT HAS SEVERE PERFORMANCE ISSUES
+    L = round(asnumpy(X.shape[0])**0.5)  # Use round to ensure L is an integer
+    #print(f"Computing Bi-variate Moran's I for L = {L} ...")
+    #Spatial_Weights = libpysal_weights.lat2W(L, L)
+    Spatial_Weights= cached_libpysalweights_lat2W(L)
     MoranI = esda_moran.Moran_BV(X, Y, Spatial_Weights)
+    #print(f"Bi-variate Moran's I: {MoranI.I}, p-value: {MoranI.p_sim}")
     return MoranI.I, MoranI.p_sim
 
 
@@ -1108,6 +1186,7 @@ def compute_BiMoronsI(X, Y):
 This function compute_ncc_fft computes the normalized cross-correlation (NCC) between two 2D arrays x and y using FFT.
 It first normalizes the arrays by subtracting the mean and dividing by the standard deviation.'''
 def compute_NCC_2DFFT(x, y, zero_norm=True):
+    #start = time.perf_counter()
     std_x = np.std(x)
     std_y = np.std(y)
     if std_x < 1e-8 or std_y < 1e-8:
@@ -1115,11 +1194,62 @@ def compute_NCC_2DFFT(x, y, zero_norm=True):
     if zero_norm:
         x = (x - np.mean(x)) / std_x
         y = (y - np.mean(y)) / std_y
+    #print(f"Before fftconvolve - x: {'GPU' if is_gpu_array(x) else 'CPU'}, y: {'GPU' if is_gpu_array(y) else 'CPU'}")
     # NCC computed using FFT convolution, with the y array flipped.
     corr = signal.fftconvolve(x, y[::-1, ::-1], mode='full') / (x.shape[0]*x.shape[1])
+    #corr = gpu._gpu_ndimage.convolve(x, y[::-1, ::-1])/ (x.shape[0]*x.shape[1])
+    #print(f"FFT operation ran on: {'GPU (cupyx.signal)' if is_gpu_array(corr) else 'CPU (scipy.signal)'}")
     max_idx = np.unravel_index(np.argmax(corr), corr.shape)
     zero_shift_idx = (y.shape[0]-1, y.shape[1]-1)
+
+    #execution_time = time.perf_counter() - start
+    #backend = 'GPU' if is_gpu_array(corr) else 'CPU'
+    
+    #print(f"NCC computed in {execution_time:.4f}s on {backend}")
+
     return corr, corr[zero_shift_idx], np.max(corr), max_idx
+
+
+def timed_compute_NCC_2DFFT(x, y, zero_norm=True):
+
+    if gpu.GPU_AVAILABLE:
+        pass
+        #gpu._cupy.cuda.Stream.null.synchronize()
+    start = time.perf_counter()
+    std_x = np.std(x)
+    std_y = np.std(y)
+    if std_x < 1e-8 or std_y < 1e-8:
+        return None, None, None, None
+    if zero_norm:
+        x = (x - np.mean(x)) / std_x
+        y = (y - np.mean(y)) / std_y
+    #print(f"Before fftconvolve - x: {'GPU' if is_gpu_array(x) else 'CPU'}, y: {'GPU' if is_gpu_array(y) else 'CPU'}")
+    # NCC computed using FFT convolution, with the y array flipped.
+    corr = signal.fftconvolve(x, y[::-1, ::-1], mode='full') / (x.shape[0]*x.shape[1])
+    #corr = signal.fftconvolve(x, y[::-1, ::-1], mode='full') / (x.shape[0]*x.shape[1])
+    # Pad the arrays to 2*max(shape) to avoid circular convolution effects.
+    #x = np.pad(x, int(x.shape[0]/2), mode='constant', constant_values=0)
+    #y = np.pad(y, int(y.shape[0]/2), mode='constant', constant_values=0)
+    #corr = fft.ifft2(fft.fft2(x, (2*int(x.shape[0])-1, 2*int(x.shape[1]) -1)) 
+    #                 * fft.fft2(y, (2*int(y.shape[0]) -1, 2*int(y.shape[1])-1)))/ (x.shape[0]*x.shape[1])
+    #corr = gpu._gpu_ndimage.convolve(x, y[::-1, ::-1])/ (x.shape[0]*x.shape[1])
+    #gpu._cupy.cuda.Device(0).synchronize()  # Wait for actual GPU completion
+    #print(f"FFT operation ran on: {'GPU (cupyx.signal)' if is_gpu_array(corr) else 'CPU (scipy.signal)'}")
+    max_idx = np.unravel_index(np.argmax(corr), corr.shape)
+    zero_shift_idx = (y.shape[0]-1, y.shape[1]-1)
+
+    if gpu.GPU_AVAILABLE and is_gpu_array(corr):
+        #gpu._cupy.cuda.Stream.null.synchronize()
+        pass
+
+    execution_time = time.perf_counter() - start
+    backend = 'GPU' if is_gpu_array(corr) else 'CPU'
+    
+    #print(f"NCC computed in {execution_time:.4f}s on {backend}")
+    #timer_arr[i] = execution_time
+    # Store the execution time in the timer array at index i
+
+    return corr, corr[zero_shift_idx], np.max(corr), max_idx, execution_time
 
 
 
@@ -1166,6 +1296,10 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
     print(f"Generating 2D correlation data for T0 = {T}, T1 = {tval}, delay = {T - float(tval)}, L = {L} ....")
     # Iterate over all files in files, sorted in ascending order of R using regex
     
+    timer_autoarr = np.zeros(10, dtype=np.float64); auto_i=0;
+    #timer_crossarr = np.zeros(10, dtype=np.float64); cross_j=0;
+    timer_crossarr = np.zeros(10, dtype=np.float64); cross_j=0;
+
     for file in sorted_files_R(files, ascending=True):
         # Read the file.
         Rstr = re.findall(r'R_[\d]+', file)[0]
@@ -1213,11 +1347,15 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
             #safe_print(f"Crossfiles found: {crossfile_tval}")
             print(f"Crossfiles found: {crossfile_tval}")
             continue
-            
+        
+
         # Read the crossfile and zero-normalise all columns in the crossfile.
         for crossfile in crossfile_tval:
             # Get the filetype of the crossfile.
             filetype_crossfile = re.search(r'FRAME|GAMMA', crossfile).group(0)
+            #timer_autoarr = np.zeros(5, dtype=np.float64); auto_i=0;
+            
+            
             
             if(ext == "csv"):
                 df_cross = pan.read_csv(crossfile, header=0)
@@ -1260,18 +1398,46 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
 
                 #safe_print(f"Calculating 2D AUTO Correlation for column {col}...")
                 print(f"Calculating 2D AUTO Correlation for column {col}...")
+
+                #process = psutil.Process(os.getpid())
+                #start_cpu_times = process.cpu_times()
+                #start_threads = threading.active_count()
+                # High-resolution timing
+                #start_time = time.perf_counter()
                 
                 if(calc_AMI):
                     # Calculate AMI for each column in df with the same column in df_cross.
-                    AMI = compute_adjusted_mutual_information(df[col].values, df_cross[col].values, bins=bins, verbose=verbose)
+                    AMI = compute_adjusted_mutual_information(asarray(df[col].values), asarray(df_cross[col].values), bins=bins, verbose=verbose)
                     AMI_key = f"AMI{{{col}}}_{Rstr}"
                     auto_AMI_dict[key][col][AMI_key] = AMI
                     
                 if(calc_MI):
                     # Calculate MI for each column in df with the same column in df_cross.
-                    MI = compute_mutual_information(df[col].values, df_cross[col].values, bins=bins, verbose=verbose)
+                    MI = compute_mutual_information(asarray(df[col].values), asarray(df_cross[col].values), bins=bins, verbose=verbose)
                     MI_key = f"MI{{{col}}}_{Rstr}"
                     auto_MI_dict[key][col][MI_key] = MI
+                
+                # Post-execution timing
+                #end_time = time.perf_counter()
+                #end_cpu_times = process.cpu_times()
+                
+                # Calculate metrics
+                #wall_time = end_time - start_time
+                #cpu_time = (end_cpu_times.user - start_cpu_times.user) + (end_cpu_times.system - start_cpu_times.system)
+                #cpu_efficiency = cpu_time / wall_time if wall_time > 0 else 0
+                
+                # Print timing info
+                #print(f"(PID {os.getpid()}) Wall time for AUTO AMI+MI 2D: {wall_time:.4f}s \t CPU time for AUTO AMI+MI 2D: {cpu_time:.4f}s")
+                #print(f"CPU time for AUTO AMI+MI 2D: {cpu_time:.4f}s") 
+                #print(f"On PID {os.getpid()} - CPU efficiency for AUTO AMI+MI 2D: {cpu_efficiency:.2f} (1.0 = perfect CPU usage)")
+                #print(f"(PID {os.getpid()}) GIL impact estimate for AUTO AMI+MI 2D: {'High' if cpu_efficiency < 0.8 else 'Low'}")
+                #print(f"Threads active: {threading.active_count()}")
+
+                #process = psutil.Process(os.getpid())
+                #start_cpu_times = process.cpu_times()
+                #start_threads = threading.active_count()
+                # High-resolution timing
+                #start_time = time.perf_counter()
                 
                 if(calc_Morans):
                     # Calculate Morans I for each column in df with the same column in df_cross.
@@ -1280,20 +1446,66 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
                     auto_Morons_dict[key][col][MoransI_key] = MoronsI
                     auto_Morons_dict[key][col][MoransI_Pkey] = p_sim
 
-                x = df_Znorm[col].values.reshape(int(np.sqrt(len(df_Znorm))), -1)
-                y = df_cross_Znorm[col].values.reshape(int(np.sqrt(len(df_cross_Znorm))), -1)
+                # Post-execution timing
+                #end_time = time.perf_counter()
+                #end_cpu_times = process.cpu_times()
+                
+                # Calculate metrics
+                #wall_time = end_time - start_time
+                #cpu_time = (end_cpu_times.user - start_cpu_times.user) + (end_cpu_times.system - start_cpu_times.system)
+                #cpu_efficiency = cpu_time / wall_time if wall_time > 0 else 0
+                
+                # Print timing info
+                #print(f"(PID {os.getpid()})Wall time for AUTO MORONS 2D: {wall_time:.4f}s")
+                #print(f"(PID {os.getpid()})CPU time for AUTO MORONS 2D: {cpu_time:.4f}s") 
+                #print(f"(PID {os.getpid()})CPU efficiency for AUTO MORONS 2D: {cpu_efficiency:.2f} (1.0 = perfect CPU usage)")
+                #print(f"(PID {os.getpid()}) GIL impact estimate for AUTO MORONS 2D: {'High' if cpu_efficiency < 0.8 else 'Low'}")
+                #print(f"Threads active: {threading.active_count()}")
+
+                x = asarray(df_Znorm[col].values).reshape(int(np.sqrt(len(df_Znorm))), -1)
+                y = asarray(df_cross_Znorm[col].values).reshape(int(np.sqrt(len(df_cross_Znorm))), -1)
 
                 NCC_key = f"NCC{{{col}}}_{Rstr}"
                 NCC_index_key = f"NCC-Index{{{col}}}_{Rstr}"
                 ZNCC_key = f"ZNCC{{{col}}}_{Rstr}"
+                #print(f"Calculating 2D NCC for column {col}...")
+
+                #process = psutil.Process(os.getpid())
+                #start_cpu_times = process.cpu_times()
+                #start_threads = threading.active_count()
+                # High-resolution timing
+                #start_time = time.perf_counter()
 
                 ncc_map, zncc, peak, peak_idx = compute_NCC_2DFFT(x, y)
+                #ncc_map, zncc, peak, peak_idx, exec_time = timed_compute_NCC_2DFFT(x, y)
+                #timer_autoarr[auto_i % len(timer_autoarr)] = exec_time
+                #auto_i += 1
+                #if auto_i% len(timer_autoarr) == 0:
+                #    print(f"AVG AUTO NCC 2D execution time: {np.mean(timer_autoarr):.4f}s +- {np.std(timer_autoarr):.4f}s for {len(timer_autoarr)} iterations.")
+
+                #print("Done with AUTO NCC 2D calculation.")
+                # Post-execution timing
+                #end_time = time.perf_counter()
+                #end_cpu_times = process.cpu_times()
+                
+                # Calculate metrics
+                #wall_time = end_time - start_time
+                #cpu_time = (end_cpu_times.user - start_cpu_times.user) + (end_cpu_times.system - start_cpu_times.system)
+                #cpu_efficiency = cpu_time / wall_time if wall_time > 0 else 0
+                
+                # Print timing info
+                #print(f"(PID {os.getpid()})Wall time for AUTO NCC 2D: {wall_time:.4f}s")
+                #print(f"(PID {os.getpid()})CPU time for AUTO NCC 2D: {cpu_time:.4f}s") 
+                #print(f"(PID {os.getpid()})CPU efficiency for AUTO NCC 2D: {cpu_efficiency:.2f} (1.0 = perfect CPU usage)")
+                #print(f"(PID {os.getpid()})GIL impact estimate for AUTO NCC 2D: {'High' if cpu_efficiency < 0.8 else 'Low'}")
+                #print(f"Threads active: {threading.active_count()}")
                 if zncc is None:
                     #safe_print(f"Warning: Skipping column {col} due to flat or zero data in correlation.")
                     print(f"Warning: Skipping column {col} due to flat or zero data in correlation.")
                     continue
                     
                 # Store the NCC data in auto_NCC_dict, and the ZNCC data in auto_ZNCC_dict.
+                #print(f"Storing NCC and ZNCC for column {col}...")
                 auto_NCC_dict[key][col][NCC_key] = peak
                 auto_NCC_dict[key][col][NCC_index_key] = int(peak_idx[0] * L + peak_idx[1])  # Convert to 1D index.
                 auto_ZNCC_dict[key][col][ZNCC_key] = zncc
@@ -1303,7 +1515,7 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
             #safe_print(f"Calculating CROSS Correlation b/w {filetype} and {filetype_crossfile} TYPE FILES...")
             if verbose:
                 print(f"Calculating CROSS Correlation b/w {filetype} and {filetype_crossfile} TYPE FILES...")
-
+            #gpu.init_daskworker_cuda_context() # Get CUDA contexts
             # Next cross-NCC and cross-ZNCC.
             for i, col1 in enumerate(df_Znorm.columns):
                 if all(df_Znorm[col1] == 0):
@@ -1321,11 +1533,40 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
                         continue
 
                     #safe_print(f"Calculating 2D CROSS Correlation for columns {col1} VS {col2} ...")
-                    print(f"Calculating 2D CROSS Correlation for columns {col1} VS {col2} ...")
+                    if verbose:
+                        print(f"Calculating 2D CROSS Correlation for columns {col1} VS {col2} ...")
 
-                    x = df_Znorm[col1].values.reshape(int(np.sqrt(len(df_Znorm))), -1)
-                    y = df_cross_Znorm[col2].values.reshape(int(np.sqrt(len(df_cross_Znorm))), -1)
-                    ncc_map, zncc, peak, peak_idx = compute_NCC_2DFFT(x, y)
+                    x = asarray(df_Znorm[col1].values).reshape(int(np.sqrt(len(df_Znorm))), -1)
+                    y = asarray(df_cross_Znorm[col2].values).reshape(int(np.sqrt(len(df_cross_Znorm))), -1)
+
+                    #process = psutil.Process(os.getpid())
+                    #start_cpu_times = process.cpu_times()
+                    #start_threads = threading.active_count()
+                    # High-resolution timing
+                    #start_time = time.perf_counter()
+
+                    #ncc_map, zncc, peak, peak_idx = compute_NCC_2DFFT(x, y)
+                    ncc_map, zncc, peak, peak_idx, exec_time = timed_compute_NCC_2DFFT(x, y)
+                    timer_crossarr[cross_j % len(timer_crossarr)] = exec_time
+                    cross_j += 1
+                    if cross_j % len(timer_crossarr) == 0:
+                        print(f"AVG CROSS NCC 2D execution time: {np.mean(timer_crossarr):.4f}s +- {np.std(timer_crossarr):.4f}s for {len(timer_crossarr)} iterations.")
+                    #print("Done with CROSS NCC 2D calculation.")
+                    # Post-execution timing
+                    #end_time = time.perf_counter()
+                    #end_cpu_times = process.cpu_times()
+                    
+                    # Calculate metrics
+                    #wall_time = end_time - start_time
+                    #cpu_time = (end_cpu_times.user - start_cpu_times.user) + (end_cpu_times.system - start_cpu_times.system)
+                    #cpu_efficiency = cpu_time / wall_time if wall_time > 0 else 0
+                    
+                    # Print timing info
+                    #print(f"(PID {os.getpid()})Wall time for CROSS NCC 2D: {wall_time:.4f}s")
+                    #print(f"(PID {os.getpid()})CPU time for CROSS NCC 2D: {cpu_time:.4f}s") 
+                    #print(f"(PID {os.getpid()})CPU efficiency for CROSS NCC 2D: {cpu_efficiency:.2f} (1.0 = perfect CPU usage)")
+                    #print(f"(PID {os.getpid()})GIL impact estimate for CROSS NCC 2D: {'High' if cpu_efficiency < 0.8 else 'Low'}")
+                    #print(f"Threads active: {threading.active_count()}")
 
                     NCC_index_key = f"NCC-Index{{{col1};{col2}}}_{Rstr}"
                     NCC_key = f"NCC{{{col1};{col2}}}_{Rstr}"
@@ -1343,15 +1584,21 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
 
                     if(calc_AMI):
                         # Calculate AMI for each column in df with the same column in df_cross.
-                        AMI = compute_adjusted_mutual_information(df[col1].values, df_cross[col2].values, bins=bins, verbose=verbose)
+                        AMI = compute_adjusted_mutual_information(asarray(df[col1].values), asarray(df_cross[col2].values), bins=bins, verbose=verbose)
                         AMI_key = f"AMI{{{col1};{col2}}}_{Rstr}"
                         cross_AMI_dict[key][col1][col2][AMI_key] = AMI
                         
                     if(calc_MI):
                         # Calculate MI for each column in df with the same column in df_cross.
-                        MI = compute_mutual_information(df[col1].values, df_cross[col2].values, bins=bins, verbose=verbose)
+                        MI = compute_mutual_information(asarray(df[col1].values), asarray(df_cross[col2].values), bins=bins, verbose=verbose)
                         MI_key = f"MI{{{col1};{col2}}}_{Rstr}"
                         cross_MI_dict[key][col1][col2][MI_key] = MI
+
+                    #process = psutil.Process(os.getpid())
+                    #start_cpu_times = process.cpu_times()
+                    #start_threads = threading.active_count()
+                    # High-resolution timing
+                    #start_time = time.perf_counter()
 
                     if(calc_Morans):
                         # Calculate Morans I for each column in df with the same column in df_cross.
@@ -1359,6 +1606,22 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
                         MoransI_key = f"BVMoransI{{{col1};{col2}}}_{Rstr}"; MoransI_Pkey = f"BVMoran-P{{{col1};{col2}}}_{Rstr}"
                         cross_Morons_dict[key][col1][col2][MoransI_key] = MoronsI
                         cross_Morons_dict[key][col1][col2][MoransI_Pkey] = p_sim
+
+                    # Post-execution timing
+                    #end_time = time.perf_counter()
+                    #end_cpu_times = process.cpu_times()
+                    
+                    # Calculate metrics
+                    #wall_time = end_time - start_time
+                    #cpu_time = (end_cpu_times.user - start_cpu_times.user) + (end_cpu_times.system - start_cpu_times.system)
+                    #cpu_efficiency = cpu_time / wall_time if wall_time > 0 else 0
+                    
+                    # Print timing info
+                    #print(f"(PID {os.getpid()})Wall time for CROSS MORAN 2D: {wall_time:.4f}s")
+                    #print(f"(PID {os.getpid()})CPU time for CROSS MORAN 2D: {cpu_time:.4f}s") 
+                    #print(f"(PID {os.getpid()})CPU efficiency for CROSS MORAN 2D: {cpu_efficiency:.2f} (1.0 = perfect CPU usage)")
+                    #print(f"(PID {os.getpid()})GIL impact estimate for CROSS MORAN 2D: {'High' if cpu_efficiency < 0.8 else 'Low'}")
+                    #print(f"Threads active: {threading.active_count()}")
 
     
     return auto_NCC_dict, cross_NCC_dict, auto_ZNCC_dict, cross_ZNCC_dict, auto_AMI_dict, cross_AMI_dict, auto_MI_dict, cross_MI_dict, auto_Morons_dict, cross_Morons_dict
@@ -1374,7 +1637,7 @@ def process_time_value_joblib_wrapper(tval, files, T, crossfiles, L, col_labels,
                                     bins, verbose, worker_id=None):
     try:
         # Optional: Set thread-specific GPU context if available
-        if gpu.GPU_AVAILABLE and worker_id is not None:
+        if gpu.GPU_AVAILABLE and worker_id is not None and not gpu.DASK_AVAILABLE:
             # Recall cupy can
             # Each worker can have its own stream for better isolation
             with gpu._cupy.cuda.Stream(non_blocking=True):
@@ -1391,6 +1654,10 @@ def process_time_value_joblib_wrapper(tval, files, T, crossfiles, L, col_labels,
     except Exception as e:
         warnings.warn(f"Error processing time value {tval}: {e}")
         # Return empty defaultdict structure on error
+        #print(f"STACK TRACE for PID {os.getpid()}:")
+        #traceback.print_stack()
+        #print("=" * 50)
+        #exit(1)
         empty_result = (
             defaultdict(nested_default_dict), #auto_NCC_dict
             defaultdict(double_nested_default_dict), #cross_NCC_dict
@@ -1474,7 +1741,8 @@ def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv",
 
         if file == files[0]:
             # Get L from the number of rows in the first file.
-            L = int(np.sqrt(len(df))) #int(np.sqrt(len(df[df.columns[0]])))
+            #L = int(np.sqrt(len(df))) #int(np.sqrt(len(df[df.columns[0]])))
+            L = round(asarray(len(df)**0.5))
             print(f"Found L = {L}.")
     
     # Remove duplicates and exclude_col_labels from col_labels.
@@ -1523,34 +1791,6 @@ def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv",
         df_auto_MoransI = None
         df_cross_MoransI = None
 
-    # Ensure ncores doesn't exceed the number of time values or available CPU cores
-    available_cores = cpu_count()
-    ncores = min(ncores, len(matchT), available_cores)
-    print(f"Using {ncores} cores out of {available_cores} available cores to process {len(matchT)} time values")
-    
-    # Use threading backend for GPU compatibility
-    joblib_backend = 'threading' if gpu.GPU_AVAILABLE else 'loky'
-    print(f"NOTE- USING Joblib Backend: {joblib_backend}")
-    # Sort matchT in descending order (so t-delay increases over rows)
-    matchT = sorted(matchT, reverse=True)
-    '''#OLD MULTIPROCESSING CODE
-    # Prepare worker function with partial to pass all the constant parameters
-    worker_func = functools.partial(
-        process_time_value,
-        files=files,
-        T=T,
-        crossfiles=crossfiles,
-        L=L,
-        col_labels=col_labels,
-        ext=ext,
-        exclude_col_labels=exclude_col_labels,
-        calc_AMI=calc_AMI,
-        calc_MI=calc_MI,
-        calc_Morans=calc_Morans,
-        bins=bins,
-        verbose=verbose
-    )
-    '''
     # Initialize empty dictionaries to collect results from parallel processing
     all_auto_NCC_dict = defaultdict(lambda: defaultdict(dict))
     all_cross_NCC_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
@@ -1578,7 +1818,45 @@ def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv",
         all_auto_MoransI_dict = None
         all_cross_MoransI_dict = None
 
+    # Ensure ncores doesn't exceed the number of time values or available CPU cores
+    available_cores = cpu_count()
+    ncores = min(ncores, len(matchT), available_cores)
+    print(f"Using {ncores} cores out of {available_cores} available cores to process {len(matchT)} time values")
     
+
+    
+    if gpu.DASK_AVAILABLE and gpu.GPU_AVAILABLE:
+        #dask_loccluster = dask_LocalCluster(n_workers=ncores, threads_per_worker=1, memory_limit='2GB')
+        mem_limit = "3GB"
+        daskclient = dask_Client(processes=True, n_workers=ncores, threads_per_worker=1, memory_limit='3GB')
+        # Each dask worker gets single thread with its own CUDA context!
+        print(f"Using Dask LocalCluster with {ncores} workers and 1 thread per worker, with {mem_limit} memory limit per worker.")
+        daskclient.register_worker_plugin(gpu.setup_daskworker_gpu_context)
+        # Assigns local CUDA context to each worker.
+        joblib_backend = 'dask'
+        print("Dashboard URL: ", daskclient.dashboard_link)
+        # Pause for 5s
+        time.sleep(8)
+    else:
+        # Use threading backend for GPU compatibility if GPU acceleration is available
+        daskclient = None
+        joblib_backend = 'threading' if gpu.GPU_AVAILABLE else 'loky'
+
+    print(f"Using Joblib backend: {joblib_backend}")
+    # Sort matchT in descending order (so t-delay increases over rows)
+    matchT = sorted(matchT, reverse=True)
+    '''#OLD MULTIPROCESSING CODE
+    # Prepare worker function with partial to pass all the constant parameters
+    worker_func = functools.partial(
+        process_time_value, files=files,
+        T=T,
+        crossfiles=crossfiles, L=L,
+        col_labels=col_labels, ext=ext,
+        exclude_col_labels=exclude_col_labels,
+        calc_AMI=calc_AMI, calc_MI=calc_MI, calc_Morans=calc_Morans,
+        bins=bins, verbose=verbose
+    )
+    '''
     # Execute the parallel processing
     if ncores > 1:
         ''' OLD MULTIPROCESSING CODE
@@ -1594,7 +1872,7 @@ def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv",
         with parallel_backend(joblib_backend, n_jobs=ncores):
             results = Parallel(
                 batch_size="auto",
-                verbose=10 if verbose else 0  # Joblib verbosity
+                verbose=10 if True else 0 #verbose else 0  # Joblib verbosity
             )([
                     delayed(process_time_value_joblib_wrapper)(
                     tval, files, T, crossfiles, L, col_labels, ext,
@@ -1603,6 +1881,20 @@ def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv",
                     ) for i, tval in enumerate(matchT)
             ])
         # End of parallel processing
+
+        #If Dask client is used, unregister the worker plugin
+        if gpu.DASK_AVAILABLE and daskclient is not None:
+            #daskclient.unregister_worker_plugin(gpu.setup_daskworker_gpu_context)
+            daskclient.close()
+            print("Dask client closed and worker plugin unregistered.")
+
+        # Try removing pysal_cache if it exists
+        if os.path.exists(pysal_cache_dir):
+            try:
+                shutil.rmtree(pysal_cache_dir)
+                print(f"Removed pysal cache directory: {pysal_cache_dir}")
+            except Exception as e:
+                print(f"Error removing pysal cache directory {pysal_cache_dir}: {e}")
 
         # Collect and merge results from all processes
         for result in results:
@@ -1866,7 +2158,7 @@ def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv",
                     row.update(rep_var1var2_data)
             df_cross_MoransI = pan.concat([df_cross_MoransI, pan.DataFrame([row])], ignore_index=True)
         
-    
+
 
     # Drop all empty columns from the dataframes
     df_auto_NCC.dropna(axis=1, how='all', inplace=True)
@@ -2069,8 +2361,8 @@ IMPORTANT: Error Conditions:
 - Missing column/index references
 - Insufficient data for spline fitting
 '''
-def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], X_as_index= True, 
-                                    report_maxima=True, maxima_finder="cubic_spline"):
+def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], X_as_index= True, skip_row=0, 
+            rel_threshold =0.05, abs_threshold=None, report_maxima=True, maxima_finder="cubic_spline"):
 
     df_timeseries = df.copy(); # Copy the dataframe to avoid modifying the original one
     df_fft = pan.DataFrame() # Create an empty dataframe to store the FFT results
@@ -2085,12 +2377,12 @@ def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], 
             print(f"Error: Length of provided X-array ({len(X)}) does not match the length of the dataframe ({len(df_timeseries)}).")
             return None, None
         # If it matches, set Xvalues to X.
-        df_timeseries["FFT_X"] = Xvalues  # Add X as a column to the dataframe for FFT processing.
+        df_timeseries["FFT_X"] = pan.Series(Xvalues)  # Add X as a column to the dataframe for FFT processing.
         X = "FFT_X"  # Set X to the new column name for further processing.
     elif isinstance(X, str):
         # If X_as_index, check if df is MultiIndex, and if so, set X as provided X label, else if single index, set X as the single index.
         if X in df_timeseries.columns:
-            Xvalues = df_timeseries[X].values
+            Xvalues = asarray(df_timeseries[X].values)
         elif X in df_timeseries.index.names:
             df_timeseries = df_timeseries.reset_index(level=X) if isinstance(df_timeseries.index, pan.MultiIndex) else df_timeseries.reset_index()
         else:
@@ -2098,7 +2390,10 @@ def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], 
             return None, None
 
     print(f"gen_1D_HarmonicFreq_Prelimsdata: X-values are {Xvalues} with length {len(Xvalues)}.")
-    # Dro
+    # Drop skipped rows if skip_row > 0
+    if skip_row > 0:
+        print(f"Skipping first {skip_row} rows from the dataframe...")
+        df_timeseries = df_timeseries.iloc[skip_row:].reset_index(drop=True)
     # Next remove exclude_Y_cols from df_timeseries (and add X to the column if it is a string).
     Y_cols = [col for col in df_timeseries.columns if col not in exclude_Y_cols and col != X and col not in df_timeseries.index.names]
     if isinstance(X, str):
@@ -2113,32 +2408,43 @@ def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], 
     if np.std(np.diff(Xvalues)) > 1:
         print(f"Error: Detected X-values are not linearly spaced. Please provide a valid X array reference.")
         #print(f"X-values: {Xvalues}")
-        print(f"X-diff: {np.diff(Xvalues)}")
-        print(f"X-diff-std: {np.std(np.diff(Xvalues))}")
+        #print(f"X-diff: {np.diff(Xvalues)}")
+        #print(f"X-diff-std: {np.std(np.diff(Xvalues))}")
         #return None, None
         # Try interpolating df_timeseries to a linear space, using gen_interpolated_df()
         print("WARNING: Interpolating time values in file to generate a standardised time range.")
         # First generate a linear space of X values using max and min values of df_timeseries[X]
         Xvalues = np.linspace(np.min(Xvalues), np.max(Xvalues), len(df_timeseries))
+        #print(f"Xvals: {Xvalues} with shape {Xvalues.shape} and length {len(Xvalues)}.")
+        print(isinstance(Xvalues, np.ndarray))
+        print(isinstance(gpu.to_cpu(Xvalues), _np_base.ndarray))
         # Save Xvalues as column "X" in a new temp dataframe called df_temp
         df_temp = pan.DataFrame({X: Xvalues})
         df_timeseries = gen_interpolated_df(df_temp, df_timeseries, X)
         if df is None:
             print(f"Error: Interpolation failed at {pathtodir}, with compare_label={X}")
             return None, None
-        Xvalues = df_timeseries[X].values  # Update Xvalues to the new interpolated values
+        Xvalues = asarray(df_timeseries[X].values)  # Update Xvalues to the new interpolated values
         print(f"Interpolation successful. New Xvalues length: {len(Xvalues)}, with STD of differences: {np.std(np.diff(Xvalues))}")
 
 
-    df_fft[f"k({X})"] = np.fft.fftfreq(len(Xvalues), d=(Xvalues[1] - Xvalues[0]))[:len(Xvalues)//2] 
+    #df_fft[f"k({X})"] = np.fft.fftfreq(len(Xvalues), d=(Xvalues[1] - Xvalues[0]))[:len(Xvalues)//2]
+    try:
+        df_fft[f"k({X})"] = pan.Series(fft.fftfreq(len(Xvalues), d=(Xvalues[1] - Xvalues[0]))[:len(Xvalues)//2])
+    except Exception as e:
+        print(f"Error: Failed to compute FFT frequencies for X={X}. Exception: {e}")
+        return None, None
     # Get the positive frequencies corresponding to the FFT result
 
     # Perform FFT on each Y column, storing the results in df_fft
     for col in Y_cols:
         # Perform FFT on the Y column
-        fft_result = np.fft.fft(df_timeseries[col].values)[:len(Xvalues)//2]
+        
+        #fft_result = np.fft.fft(df_timeseries[col].values)[:len(Xvalues)//2]
+        fft_result = fft.fft(asarray(df_timeseries[col].values))[:len(Xvalues)//2]
+        print(f"Performed FFT on column '{col}' with {len(fft_result)} frequency components.")
         # Store the positive frequencies in df_fft
-        df_fft[f"FFT{{{col}}}"] = np.abs(fft_result)  # Store the absolute values of the FFT result
+        df_fft[f"FFT{{{col}}}"] = pan.Series(np.abs(fft_result))  # Store the absolute values of the FFT result
         if report_maxima:
             # Find the local maxima corresponding to first 5 peaks (if any) in the FFT result
             harm_peaks = np.nan*np.zeros(10); harm_peaks_fftvals = np.nan*np.zeros(10)
@@ -2155,14 +2461,16 @@ def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], 
             if is_flat:
                 print("Warning: Flat or nearly flat column seen in:" + col 
                       + f" with DC Mode {df_fft_DC_max} and Mean {df_fft_DC_mean} ... Adjusting Peak to 0 ...")
-                harm_peaks[0] = 0.0; harm_peaks_fftvals[0] = fft_result[0]
+                harm_peaks[0] = 0.0; harm_peaks_fftvals[0] = np.abs(fft_result[0])
                 # Recall FFT of a flat signal is a Dirac delta-function at 0 frequency.
                 peak_df[f"FFT-PEAK[{col}]"] = pan.Series(harm_peaks);
                 peak_df[f"FFT-PEAK-VALS[{col}]"] = pan.Series(harm_peaks_fftvals)
                 continue
             
             # Set a 5% threshold for peak detection to avoid noise
-            max_signal = np.max(df_fft[f"FFT{{{col}}}"]); thresh = 0.05*max_signal
+            #max_signal = np.max(df_fft[f"FFT{{{col}}}"]); thresh = 0.05*max_signal
+            max_signal = np.max(df_fft.loc[1:, f"FFT{{{col}}}"]); 
+            thresh = rel_threshold*max_signal if abs_threshold is None else max(rel_threshold*max_signal, abs_threshold)
 
             # Next fit a cubic spline to the FFT result.
             if maxima_finder == "cubic_spline":
@@ -2182,10 +2490,9 @@ def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], 
 
             elif maxima_finder == "find_peaks":
                 # Use scipy's find_peaks to find the local maxima
-                
                 peaks, _ = signal.find_peaks(df_fft[f"FFT{{{col}}}"], height=thresh)
-                peak_frequencies = df_fft[f"k({X})"].iloc[peaks].values
-                peak_fft_values = df_fft[f"FFT{{{col}}}"].iloc[peaks].values
+                peak_frequencies = asarray(df_fft[f"k({X})"].iloc[asnumpy(peaks)].values)
+                peak_fft_values = asarray(df_fft[f"FFT{{{col}}}"].iloc[asnumpy(peaks)].values)
                 # Create (frequency, value) pairs and sort
                 maxima_data = sorted(zip(peak_frequencies, peak_fft_values), 
                                     key=lambda pair: pair[1], reverse=True)

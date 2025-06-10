@@ -1,16 +1,21 @@
 """
-GPU Acceleration Module with Automatic CPU Fallback
+CUDA GPU Acceleration Module with Automatic CPU Fallback
 Provides drop-in replacements for numpy/scipy with automatic GPU acceleration where possible
 """
 
+# TO-DO: HANDLE PANDAS DF.ILOC[] CONVERSIONS MORE GRACEFULLY WITHOUT USING .GET() ON GPU ARRAYS
+
 import os
+import time
 import sys
 import warnings
+import threading
 from functools import wraps
 import importlib
 
 print(f"GPU_GLOW_UP: PID={os.getpid()}, __name__={__name__}, importing...")
 import traceback
+import inspect
 #print(f"STACK TRACE for PID {os.getpid()}:")
 #traceback.print_stack()
 #print("=" * 50)
@@ -18,24 +23,36 @@ import traceback
 # Determine GPU usage from environment variable
 USE_CUDA = os.getenv("USE_GPU", "0") == "1"
 GPU_AVAILABLE = False
+RAPIDS_AVAILABLE = False # Check if RAPIDs libraries are available
+DASK_AVAILABLE = False # Check if Dask distributed is available.
 
 # Standard CPU imports (always available)
 import numpy as _cpu_np
+import numpy.random as _cpu_nprandom
 import scipy as _cpu_scipy
 import scipy.fft as _cpu_fft
 import scipy.signal as _cpu_signal
 import scipy.interpolate as _cpu_interpolate
 import scipy.stats as _cpu_stats
 
+# Ensure warnings don't show full paths
+warnings.formatwarning = lambda message, category, filename, lineno, line=None: f"{os.path.basename(filename)}:{lineno}: {category.__name__}: {message}\n"
+#def short_formatwarning(message, category, filename, lineno, line=None):
+#    return f"{os.path.basename(filename):{lineno}: {category.__name__}: {message}\n"
+
 # Try GPU imports
 if USE_CUDA:
     try:
         if sys.platform.startswith("darwin"):
-            raise ImportError("CUDA libraries are not supported on macOS, use Linux machine for GPU support.")
+            raise ImportError("CUDA libraries are not supported on macOS, use Linux machine for GPU support. 👺👺"); time.sleep(10)
 
         import cupy as _cupy
+        import cupy.random as _cupy_random
         import cupyx.scipy.fft as _gpu_fft
         import cupyx.scipy.signal as _gpu_signal
+        import cupyx.scipy.ndimage as _gpu_ndimage
+
+        print("CuPY online... GPU acceleration enabled...✅"); time.sleep(1)
 
         GPU_AVAILABLE = True
         # RAPIDs libraries (WORK ONLY ON LINUX WITH NVIDIA GPUS)
@@ -45,14 +62,30 @@ if USE_CUDA:
                 cudf.pandas.install()
                 import cuml.accel
                 cuml.accel.install()
-                print("RAPIDs acceleration enabled")
+                RAPIDS_AVAILABLE = True
+                print("RAPIDs acceleration enabled... ✅✅"); time.sleep(1)
             except ImportError as e:
-                warnings.warn(f"RAPIDs libraries not found: {e}. Using CuPy only for GPU acceleration...")
+                warnings.warn(f"RAPIDs libraries not found ❌: {e} . Using CuPy only for GPU acceleration... 👹")
+                time.sleep(1)
         elif sys.platform.startswith("win"):
-            warnings.warn("RAPIDs libraries are not supported on Windows, using CuPy only for GPU support.")
+            warnings.warn("RAPIDs libraries are not supported on Windows, using CuPy only for GPU support. 👺")
+            time.sleep(1)
+        
+        #import pandas
+
+        # Check if Dask distributed is available
+        try:
+            import dask.distributed as _dask_distributed
+            from dask.distributed import Client as _dask_Client
+            from dask.distributed import LocalCluster as _dask_LocalCluster
+
+            DASK_AVAILABLE = True
+            print("Dask distributed is available and enabled for parallel processing.✅✅✅"); time.sleep(1)
+        except ImportError as e:
+            warnings.warn(f"Dask distributed not found: {e}. Switching to joblib... True CPU-GPU interops not available. ❌"); time.sleep(2)
         
     except ImportError as e:
-        warnings.warn(f"Error importing GPU libraries: {e}. Falling back to CPU usage.")
+        warnings.warn(f"Error importing GPU libraries: {e}. Falling back to CPU usage...❌❌❌"); time.sleep(5)
         USE_CUDA = False
         GPU_AVAILABLE = False
 
@@ -62,6 +95,8 @@ def to_cpu(obj):
     #SOME STUFF
     if not GPU_AVAILABLE:
         return obj
+    if isinstance(obj, ( _cpu_np.ndarray, str, int, float)):
+        return obj  # Already safe
     if hasattr(_cupy, 'ndarray') and isinstance(obj, _cupy.ndarray):
         return obj.get()
     elif isinstance(obj, dict):
@@ -105,7 +140,7 @@ def cpu_fallback(func_name, cpu_module, gpu_module=None):
                     result = func(*gpu_args, **gpu_kwargs)
                     return to_cpu(result)
                 except Exception as e:
-                    warnings.warn(f"GPU operation failed for {func_name}: {e}. Falling back to CPU.")
+                    warnings.warn(f"GPU operation failed for {func_name}: {e}. Falling back to CPU.", stacklevel=2)
             
             # Use CPU version
             cpu_args = to_cpu(args)
@@ -114,6 +149,8 @@ def cpu_fallback(func_name, cpu_module, gpu_module=None):
             return cpu_func(*cpu_args, **cpu_kwargs)
         return wrapper
     return decorator
+
+
 
 class SmartModule:
     """A module wrapper that tries GPU first, falls back to CPU."""
@@ -128,8 +165,20 @@ class SmartModule:
             'ndarray', 'dtype', 'generic',
             'float64', 'float32', 'float16', 'int64', 'int32', 'int16', 'int8',
             'uint64', 'uint32', 'uint16', 'uint8', 'bool_', 'complex64', 'complex128',
+            # Warnings and exceptions
             #Constants
             'nan', 'inf', 'pi', 'e', 'euler_gamma', 'newaxis', 'NINF', 'NZERO', 'PZERO' }
+        
+
+        # Explicit fallbacks for Numpy exceptions (as they are no longer exposed in the public namespace since Numpy 1.2)
+        self._fallback_attrs = {
+            'ComplexWarning': self.safe_get_exception(cpu_module, 'ComplexWarning', Warning),
+            'VisibleDeprecationWarning': self.safe_get_exception(cpu_module, 'VisibleDeprecationWarning', Warning),
+            'TooHardError': self.safe_get_exception(cpu_module, 'TooHardError', Exception),
+            'AxisError': self.safe_get_exception(cpu_module, 'AxisError', ValueError),
+            'RankWarning': self.safe_get_exception(cpu_module, 'RankWarning', Warning)
+            # You can add other exception fallbacks here
+        }
             # Add other constants and types as needed
         
         
@@ -137,6 +186,9 @@ class SmartModule:
         # For types and constants, always use CPU module
         if name in self._cpu_only_attrs:
             return getattr(self._cpu_module, name)
+        # Check if it's in fallback exception list
+        if name in self._fallback_attrs:
+            return self._fallback_attrs[name]
         # Check if attribute exists in GPU module first
         if GPU_AVAILABLE and self._gpu_module and hasattr(self._gpu_module, name):
             gpu_attr = getattr(self._gpu_module, name)
@@ -148,12 +200,33 @@ class SmartModule:
                         gpu_args = to_gpu(args)
                         gpu_kwargs = to_gpu(kwargs)
                         result = gpu_attr(*gpu_args, **gpu_kwargs)
-                        # ✅ Keep result on GPU! Don't convert to CPU automatically
+                                # Special handling for boolean indexing operations
+                        if name == '__getitem__' and len(args) == 1:
+                            # If we have a GPU boolean mask but CPU data, convert mask to CPU
+                            mask = args[0]
+                            if is_gpu_array(result) and not is_gpu_array(gpu_args[0]) and hasattr(mask, 'dtype') and mask.dtype == bool:
+                                warnings.warn(f"Converting GPU boolean mask to CPU for indexing compatibility", stacklevel=2)
+                                return gpu_args[0][to_cpu(mask)]
+                            # Convert GPU scalars to CPU to avoid interop issues with numpy methods
+                            #if is_gpu_array(result) and result.ndim == 0:  # scalar array
+                            #    return to_cpu(result)
+                        #if name == 'fftconvolve':
+                        #    print(f"GPU fftconvolve succeeded, result type: {type(result)}")
+                        # ✅ Keep result on GPU! Don't convert to CPU automatically    
                         return result  # or to_cpu(result) if you want to ensure always returning
                         #CPU arrays for compatibility (MASSIVE performance hit)
                     except Exception as e:
                         # Fall back to CPU
-                        warnings.warn(f"GPU operation failed for {self._module_name}.{name}: {e}")
+                        trace_str= ''.join(traceback.format_exception(type(e), e, tb=e.__traceback__))
+                        caller_trace = inspect.stack()[1]; 
+                        err_filename = os.path.basename(caller_trace.filename); lineo = caller_trace.lineno
+                        warnings.warn(f"GPU operation failed ❌ for {self._module_name}.{name} \n in 📄: {err_filename}, L {lineo}"
+                                      f" with Error: {e}", stacklevel=2)
+                        # Enhanced fallback with type conversion
+                        if "Implicit conversion" in str(e) or "not allowed" in str(e):
+                            warnings.warn(f"GPU/CPU type mismatch in {self._module_name}.{name}, converting to compatible types", stacklevel=2)
+                        if name == 'fftconvolve':
+                            print(f"GPU fftconvolve FAILED: {e}", stacklevel=2)
                         cpu_attr = getattr(self._cpu_module, name)
                         cpu_args = to_cpu(args)
                         cpu_kwargs = to_cpu(kwargs)
@@ -172,6 +245,13 @@ class SmartModule:
                 return cpu_attr(*cpu_args, **cpu_kwargs)
             return cpu_func
         return cpu_attr
+    
+     # Explicit fallbacks for Numpy exceptions (as they are no longer exposed in the public namespace since Numpy 1.2)
+    def safe_get_exception(self, module, exc_name, fallback):
+        try:
+            return getattr(getattr(module, 'exceptions'), exc_name)
+        except AttributeError:
+            return fallback
 
 class CPUOnlyModule:
     """Wrapper for modules that don't have GPU equivalents."""
@@ -225,7 +305,25 @@ else:
 # Create a numpy alias for convenience
 np = numpy
 
+'''# Function to set up CUDA context for DASK workers (for true GPU interop)'''
+def setup_daskworker_gpu_context():
+    """Initialize CUDA context for this worker thread"""
+    if GPU_AVAILABLE:
+        _cupy.cuda.Device(0).use()  # or assign different devices if multi-GPU
+    # Store context info in thread-local storage if needed
 
+def init_daskworker_cuda_context():
+    if not GPU_AVAILABLE:
+        warnings.warn("GPU acceleration is not available. Dask workers will run on CPU only.")
+        return
+    
+    import threading
+    
+    device = _cupy.cuda.Device(0)
+    device.use()
+    context = _cupy.cuda.runtime.getCurrentContext()
+    print(f"Worker {threading.current_thread().name}: Context ID {context}")
+    # Should see different context IDs for each worker
     
 # OTHER USEFUL UTILITIES FOR EXPLICIT TO_CPU() CONVERSIONS BY USER!
 def asnumpy(arr):
@@ -247,68 +345,6 @@ def is_gpu_array(arr):
 
 
 # Expose key functions at module level
-__all__ = ['np', 'numpy', 'fft', 'signal', 'interpolate', 'stats', 
-           'to_cpu', 'to_gpu', 'asnumpy', 'asarray', 'is_gpu_array',
-           'cpu_safe_import', 'ensure_cpu', 'GPU_AVAILABLE', 'USE_GPU']
-
-
-
-''' OLD SCRIPT
-
-if USE_CUDA:
-    try:
-
-        if sys.platform.startswith("darwin"):
-            raise ImportError("CUDA libraries are not supported on macOS, use Linux machine for GPU support.")
-        import cupy as np
-        import cupyx.scipy.fft as fft
-        import cupyx.scipy.signal as signal
-        # RAPIDs libraries (WORK ONLY ON LINUX WITH NVIDIA GPUS)
-        if sys.platform.startswith("linux"):
-            import cudf.pandas
-            cudf.pandas.install()
-            import cuml.accel
-            cuml.accel.install()
-        elif sys.platform.startswith("win"):
-            print("RAPIDs libraries are not supported on WIN, using cupy only.")
-    except ImportError as e:
-        print(f"Error importing GPU libraries: {e}")
-        print("Falling back to CPU usage.")
-        USE_CUDA = False
-        import numpy as np
-        import scipy.fft as fft
-        import scipy.signal as signal
-else:
-    import numpy as np
-    import scipy.fft as fft
-    import scipy.signal as signal
-
-# Recursively convert CuPy arrays to NumPy arrays
-def to_cpu(obj):
-    """Recursively convert CuPy arrays to NumPy arrays."""
-    if USE_CUDA:
-        import cupy
-        if isinstance(obj, cupy.ndarray):
-            return obj.get()
-        elif isinstance(obj, dict):
-            return {k: to_cpu(v) for k, v in obj.items()}
-        elif isinstance(obj, (list, tuple, set)):
-            return type(obj)(to_cpu(v) for v in obj)
-        elif hasattr(obj, '__array__') and not isinstance(obj, _np.ndarray):
-            return _np.asarray(obj)
-    return obj
-
-"""Recursively convert CuPy arrays to NumPy arrays."""
-def to_cpu(obj):
-    if USE_CUDA:
-        import cupy
-        if isinstance(obj, cupy.ndarray):
-            return obj.get()  # returns a NumPy array
-        elif isinstance(obj, dict):
-            return {k: to_cpu(v) for k, v in obj.items()}
-        elif isinstance(obj, (list, tuple, set)):
-            return type(obj)(to_cpu(v) for v in obj)
-        elif hasattr(obj, '__array__') and not isinstance(obj, _np.ndarray):
-            return _np.asarray(obj)  # ensure it's a NumPy array
-    return obj
-'''
+__all__ = ['np', 'numpy', 'fft', 'signal', 'interpolate', 'stats', 'init_daskworker_cuda_context',
+           'to_cpu', 'to_gpu', 'asnumpy', 'asarray', 'is_gpu_array', 'setup_daskworker_gpu_context',
+           'cpu_safe_import', 'ensure_cpu', 'GPU_AVAILABLE', 'USE_GPU', 'RAPIDS_AVAILABLE', 'DASK_AVAILABLE']

@@ -12,9 +12,10 @@ import time
 
 print(f"REORGANISE_DIR: PID={os.getpid()}, __name__={__name__}")
 import traceback
-print(f"STACK TRACE for PID {os.getpid()}:")
-traceback.print_stack()
-print("=" * 50)
+import inspect
+#print(f"STACK TRACE for PID {os.getpid()}:")
+#traceback.print_stack()
+#print("=" * 30)
 
 ''''
 # Determine GPU usage from environment variable
@@ -23,8 +24,8 @@ if os.getenv("USE_GPU", "0") == "1":
         multiprocessing.set_start_method('spawn', force=True)  
         # Ensure spawn method for compatibility as "fork" is incompatible
 '''
-from GPU_glow_up import to_cpu, to_gpu, asnumpy, asarray, is_gpu_array
-import GPU_glow_up as gpu
+from slick import to_cpu, to_gpu, asnumpy, asarray, is_gpu_array
+import slick as gpu
 
 from glow_up import *
 
@@ -382,7 +383,7 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
                             fftsig_auto_NCCdf, fftpeaks_auto_NCCdf  = gen_1D_HarmonicFreq_Prelimsdata(auto_NCCdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
                         except Exception as e:
                             print(f"Error inside gen_1D_HarmonicFreq_Prelimsdata: {e}")
-                            exit(1) 
+                            raise e 
                         # Save the harmonic frequencies to a csv file in subdirpath/T_{Tmax}/2DCorr/
                         try:
                             if fftsig_auto_NCCdf is not None:
@@ -477,7 +478,11 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
                         except Exception as e:
                             print(f"Error: Could not write FFT PEAK data for CROSS BVMoransI to " + subdirpath + "/T_" + str(Tmax) + "/2DCorr/FFT/ with error message: \n" + str(e))
                 except Exception as e:
-                    print("Error: Could not write 2DCorr data to " + subdirpath + "/T_" + str(Tmax) + "/2DCorr/ with error message: \n" + str(e))
+                    print("Error: Could not write 2DCorr data to " + subdirpath + "/T_" + str(Tmax) + "/2DCorr/")
+                    trace_str = ''.join(traceback.format_exception(type(e), e, e.__traceback__));
+                    trace_frame =inspect.stack()[1]; 
+                    print(f" More details: 📄 {os.path.basename(trace_frame.filename)}, L. {trace_frame.lineno}, with 💥 Error: {e}\n"+
+                          f"🧵 Full traceback:\n{trace_str}")
 
 
                 # Finally concatenate the dfs for each subdirectory.
@@ -959,9 +964,8 @@ if(gpu.GPU_AVAILABLE):
 else:
     print("Using CPU for processing...")
     # Set up a timer to measure the time taken for processing.
-    start_time_CPU = time.time()
-    end_time_CPU = None
-    
+start_time_CPU = time.time()
+end_time_CPU = None
 
 if __name__ == "__main__":
     #main()

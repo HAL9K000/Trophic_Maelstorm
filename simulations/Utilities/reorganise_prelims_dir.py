@@ -11,9 +11,9 @@ import time
 #import multiprocessing
 print(f"REORGANISE_PRELIMS_DIR: PID={os.getpid()}, __name__={__name__}")
 import traceback
-print(f"STACK TRACE for PID {os.getpid()}:")
-traceback.print_stack()
-print("=" * 50)
+#print(f"STACK TRACE for PID {os.getpid()}:")
+#traceback.print_stack()
+#print("=" * 50)
 
 '''
 # Determine GPU usage from environment variable
@@ -22,8 +22,8 @@ if os.getenv("USE_GPU", "0") == "1":
         multiprocessing.set_start_method('spawn', force=True)  
         # Ensure spawn method for compatibility as "fork" is incompatible with CUPY
 '''
-import GPU_glow_up as gpu
-from GPU_glow_up import to_cpu, to_gpu, np, fft, signal, interpolate, stats
+import slick as gpu
+from slick import to_cpu, to_gpu, np, fft, signal, interpolate, stats
 from glow_up import *
 
 '''
@@ -607,8 +607,8 @@ if(gpu.GPU_AVAILABLE):
 else:
     print("Using CPU for processing...")
     # Set up a timer to measure the time taken for processing.
-    start_time_CPU = time.time()
-    end_time_CPU = None
+start_time_CPU = time.time()
+end_time_CPU = None
 
 if __name__ == "__main__":
     main()
@@ -624,7 +624,6 @@ if(gpu.GPU_AVAILABLE):
         print(f"Time taken for processing with GPU: {elapsed_time_GPU:.3f} seconds")
     except Exception as e:
          pass
-    
 end_time_CPU = time.time()
 elapsed_time_CPU = end_time_CPU - start_time_CPU
 print(f"Time reported by CPU: {elapsed_time_CPU:.3f} seconds")

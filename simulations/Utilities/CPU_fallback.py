@@ -1,4 +1,4 @@
-from GPU_glow_up import to_cpu, to_gpu
+from slick import to_cpu, to_gpu
 import importlib
 import numpy as _np
 
