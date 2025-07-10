@@ -632,7 +632,7 @@ void init_burnin_wrapper(D2Vec_Double &Rho_dt, double a, double a_c, int a_scali
 			a = 0.001675; // Set a to 0.001675 if it is less than this value, when b= 1e-6 (DiC-B6-UNITY).
 	}
 	
-	rain  << a; scaled_rain<< a_scalingfactor*a; Lgrid << L; dPO << dP; t_val << 88000; 
+	rain  << a; scaled_rain<< a_scalingfactor*a; Lgrid << L; dPO << dP; t_val << 80000; 
 	map<string, string> local_input_keys = input_keys; // Copy input_keys to local_input_keys.
 	local_input_keys["T"] = t_val.str(); local_input_keys["a"] = rain.str(); local_input_keys["ascaled"] = scaled_rain.str();
 	local_input_keys["dP"] = dPO.str(); local_input_keys["L"] = Lgrid.str();
@@ -1648,8 +1648,9 @@ void f_DP_Dor_1Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double b
 {
 	//Vector function that updates an array containing ( dP/dt) for each site in the lattice.
     //Based on the DP model for plant vegetation dynamics with the Dornic twist where linear and stoch term for vegetation (and grazer) are already taken care of.
-	
-	for(int i=0; i < g*g; i++)
+	int L2 = g*g; //Total number of sites in the lattice.
+	#pragma omp simd
+	for(int i=0; i < L2; i++)
 	{
         /** Equations for the density of plants (P)
         * Note that the Laplacian is calculated using reflective boundary conditions.**/
@@ -1676,8 +1677,9 @@ void f_DP_Dor_2Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double b
 	double A01H01 = A[0][1]*H[0][1];
 	// The following are the values of E*A and A*H for each species, which reduces time complexity by avoiding repeated calculations.
 	double EA1 = E[1]*A[0][1];
-
-	for(int i=0; i < g*g; i++)
+	int L2 = g*g; //Total number of sites in the lattice.
+	#pragma omp simd
+	for(int i=0; i < L2; i++)
 	{
         /** Equations for the density of plants (P) and grazers (G) at each site.
         * Note that the Laplacian is calculated using reflective boundary conditions.
@@ -1793,9 +1795,10 @@ void f_DP_Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double b
 	// The following values are precomputed to reduce time complexity.
 	double A01H01 = A[0][1]*H[0][1]; double A12H12 = A[1][2]*H[1][2];
 	// The following are the values of E*A and A*H for each species, which reduces time complexity by avoiding repeated calculations.
-	double EA1 = E[1]*A[0][1]; double EA2 = E[2]*A[1][2];
+	double EA1 = E[1]*A[0][1]; double EA2 = E[2]*A[1][2]; int L2 = g*g;
 	
-	for(int i=0; i < g*g; i++)
+	#pragma omp simd
+	for(int i=0; i < L2; i++)
 	{
         //Equations for the density of plants, soil water, surface water and grazers at each site.
         //Note that the Laplacian is calculated using reflective boundary conditions.
@@ -1831,6 +1834,7 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 	
 	for(int s= 0; s <Sp; s++)
 	{
+		#pragma omp simd
 		for(int i=0; i < g*g; i++)
 			Rho_tsar[s][i] = Rho_t[s][i] + (dt2)*K1[s][i];
 	}
@@ -1845,6 +1849,7 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 
 	for(int s= 0; s <Sp; s++)
 	{
+		#pragma omp simd
 		for(int i=0; i < g*g; i++)
 			Rho_tsar[s][i] = Rho_t[s][i] + (dt2)*K2[s][i];
 	}
@@ -1859,6 +1864,7 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 
 	for(int s= 0; s <Sp; s++)
 	{
+		#pragma omp simd
 		for(int i=0; i < g*g; i++)
 			Rho_tsar[s][i] = Rho_t[s][i] + (dt)*K3[s][i];
 	}
@@ -1871,11 +1877,14 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
     #endif
 
 	for(int s= 0; s <Sp; s++)
-	{
+	{	
+		#pragma omp simd
 		for(int i=0; i < g*g; i++)
 		{
 			Rho_t[s][i]+= (dt6)*( K1[s][i] + 2.0*K2[s][i] + 2.0*K3[s][i] + K4[s][i]);
-
+		}
+		for(int i=0; i < g*g; i++)
+		{
 			if( Rho_t[s][i] < 0 || isfinite(Rho_t[s][i]) == false || isnan(Rho_t[s][i]) == true)
 			{
 				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
@@ -1894,9 +1903,7 @@ void save_framefileswrapper(int index, int tot_iter, int j, int thrID,  double t
 	double (&A)[SpB][SpB], double (&H)[SpB][SpB], double (&E)[SpB], double (&M)[SpB], double dP, int r, int g, double Gstar /* =-1.*/, double Vstar /* = -1.*/)
 {
 	// FRAME SAVING
-	if(index >= tot_iter -10 &&  index <= tot_iter-1  ||  t >= 50000 && t <= 150000 || t >= 10 && t <= 15000 
-		|| t== 0)
-	{
+
 		//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
 		double a_scaled = a*a_scalingfactor; //Scaling factor for a.
 		stringstream L, tm ,d3, p1, rini, gm, a1, a2, Dm0, Dm1, Dm2, alph, w0t, aij, hij, dix, dimitri, sig0, sig1, geq, veq, thr_ID;
@@ -1999,7 +2006,7 @@ void save_framefileswrapper(int index, int tot_iter, int j, int thrID,  double t
 		}//*/
 
 		///** FRAME SAVING STRATEGY FOR DT WITH FRAME_MEAS WITH LINEAR WINDOWS
-		if(t > 1500 && t < 6000)
+		if(t > 1200 && t < 10000)
 		{	//Only save one in two frames here.
 			if(index%2 ==0)
 			{
@@ -2026,7 +2033,7 @@ void save_framefileswrapper(int index, int tot_iter, int j, int thrID,  double t
 		}
 		//*/
 		
-	}
+	
 	//
 }
 
@@ -2040,115 +2047,113 @@ int save_prelimfileswrapper(int index, int tot_iter, int j, int thrID,  double t
 {
 
 	// BLOCK FOR CALCULATING AND TEMP PRELIMINARY FRAMES
-	if( index == int(tot_iter*0.85) || index == int(tot_iter*0.9) || index == int(tot_iter*0.95) || index == int(tot_iter-1))
-	{
-		// In this case, copy the first "index" rows of rho_rep_avg_var to a new 2D vector, update the values using var_mean_incremental_surv_runs()
-		// and save to file.
-		D2Vec_Double rho_rep_avg_var_temp(index+1, vector<double> (Sp4_1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
-		//std::copy(rho_rep_avg_var.begin(), rho_rep_avg_var.begin() + index, rho_rep_avg_var_temp.begin());
-		var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index+1, 0);
+	// In this case, copy the first "index" rows of rho_rep_avg_var to a new 2D vector, update the values using var_mean_incremental_surv_runs()
+	// and save to file.
+	D2Vec_Double rho_rep_avg_var_temp(index+1, vector<double> (Sp4_1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+	//std::copy(rho_rep_avg_var.begin(), rho_rep_avg_var.begin() + index, rho_rep_avg_var_temp.begin());
+	var_mean_incremental_surv_runs(rho_rep_avg_var_temp, Rho_M, index+1, 0);
 
-		#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
-			D2Vec_Double gamma_mov_avg_temp(index+1, vector<double> (int(Rho_Mov[0].size()) + 1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
-			// Get cols_per_sp by dividing the number of columns in Rho_Mov by the number of species (SpB).
-			int cols_per_sp = int(Rho_Mov[0].size()/SpB);
-			generic_SPBmean_surv_runs(gamma_mov_avg_temp, Rho_Mov, index+1, cols_per_sp, 0);
-			//Time is stored in the first column.
-			for(int i=0; i < index+1; i++)
-				gamma_mov_avg_temp[i][0] = t_meas[i];
-
-		#endif
-
-
+	#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
+		D2Vec_Double gamma_mov_avg_temp(index+1, vector<double> (int(Rho_Mov[0].size()) + 1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+		// Get cols_per_sp by dividing the number of columns in Rho_Mov by the number of species (SpB).
+		int cols_per_sp = int(Rho_Mov[0].size()/SpB);
+		generic_SPBmean_surv_runs(gamma_mov_avg_temp, Rho_Mov, index+1, cols_per_sp, 0);
 		//Time is stored in the first column.
 		for(int i=0; i < index+1; i++)
-			rho_rep_avg_var_temp[i][0] = t_meas[i];
+			gamma_mov_avg_temp[i][0] = t_meas[i];
 
-		//Finally save to file.
-		double a_scaled = a_scalingfactor*a; //Scale a by 1000 for filename.
-		stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, geq, veq, jID; // cgm, sig0;
-		a1 << a_st; a2 << a_end;
-		L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(5) << a_scaled; dimitri << dP; jID << thrID;
-		rini << j; Dm << setprecision(4) << D[2]; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
+	#endif
 
-		string parendir= "";
-		if(Gstar != -1)
-			parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str() + "/TimeSeries";
-		else if(Vstar != -1)
-			parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str() + "/TimeSeries";
-		else
-			parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/TimeSeries";
 
-		//double ran_jid = (unif(rng)*1000.0)/1000.0; jID << ran_jid; // Random number between 0 and 1.
-		
-		string filenamePattern = replicate_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
-		"_jID_"+ jID.str() + "_R_";
+	//Time is stored in the first column.
+	for(int i=0; i < index+1; i++)
+		rho_rep_avg_var_temp[i][0] = t_meas[i];
 
-		save_prelimframe(rho_rep_avg_var_temp, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
+	//Finally save to file.
+	double a_scaled = a_scalingfactor*a; //Scale a by 1000 for filename.
+	stringstream L, tm ,d3, p1, a1, a2, dimitri, rini, Dm, geq, veq, jID; // cgm, sig0;
+	a1 << a_st; a2 << a_end;
+	L << g; tm << t; d3 << setprecision(3) << dt; p1 << setprecision(5) << a_scaled; dimitri << dP; jID << thrID;
+	rini << j; Dm << setprecision(4) << D[2]; geq << setprecision(5) << Gstar; veq << setprecision(5) << Vstar;
 
-		#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
-		string filenamePattern_mov = movement_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
-		"_jID_"+ jID.str() + "_R_";
-		save_prelimframe(gamma_mov_avg_temp, parendir, filenamePattern_mov, a, a_st, a_end, t, dt, dx, dP, j, g, movmheader, false, false);
-		#endif
+	string parendir= "";
+	if(Gstar != -1)
+		parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Geq_" + geq.str() + "/TimeSeries";
+	else if(Vstar != -1)
+		parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "_Veq_" + veq.str() + "/TimeSeries";
+	else
+		parendir = prelim_folder + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/TimeSeries";
 
-		
+	//double ran_jid = (unif(rng)*1000.0)/1000.0; jID << ran_jid; // Random number between 0 and 1.
+	
+	string filenamePattern = replicate_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+	"_jID_"+ jID.str() + "_R_";
 
-		// Check if no vegetation is left at this current index. If so, break out of the while loop.
-		if( Rho_M[index][0] == 0.0)
-		{
-			stringstream m3_1;
-			m3_1 << "RUN-TIME WARNING: ZERO Active VEG sites for TIME [t, a, thr, j]\t" 
-			<< t << " , " << a << " , " << omp_get_thread_num()  << " , " << j << " Skipping to next replicate .... \n"; 
-			cout << m3_1.str(); cerr << m3_1.str();
+	save_prelimframe(rho_rep_avg_var_temp, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
 
-			//Next save future preliminary frames with 0.0 values for population densities after this time point.
-			int index_prelim_range[4] = {int(tot_iter*0.85), int(tot_iter*0.9), int(tot_iter*0.95), int(tot_iter-1)};
-			int iter_index =0;
-			for(int iter_index =0; iter_index < 4; iter_index++)
-			{	
-				int new_index = index_prelim_range[iter_index];
-				if( index > new_index)
-					continue; //Skip to next iteration if index is greater than the current range.
-				// In this case, copy the first "index" rows of rho_rep_avg_var to a new 2D vector, update the values using var_mean_incremental_surv_runs()
-				// and save to file.
-				D2Vec_Double rho_rep_avg_var_future_temp(new_index+1, vector<double> (Sp4_1, 0.0)); 
-				//Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
-				var_mean_incremental_surv_runs(rho_rep_avg_var_future_temp, Rho_M, new_index+1, 0);
-				stringstream tm_future; tm_future << t_meas[new_index]; // Time at which the frame is saved.
+	#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
+	string filenamePattern_mov = movement_prefix + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+	"_jID_"+ jID.str() + "_R_";
+	save_prelimframe(gamma_mov_avg_temp, parendir, filenamePattern_mov, a, a_st, a_end, t, dt, dx, dP, j, g, movmheader, false, false);
+	#endif
 
+	
+
+	// Check if no vegetation is left at this current index. If so, break out of the while loop.
+	if( Rho_M[index][0] == 0.0)
+	{
+		stringstream m3_1;
+		m3_1 << "RUN-TIME WARNING: ZERO Active VEG sites for TIME [t, a, thr, j]\t" 
+		<< t << " , " << a << " , " << omp_get_thread_num()  << " , " << j << " Skipping to next replicate .... \n"; 
+		cout << m3_1.str(); cerr << m3_1.str();
+
+		//Next save future preliminary frames with 0.0 values for population densities after this time point.
+		int index_prelim_range[4] = {int(tot_iter*0.85), int(tot_iter*0.9), int(tot_iter*0.95), int(tot_iter-1)};
+		int iter_index =0;
+		for(int iter_index =0; iter_index < 4; iter_index++)
+		{	
+			int new_index = index_prelim_range[iter_index];
+			if( index > new_index)
+				continue; //Skip to next iteration if index is greater than the current range.
+			// In this case, copy the first "index" rows of rho_rep_avg_var to a new 2D vector, update the values using var_mean_incremental_surv_runs()
+			// and save to file.
+			D2Vec_Double rho_rep_avg_var_future_temp(new_index+1, vector<double> (Sp4_1, 0.0)); 
+			//Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+			var_mean_incremental_surv_runs(rho_rep_avg_var_future_temp, Rho_M, new_index+1, 0);
+			stringstream tm_future; tm_future << t_meas[new_index]; // Time at which the frame is saved.
+
+			//Time is stored in the first column.
+			for(int i=0; i < new_index+1; i++)
+				rho_rep_avg_var_future_temp[i][0] = t_meas[i];
+
+			string filenamePattern_future = replicate_prefix + L.str() + "_T_" + tm_future.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+			"_jID_"+ jID.str() + "_R_";
+
+			//Finally save to file.
+			save_prelimframe(rho_rep_avg_var_future_temp, parendir, filenamePattern_future, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
+
+			#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
+				D2Vec_Double gamma_mov_avg_future_temp(new_index+1, vector<double> (int(Rho_Mov[0].size()) + 1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
+				// Get cols_per_sp by dividing the number of columns in Rho_Mov by the number of species (SpB).
+				int cols_per_sp = int(Rho_Mov[0].size()/SpB);
+				generic_SPBmean_surv_runs(gamma_mov_avg_future_temp, Rho_Mov, new_index+1, cols_per_sp, 0);
 				//Time is stored in the first column.
 				for(int i=0; i < new_index+1; i++)
-					rho_rep_avg_var_future_temp[i][0] = t_meas[i];
+					gamma_mov_avg_future_temp[i][0] = t_meas[i];
 
-				string filenamePattern_future = replicate_prefix + L.str() + "_T_" + tm_future.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
+				string filenamePattern_mov_future = movement_prefix + L.str() + "_T_" + tm_future.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
 				"_jID_"+ jID.str() + "_R_";
+				save_prelimframe(gamma_mov_avg_future_temp, parendir, filenamePattern_mov_future, a, a_st, a_end, t, dt, dx, dP, j, g, movmheader, false, false);
+				vector<vector<double>>().swap(gamma_mov_avg_future_temp); //Flush temp out of memory.
+			#endif
 
-				//Finally save to file.
-				save_prelimframe(rho_rep_avg_var_future_temp, parendir, filenamePattern_future, a, a_st, a_end, t, dt, dx, dP, j, g, prelimheader, false, false);
-
-				#if SPB > 1 // Save movement time-series for each species in Rho_Mov.
-					D2Vec_Double gamma_mov_avg_future_temp(new_index+1, vector<double> (int(Rho_Mov[0].size()) + 1, 0.0)); //Stores time, running avg, var (over replicates) of <rho(t)>x and number of surviving runs (at t) respectively.
-					// Get cols_per_sp by dividing the number of columns in Rho_Mov by the number of species (SpB).
-					int cols_per_sp = int(Rho_Mov[0].size()/SpB);
-					generic_SPBmean_surv_runs(gamma_mov_avg_future_temp, Rho_Mov, new_index+1, cols_per_sp, 0);
-					//Time is stored in the first column.
-					for(int i=0; i < new_index+1; i++)
-						gamma_mov_avg_future_temp[i][0] = t_meas[i];
-
-					string filenamePattern_mov_future = movement_prefix + L.str() + "_T_" + tm_future.str() + "_dt_" + d3.str() + "_a_"+ p1.str() +
-					"_jID_"+ jID.str() + "_R_";
-					save_prelimframe(gamma_mov_avg_future_temp, parendir, filenamePattern_mov_future, a, a_st, a_end, t, dt, dx, dP, j, g, movmheader, false, false);
-					vector<vector<double>>().swap(gamma_mov_avg_future_temp); //Flush temp out of memory.
-				#endif
-
-				vector<vector<double>>().swap(rho_rep_avg_var_future_temp); //Flush temp out of memory.
-			}
-			return 1; //Indicate that the current replicate has no vegetation left at this time point (and break out of the while loop).
+			vector<vector<double>>().swap(rho_rep_avg_var_future_temp); //Flush temp out of memory.
 		}
+		return 1; //Indicate that the current replicate has no vegetation left at this time point (and break out of the while loop).
+	}
 
-		vector<vector<double>>().swap(rho_rep_avg_var_temp); //Flush temp out of memory.
-	} 
+	vector<vector<double>>().swap(rho_rep_avg_var_temp); //Flush temp out of memory.
+
 	// */
 
 	return 0;
@@ -2223,36 +2228,39 @@ void calc_gamma_3Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringS
 				{	gamma[s][i] = 0.0; continue;	} // No species left, value assigned doesn't matter.
 			else if(Rho_avg[s-1] < eps)
 				{	gamma[s][i] = 0.0;	continue; } // No resource left, consumers will advect to extinction.
-			
 
 			
+			double gamma_sum = 0.0; //Sum of gamma values for this species at site i (needed for SIMD reduction).
 			// Gamma for grazers (indexed 1)
 			if (s == 1)
 			{	
 				
 				if( Rho_avg[2] < eps)
 				{	
+					#pragma omp simd reduction(+:gamma_sum )
 					for(int k=0; k< eff_nR_Perp_size; k++)
-					{		gamma[s][i] += Rho_t[s-1][nR_Perp[k]];	}
+					{		gamma_sum += Rho_t[s-1][nR_Perp[k]];	}
 				} // No predators left
 				else
 				{
 					//double rho_pred1 = 1/Rho_avg[2];
+					#pragma omp simd reduction(+:gamma_sum )
 					for(int k=0; k< eff_nR_Perp_size; k++)
 					{		
-						gamma[s][i] += Rho_t[s-1][nR_Perp[k]]*(1 -Rho_t[2][nR_Perp[k]]*rho_inverse[2]);	
+						gamma_sum += Rho_t[s-1][nR_Perp[k]]*(1 -Rho_t[2][nR_Perp[k]]*rho_inverse[2]);	
 					}	
 				}
 				// RECALL : rho_inverse[s] = 1/Rho_avg[s]
-				gamma[s][i] = (gamma[s][i]*rho_inverse[s-1])/(eff_nR_Perp_size);	
+				gamma[s][i] = (gamma_sum*rho_inverse[s-1])/(eff_nR_Perp_size);	
 
 			}
 			if(s == 2)
 			{
+				#pragma omp simd reduction(+:gamma_sum )
 				for(int k=0; k< eff_nR_Perp_size; k++)
-					{		gamma[s][i] += Rho_t[s-1][nR_Perp[k]];	}
+					{		gamma_sum += Rho_t[s-1][nR_Perp[k]];	}
 				// RECALL : rho_inverse[s] = 1/Rho_avg[s]
-				gamma[s][i] = (gamma[s][i]/(eff_nR_Perp_size))*rho_inverse[s-1];	
+				gamma[s][i] = (gamma_sum/(eff_nR_Perp_size))*rho_inverse[s-1];	
 			}
 
 			if(gamma[s][i] > 1)
@@ -2270,7 +2278,7 @@ void calc_gamma_3Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringS
 				errorMutex.unlock();
 			}
 		}
-		vector <int>().swap(nR_Perp);
+		//vector <int>().swap(nR_Perp);
 	}
 }
 
@@ -2338,52 +2346,57 @@ void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec
 			if( eff_nR_Perp_size < 1 && fr > 0)
 			{	eff_nR_Perp_size = 1;	} // At least one nearest neighbor (the site itself) is considered.
 			if(Rho_avg[s] < eps)
-				{	gamma[s][i] = 1.0; continue;	} // No species left, value assigned doesn't matter.
+			{	gamma[s][i] = 0.0; continue;	} // No species left, value assigned doesn't matter.
 			else if(Rho_avg[s-1] < eps)
-				{	gamma[s][i] = 0.0;	continue; } // No resource left, consumers will advect to extinction.
+			{	gamma[s][i] = 0.0;	continue; } // No resource left, consumers will advect to extinction.
 			
+			double gamma_sum = 0.0; //Sum of gamma values for this species at site i (needed for SIMD reduction).
 			// Gamma for grazers (indexed 1)
 			if (s == 1)
 			{	
 				if( Rho_avg[2] < eps)
 				{	
+					#pragma omp simd reduction(+:gamma_sum )	
 					for(int k=0; k< eff_nR_Perp_size; k++)
-					{		gamma[s][i] += Rho_t[s-1][nR_Perp[k]];	}
+					{		gamma_sum += Rho_t[s-1][nR_Perp[k]];	}
 				} // No predators left
 				else
 				{
 					//if(Rho_avg[0] == 0)
 					//{	gamma[s][i] = 0.0;	continue; } // No vegetation 
 					//double rho_pred1 = 1/Rho_avg[2];
+					#pragma omp simd reduction(+:gamma_sum )
 					for(int k=0; k< eff_nR_Perp_size; k++)
 					{		
-						gamma[s][i] += Rho_t[s-1][nR_Perp[k]]*(1 -Rho_t[2][nR_Perp[k]]*rho_inverse[2]);	
+						gamma_sum += Rho_t[s-1][nR_Perp[k]]*(1 -Rho_t[2][nR_Perp[k]]*rho_inverse[2]);	
 					}
 				// RECALL : rho_inverse[s] = 1/Rho_avg[s]
 				}
-				gamma[s][i] = (gamma[s][i]*rho_inverse[s-1])/(eff_nR_Perp_size);	
+				gamma[s][i] = (gamma_sum* rho_inverse[s-1])/(eff_nR_Perp_size);	
 
 			}
 			if(s == 2)
 			{
 				
 				if( Rho_avg[0] < eps)
-				{	
+				{
+					#pragma omp simd reduction(+:gamma_sum )	
 					for(int k=0; k< eff_nR_Perp_size; k++)
-					{		gamma[s][i] += Rho_t[s-1][nR_Perp[k]];	}
+					{		gamma_sum += Rho_t[s-1][nR_Perp[k]];	}
 				} // No vegetation left
 				else
 				{
 					//if(Rho_avg[1] < eps)
 					//{	gamma[s][i] = 0.0;	continue; } // No grazers left.
 					//double rho_veg1 = 1/Rho_avg[0];
+					#pragma omp simd reduction(+:gamma_sum )
 					for(int k=0; k< eff_nR_Perp_size; k++)
 					{		
-							gamma[s][i] += Rho_t[s-1][nR_Perp[k]]*(1 -Rho_t[0][nR_Perp[k]]*rho_inverse[0]);	
+							gamma_sum += Rho_t[s-1][nR_Perp[k]]*(1 -Rho_t[0][nR_Perp[k]]*rho_inverse[0]);	
 					}
 				// RECALL : rho_inverse[s] = 1/Rho_avg[s]
 				}
-				gamma[s][i] = (gamma[s][i]*rho_inverse[s-1])/(eff_nR_Perp_size);		
+				gamma[s][i] = (gamma_sum* rho_inverse[s-1])/(eff_nR_Perp_size);
 			}
 
 			if(gamma[s][i] > 1)
@@ -2685,10 +2698,14 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 				vector<double>().swap(temp_alt); //Flush temp out of memory.
 
 				// Saving frames to file at given time points.
-				int break_flag = save_prelimfileswrapper(index, tot_iter, j, thrID, t, dt, dx, Rho_dt, DRho, Rho_M, Rho_Mov, rho_rep_avg_var,
-					t_meas, gamma, v_eff, t_max, a, b, c, a_scalingfactor, D, v, sigma, a_st, a_end, a_c, A,H,E,M, dP, r, g, Gstar /* =-1.*/, Vstar /* = -1.*/);
-				if( break_flag == 1)
-					break; //Finish negotiations as all basal species are dead.
+				if( index == int(tot_iter*0.85) || index == int(tot_iter*0.9) || index == int(tot_iter*0.95) || index == int(tot_iter-1))
+				{
+					
+					int break_flag = save_prelimfileswrapper(index, tot_iter, j, thrID, t, dt, dx, Rho_dt, DRho, Rho_M, Rho_Mov, rho_rep_avg_var,
+						t_meas, gamma, v_eff, t_max, a, b, c, a_scalingfactor, D, v, sigma, a_st, a_end, a_c, A,H,E,M, dP, r, g, Gstar /* =-1.*/, Vstar /* = -1.*/);
+					if( break_flag == 1)
+						break; //Finish negotiations as all basal species are dead.
+				}
 
 				
 
@@ -2867,9 +2884,14 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 			if(t == 0 || t >= frame_tmeas[frame_index] -dt/2.0 && t < frame_tmeas[frame_index] +dt/2.0)
 			{
 				// Saving frames to file at given time points.
-				save_framefileswrapper(frame_index, frame_tot_iter, j, thrID, t, dt, dx, Rho_dt, DRho, rho_rep_avg_var,
-					frame_tmeas, gamma, v_eff, t_max, a, b, c, a_scalingfactor, D, v, sigma, a_st, a_end, a_c, A,H,E,M, 
-					dP, r, g, Gstar /* =-1.*/, Vstar /* = -1.*/);
+				if(index >= frame_tot_iter -10 &&  index <= frame_tot_iter-1  ||  t >= 70000 && t <= 150000 || t >= 40 && t <= 15000 
+					|| t== 0)
+				{
+					save_framefileswrapper(frame_index, frame_tot_iter, j, thrID, t, dt, dx, Rho_dt, DRho, rho_rep_avg_var,
+						frame_tmeas, gamma, v_eff, t_max, a, b, c, a_scalingfactor, D, v, sigma, a_st, a_end, a_c, A,H,E,M, 
+						dP, r, g, Gstar /* =-1.*/, Vstar /* = -1.*/);
+					
+				}
 				frame_index+=1;
 			}
 			//Basic Dornic  Integration of Linear & Stochastic Term
@@ -3071,12 +3093,12 @@ void dP_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, double t_m
 					#endif
 					
 					// Sampling the advection vector from v[s], every dtV[s] time steps.
-					if(dtV_counter[s].second == 0)
-					{
+					//if(dtV_counter[s].second == 0)
+					//{
 						//unif = uniform_real_distribution<double>(0.0, 1.0);
-						double ran = unif(rng); //Random number between 0 and 1.
-						v_eff[s][i].first = v[s]*cos(2*PI*ran); v_eff[s][i].second = v[s]*sin(2*PI*ran); //Advection vector in x & y direction.
-					}
+					double ran = unif(rng); //Random number between 0 and 1.
+					v_eff[s][i].first = v[s]*cos(2*PI*ran); v_eff[s][i].second = v[s]*sin(2*PI*ran); //Advection vector in x & y direction.
+					//}
 
 					//Next sampling the advection vector from v[s].
 					//unif = uniform_real_distribution<double>(0.0, 1.0);
@@ -3445,7 +3467,7 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 	cout << "NOSTRA" <<endl;
   	// The pspace to iterate over.
     vector <double> t_measure = logarithm10_time_bins(t_max, dt);
-	//vector <double> t_measure = linspace(40, 880, 22);
+	//vector <double> t_measure = linspace(25, 5000, 200);
 	// Computes and returns ln-distributed points from t= 10^{0} to log10(t_max) (the latter rounded down to 1 decimal place) 
   	// Returns time-points measured on a natural logarithmic scale from e^{2} to e^ln(t_max) rounded down to one decimal place.
 
@@ -3474,18 +3496,25 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 	frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 50, 400, 8, "linspace", true);
 	frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 400, 1200, 9, "linspace", true);
 
-	// For correlation measurement, add linear window from 10 to 4000, with 400 points (spaced 10 apart).
-	//frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 10, 4000, 400, "linspace", true);
+	if(g > 250)
+	{
+		frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 0, 5000, 6, "linspace", true);
+		frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 6000, 10000, 3, "linspace", true);
 
+	}
 
+	// For correlation measurement, add linear window from 25 to 5000, with 200 points (spaced 25 apart).
+	//frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 25, 5000, 200, "linspace", true);
+
+	///** 
 	if(t_measure[t_measure.size()-1] > 90000)
 	{
 
 		// Remove all elements of frame_tmeas that lie between 50000 and 100000.
 		//frame_tmeas.erase(std::remove_if(frame_tmeas.begin(), frame_tmeas.end(), 
 		//[](double x){return (x > 50000.0 && x < 100000.0);}), frame_tmeas.end());
-		// Create linear window from 50000 to 100000, with 26 points (spaced 2500 apart).
-		vector <double> t_frame_linearwindow = linspace(50000, 100000, 26); 
+		// Create linear window from 80000 to 120000, with 11 points (spaced 2000 apart).
+		vector <double> t_frame_linearwindow = linspace(80000, 120000, 11);
 		// Rounded down to 1 decimal place.
 		// Insert the linear window to frame_tmeas vector after the element in frame_tmeas that is just less than the first element in t_frame_linearwindow.
 		auto it = std::upper_bound(frame_tmeas.begin(), frame_tmeas.end(), t_frame_linearwindow[0]);
@@ -3494,13 +3523,15 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 		sort( frame_tmeas.begin(), frame_tmeas.end() );
 
 		// Create a linear window from 80000 to 150000, spaced 250 apart (281 points).
-		vector <double> t_frame_linearwindow2 = linspace(80000, 150000, 281);
+		//vector <double> t_frame_linearwindow2 = linspace(80000, 150000, 281);
+		vector <double> t_frame_linearwindow2 = linspace(80000, 120000, 81); // 81 points spaced 500 apart.
 		// Insert into t_measure vector after the element in t_measure that is just less than the first element in t_frame_linearwindow2.
 		auto it2 = std::upper_bound(t_measure.begin(), t_measure.end(), t_frame_linearwindow2[0]);
 		t_measure.insert(it2, t_frame_linearwindow2.begin(), t_frame_linearwindow2.end());
 		// Sort the t_measure vector in ascending order and remove duplicates (if any).
 		sort( t_measure.begin(), t_measure.end() );	
 	}
+	//*/
 	// Remove all duplicate elements in frame_tmeas and t_measure.
 	frame_tmeas.erase( unique( frame_tmeas.begin(), frame_tmeas.end() ), frame_tmeas.end() );
 	t_measure.erase( unique( t_measure.begin(), t_measure.end() ), t_measure.end() );

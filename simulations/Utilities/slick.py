@@ -34,6 +34,7 @@ import scipy.fft as _cpu_fft
 import scipy.signal as _cpu_signal
 import scipy.interpolate as _cpu_interpolate
 import scipy.stats as _cpu_stats
+import scipy.ndimage as _cpu_ndimage
 
 # Ensure warnings don't show full paths
 warnings.formatwarning = lambda message, category, filename, lineno, line=None: f"{os.path.basename(filename)}:{lineno}: {category.__name__}: {message}\n"
@@ -57,12 +58,13 @@ if USE_CUDA:
         GPU_AVAILABLE = True
         # RAPIDs libraries (WORK ONLY ON LINUX WITH NVIDIA GPUS)
         if sys.platform.startswith("linux"):
+            
             try:
-                import cudf.pandas
-                cudf.pandas.install()
-                import cuml.accel
-                cuml.accel.install()
-                RAPIDS_AVAILABLE = True
+                #import cudf.pandas
+                #cudf.pandas.install()
+                #import cuml.accel
+                #cuml.accel.install()
+                #RAPIDS_AVAILABLE = True
                 print("RAPIDs acceleration enabled... ✅✅"); time.sleep(1)
             except ImportError as e:
                 warnings.warn(f"RAPIDs libraries not found ❌: {e} . Using CuPy only for GPU acceleration... 👹")
@@ -72,22 +74,26 @@ if USE_CUDA:
             time.sleep(1)
         
         #import pandas
-
-        # Check if Dask distributed is available
-        try:
-            import dask.distributed as _dask_distributed
-            from dask.distributed import Client as _dask_Client
-            from dask.distributed import LocalCluster as _dask_LocalCluster
-
-            DASK_AVAILABLE = True
-            print("Dask distributed is available and enabled for parallel processing.✅✅✅"); time.sleep(1)
-        except ImportError as e:
-            warnings.warn(f"Dask distributed not found: {e}. Switching to joblib... True CPU-GPU interops not available. ❌"); time.sleep(2)
         
     except ImportError as e:
         warnings.warn(f"Error importing GPU libraries: {e}. Falling back to CPU usage...❌❌❌"); time.sleep(5)
         USE_CUDA = False
         GPU_AVAILABLE = False
+
+# Check if Dask distributed is available
+try:
+    import dask.distributed as _dask_distributed
+    import dask as _dask
+    from dask import delayed as _dask_delayed
+    from dask.distributed import Client as _dask_Client
+    from dask.distributed import progress as _dask_progress
+    from dask.distributed import LocalCluster as _dask_LocalCluster
+    from dask.diagnostics import ProgressBar as _dask_ProgressBar
+
+    DASK_AVAILABLE = True
+    print("Dask distributed is available and enabled for parallel processing.✅✅✅"); time.sleep(1)
+except ImportError as e:
+    warnings.warn(f"Dask distributed not found: {e}. Switching to joblib... True CPU-GPU interops not available. ❌"); time.sleep(2)
 
 # Utlity functions and wrapper modules
 """Recursively convert GPU arrays to CPU arrays."""
@@ -292,6 +298,7 @@ if GPU_AVAILABLE:
     numpy = SmartModule(_cpu_np, _cupy, "numpy")
     fft = SmartModule(_cpu_fft, _gpu_fft, "scipy.fft")
     signal = SmartModule(_cpu_signal, _gpu_signal, "scipy.signal")
+    ndimage = SmartModule(_cpu_ndimage, _gpu_ndimage, "scipy.ndimage")
     # Pre-wrapped common CPU-only modules for convenience
     interpolate = cpu_safe_import("scipy.interpolate")
     stats = cpu_safe_import("scipy.stats")
@@ -299,6 +306,7 @@ else:
     numpy = SmartModule(_cpu_np, None, "numpy")
     fft = SmartModule(_cpu_fft, None, "scipy.fft")
     signal = SmartModule(_cpu_signal, None, "scipy.signal")
+    ndimage = SmartModule(_cpu_ndimage, None, "scipy.ndimage")
     interpolate = _cpu_scipy.interpolate
     stats = _cpu_scipy.stats
 
@@ -345,6 +353,6 @@ def is_gpu_array(arr):
 
 
 # Expose key functions at module level
-__all__ = ['np', 'numpy', 'fft', 'signal', 'interpolate', 'stats', 'init_daskworker_cuda_context',
+__all__ = ['np', 'numpy', 'fft', 'signal', 'interpolate', 'stats', 'ndimage', 'init_daskworker_cuda_context',
            'to_cpu', 'to_gpu', 'asnumpy', 'asarray', 'is_gpu_array', 'setup_daskworker_gpu_context',
            'cpu_safe_import', 'ensure_cpu', 'GPU_AVAILABLE', 'USE_GPU', 'RAPIDS_AVAILABLE', 'DASK_AVAILABLE']

@@ -160,6 +160,7 @@ int main(int argc, char *argv[])
 
   set_global_system_params(dt, dx); //Set the global parameters for the simulation.
   cout << "Global parameters set, with dt/2.0 = " << dt2 << " and dx*dx = " << dx2 <<  " and 1/(dx*dx) = " << dx1_2 << "\n";
+  int dtV[SpB] = {0};
   //INITIAL CONDITIONS:
 
   // Equations for MFT E Eqilibrium values  as functions of a (Rainfall).
@@ -215,7 +216,7 @@ int main(int argc, char *argv[])
   
   recursive_dir_create("../Data/DP/Stochastic/"+ std::to_string(SpB) +"Sp");
   
-  first_order_critical_exp_delta_stochastic_MultiSp(div, t_max, a_start, a_end, a_c, b, c, D, v, sigma, A, H, E, M, pR, chigh, scaling_factor, dt, dx, dP, r, g, -1.0, Vstar);
+  first_order_critical_exp_delta_stochastic_MultiSp(div, t_max, a_start, a_end, a_c, b, c, D, v, sigma, A, H, E, M, pR, dtV, scaling_factor, dt, dx, dP, r, g, -1.0, Vstar);
   
 
   return 0;

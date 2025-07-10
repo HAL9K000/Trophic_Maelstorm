@@ -1,4 +1,5 @@
 import os
+#import dask.delayed
 import regex as re
 from pathlib import Path
 import glob
@@ -94,17 +95,17 @@ The script accepts the following arguments:
 '''
 
 #prefixes =["DiC-NREF-1.1HI", "DiC-NREF-0.5LI", "DiC-NREF-0.1LI"]#, "DiC-NEW"]
-prefixes =["HsX2001-UA125A0-5E2UNI"]
+prefixes =["DiC-STD"]
 #prefixes =["", "DiC", "BURNIN", "DiC-BURNIN", "DDM-DiC", "DDM-DiC-BURNIN"]
 #root_dir = "../Data/Amarel/Rietkerk/Prelims/Stochastic/3Sp/"
 root_dir = "../Data/Remote/Rietkerk/Frames/Stochastic/3Sp/"
 #out_dir_noprefix = "../Data/Remote/Rietkerk/Reorg_Frames/1Sp/StdParam_MFT/"
-out_dir_noprefix = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/ASCALE_20_100_BRNIN-HsX-OLD/"
+out_dir_noprefix = "../Data/Remote/Rietkerk/Reorg_Frames/1Sp/StdParam_MFT/"
 
 #out_dir_noprefix = "../Data/Remote/Rietkerk/Reorg_Frames/3Sp/StdParam_20_100_MFTNu/"
 
 dP = 10000
-Geq = 4.802 # Optional. If Geq is not used in the subdirectory name, set Geq = "NA".
+Geq = 5 # Optional. If Geq is not used in the subdirectory name, set Geq = "NA".
 Veq = "NA" # Optional. If Veq is not used in the subdirectory name, set Veq = "NA".
 L= [128]
 indx_vals_t = -25
@@ -363,12 +364,10 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
                     continue
 
                 # Get ZNCC data for the files in sel_T_files.
-                if(GPU):
-                    pass
-                else:
-                    auto_NCCdf, cross_NCCdf, auto_ZNCCdf, cross_ZNCCdf, auto_AMIdf, cross_AMIdf, auto_MIdf, cross_MIdf, auto_Moransdf, cross_Moransdf = gen_2DCorr_data(
-                        sel_T_files, Tmax, matched_t_vals + [Tmax], crossfiles, pathtodir=subdirpath, ext="csv", ncores= CPU_Ncores,
-                        exclude_col_labels= ["a_c", "x", "L", "W(x; t)", "O(x; t)", "GAM[P(x; t)]"], bins="scotts", calc_AMI = True, calc_MI = True, calc_Morans= True)
+               
+                auto_NCCdf, cross_NCCdf, auto_ZNCCdf, cross_ZNCCdf, auto_AMIdf, cross_AMIdf, auto_MIdf, cross_MIdf, auto_Moransdf, cross_Moransdf = gen_2DCorr_data(
+                    sel_T_files, Tmax, matched_t_vals + [Tmax], crossfiles, pathtodir=subdirpath, ext="csv", ncores= CPU_Ncores,
+                    exclude_col_labels= ["a_c", "x", "L", "W(x; t)", "O(x; t)", "GAM[P(x; t)]"], bins="scotts", calc_AMI = True, calc_MI = True, calc_Morans= False)
                 
                 # If not None, save the dfs to csv files in subdirpath/T_{Tmax}/2DCorr/FFT/
                 Path(subdirpath + "/T_" + str(Tmax) + "/2DCorr/FFT").mkdir(parents=True, exist_ok=True)
@@ -380,9 +379,9 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
                         auto_NCCdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/Auto_NCC_TD_{round(auto_NCCdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
                         # Next, get the harmonic frequencies of the correlation dfs.
                         try:
-                            fftsig_auto_NCCdf, fftpeaks_auto_NCCdf  = gen_1D_HarmonicFreq_Prelimsdata(auto_NCCdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
+                            fftsig_auto_NCCdf, fftpeaks_auto_NCCdf  = get_1D_HarmonicFreq_Prelimsdata(auto_NCCdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
                         except Exception as e:
-                            print(f"Error inside gen_1D_HarmonicFreq_Prelimsdata: {e}")
+                            print(f"Error inside get_1D_HarmonicFreq_Prelimsdata: {e}")
                             raise e 
                         # Save the harmonic frequencies to a csv file in subdirpath/T_{Tmax}/2DCorr/
                         try:
@@ -395,7 +394,7 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
                     
                     if cross_NCCdf is not None:
                         cross_NCCdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/Cross_NCC_TD_{round(cross_NCCdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
-                        fftsig_cross_NCCdf, fftpeaks_cross_NCCdf  = gen_1D_HarmonicFreq_Prelimsdata(cross_NCCdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
+                        fftsig_cross_NCCdf, fftpeaks_cross_NCCdf  = get_1D_HarmonicFreq_Prelimsdata(cross_NCCdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
                         try:
                             if fftsig_cross_NCCdf is not None:
                                 fftsig_cross_NCCdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/FFT/FFTSig_Cross_NCC_TD_{round(cross_NCCdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
@@ -406,7 +405,7 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
                     
                     if auto_ZNCCdf is not None:
                         auto_ZNCCdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/Auto_ZNCC_TD_{round(auto_ZNCCdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
-                        fftsig_auto_ZNCCdf, fftpeaks_auto_ZNCCdf  = gen_1D_HarmonicFreq_Prelimsdata(auto_ZNCCdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
+                        fftsig_auto_ZNCCdf, fftpeaks_auto_ZNCCdf  = get_1D_HarmonicFreq_Prelimsdata(auto_ZNCCdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
                         try:
                             if fftsig_auto_ZNCCdf is not None:
                                 fftsig_auto_ZNCCdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/FFT/FFTSig_Auto_ZNCC_TD_{round(auto_ZNCCdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
@@ -417,7 +416,7 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
 
                     if cross_ZNCCdf is not None:
                         cross_ZNCCdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/Cross_ZNCC_TD_{round(cross_ZNCCdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
-                        fftsig_cross_ZNCCdf, fftpeaks_cross_ZNCCdf  = gen_1D_HarmonicFreq_Prelimsdata(cross_ZNCCdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
+                        fftsig_cross_ZNCCdf, fftpeaks_cross_ZNCCdf  = get_1D_HarmonicFreq_Prelimsdata(cross_ZNCCdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
                         try:
                             if fftsig_cross_ZNCCdf is not None:
                                 fftsig_cross_ZNCCdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/FFT/FFTSig_Cross_ZNCC_TD_{round(cross_ZNCCdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
@@ -428,7 +427,7 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
 
                     if auto_AMIdf is not None:
                         auto_AMIdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/Auto_AMI_TD_{round(auto_AMIdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
-                        fftsig_auto_AMIdf, fftpeaks_auto_AMIdf  = gen_1D_HarmonicFreq_Prelimsdata(auto_AMIdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
+                        fftsig_auto_AMIdf, fftpeaks_auto_AMIdf  = get_1D_HarmonicFreq_Prelimsdata(auto_AMIdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
                         try:
                             if fftsig_auto_AMIdf is not None:
                                 fftsig_auto_AMIdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/FFT/FFTSig_Auto_AMI_TD_{round(auto_AMIdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
@@ -439,7 +438,7 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
                     
                     if cross_AMIdf is not None:
                         cross_AMIdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/Cross_AMI_TD_{round(cross_AMIdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
-                        fftsig_cross_AMIdf, fftpeaks_cross_AMIdf  = gen_1D_HarmonicFreq_Prelimsdata(cross_AMIdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
+                        fftsig_cross_AMIdf, fftpeaks_cross_AMIdf  = get_1D_HarmonicFreq_Prelimsdata(cross_AMIdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
                         try:
                             if fftsig_cross_AMIdf is not None:
                                 fftsig_cross_AMIdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/FFT/FFTSig_Cross_AMI_TD_{round(cross_AMIdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
@@ -450,15 +449,15 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
 
                     if auto_MIdf is not None:
                         auto_MIdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/Auto_MI_TD_{round(auto_MIdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
-                        #fftsig_auto_MIdf, fftpeaks_auto_MIdf  = gen_1D_HarmonicFreq_Prelimsdata(auto_MIdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
+                        #fftsig_auto_MIdf, fftpeaks_auto_MIdf  = get_1D_HarmonicFreq_Prelimsdata(auto_MIdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
 
                     if cross_MIdf is not None:
                         cross_MIdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/Cross_MI_TD_{round(cross_MIdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
-                        #fftsig_cross_MIdf, fftpeaks_cross_MIdf  = gen_1D_HarmonicFreq_Prelimsdata(cross_MIdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
+                        #fftsig_cross_MIdf, fftpeaks_cross_MIdf  = get_1D_HarmonicFreq_Prelimsdata(cross_MIdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
 
                     if auto_Moransdf is not None:
                         auto_Moransdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/Auto_BVMoransI_TD_{round(auto_Moransdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
-                        fftsig_auto_Moransdf, fftpeaks_auto_Moransdf  = gen_1D_HarmonicFreq_Prelimsdata(auto_Moransdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
+                        fftsig_auto_Moransdf, fftpeaks_auto_Moransdf  = get_1D_HarmonicFreq_Prelimsdata(auto_Moransdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
                         try:
                             if fftsig_auto_Moransdf is not None:
                                 fftsig_auto_Moransdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/FFT/FFTSig_Auto_BVMoransI_TD_{round(auto_Moransdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
@@ -469,7 +468,7 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
 
                     if cross_Moransdf is not None:
                         cross_Moransdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/Cross_BVMoransI_TD_{round(cross_Moransdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
-                        fftsig_cross_Moransdf, fftpeaks_cross_Moransdf  = gen_1D_HarmonicFreq_Prelimsdata(cross_Moransdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
+                        fftsig_cross_Moransdf, fftpeaks_cross_Moransdf  = get_1D_HarmonicFreq_Prelimsdata(cross_Moransdf, pathtodir="", X="t-delay", X_as_index= True, report_maxima=True, maxima_finder="find_peaks")
                         try:
                             if fftsig_cross_Moransdf is not None:
                                 fftsig_cross_Moransdf.to_csv(subdirpath + "/T_" + str(Tmax) + f"/2DCorr/FFT/FFTSig_Cross_BVMoransI_TD_{round(cross_Moransdf['t-delay'].max())}.csv", sep=",", index=False, header=True)
@@ -524,8 +523,43 @@ def post_imgprocess(prefixes= [], Trange = [tmin, tmax], largest_T_only = False)
             except Exception as e:
                 print("Error: Could not write 2DCorr data to " + subdirpath + "/2DCorr/ with error message: \n" + str(e))
 
+""" # Summary of the function post_process_df_files(...)
+# A wrapper function that post-processes matching data files in out_dir_noprefix.
+# Similar to post_process(...), but is used to further process output files from the post_process(...) functions
+"""
+def post_process_df_files(prefixes= [], frame_file_prefixes=["Auto_NCC", "Cross_NCC", "Auto_ZNCC", "Cross_ZNCC", 
+                "Auto_AMI", "Cross_AMI", "Auto_MI", "Cross_MI", "Auto_BVMoransI", "Cross_BVMoransI"]):
+    #Assigning prefixes to all subdirectories in out_dir_noprefix if prefixes is empty.
+    if len(prefixes) == 0:
+        prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(out_dir_noprefix, '*/'))]
 
+    for pre in prefixes:
+        for frame_file_prefix in frame_file_prefixes:
+            # Recursively navigate to each sub-directory within out_dir_noprefix/{pre} that contains files of the form "MEAN_TSERIES*.csv".
+            # These subdirectories may be immediate or nested.
+            # For each such non-empty nested sub-directory, use glob to find all files of the form "MEAN_TSERIES*.csv".
+            # Pass this list of files to other functions for further processing.
+            files = glob.glob(os.path.join(out_dir_noprefix, pre, frame_file_prefix + "*.csv"))
+            
+            
+            print(f"Processing {frame_file_prefix} for prefix: {pre}...")
+        
+            workdir = os.path.join(out_dir_noprefix, pre)
+            all_valid_subdirpaths = [dir for dir, _, files in os.walk(workdir) if len(glob.glob(dir + "/" + frame_file_prefix + "*.csv")) > 0]
+            for subdirpath in all_valid_subdirpaths:
+                files = glob.glob(subdirpath + "/" + frame_file_prefix + "*.csv")
+                # Now pass this list of files to other functions for further processing.
+                
+                #If no files are found, skip the subdirectory.
+                if len(files) == 0:
+                    continue
 
+                # Does the same analysis as found in post_imgprocess(...), but only for the files with the prefix frame_file_prefix.
+                gen_1D_HarmonicFreq_PrelimsWrapper(files, subdirpath, "csv", X="t-delay", X_as_index=True, skip_row=0,
+                    report_maxima=True, maxima_finder="find_peaks", rel_threshold =0.05, abs_threshold=2, index_cols = [0,1, 2, 3])
+                
+
+            print(f"\nDone post-processing {frame_file_prefix} for prefix: {pre}... \n")
 
 """ # Summary of the function post_process_gamma(...)
 # A wrapper function that post-processes the data files in out_dir_noprefix, after the main() function has been executed.
@@ -566,7 +600,7 @@ def post_process_gamma(prefixes= []):
             '''# Find potential well data in files using gen_potential_well_data.
             # Save the potential well data to a csv file in subdirpath/Pot_Well.
             # If evaluate_local_minima is True, also save the local minima data to a csv file in subdirpath/Gamma_Pot_Well.
-            '''
+            #
             df_kde, df_local_minima = gen_potential_well_data(files, pathtodir=subdirpath, ext="csv",
                     exclude_col_labels= ["a_c", "x", "L"], Tmin = 50000, evaluate_local_minima= True, bins =100)
             Path(subdirpath + "/Gamma_Pot_Well").mkdir(parents=True, exist_ok=True)
@@ -583,7 +617,130 @@ def post_process_gamma(prefixes= []):
         print(f"\nDone post-processing GAMMA for prefix: {pre}... \n")
 
 
+"""
+Process a single subdirectory containing {filetype_ID}*.csv files.
+This function contains all the processing logic that was previously in the inner loop of post_process.
+It is designed to be used as a helper function for post_process(...).
+"""
+def post_process_subdir(subdirpath, prefix, filetype_ID="FRAME", tmin=tmin, tmax=tmax):
+    try:
+        files = glob.glob(subdirpath + f"/{filetype_ID}*.csv")
+        # If no files are found, skip the subdirectory.
+        if len(files) == 0:
+            return f"Skipped as no files of type {filetype_ID}*.csv were found..."
+        
+        # Now pass this list of files to other functions for further processing.
+        # For example, one can calculate the mean and standard deviation of the files in the subdirectory.
+        # Or one can calculate the autocorrelation of the files in the subdirectory.
+        # Or one can calculate the power spectrum of the files in the subdirectory.
 
+        #'''# Find mean and standard deviation of each column in each file in files if the column values are non-zero.
+        #Mean and Std Rho Density & Max Replicates
+        df_surviving = gen_MEAN_SD_COLSfiledata(files, pathtodir=subdirpath, ext="csv", nonzero=True, add_counts= True)
+        df_all = gen_MEAN_SD_COLSfiledata(files, pathtodir=subdirpath, ext="csv", nonzero=False, add_counts= True)
+        
+        # Save this df (excluding first two columns) to a txt file in subdirpath.
+        if filetype_ID == "FRAME":
+            try:
+                if df_surviving is not None:
+                    df_surviving.to_csv(subdirpath + f"/MEAN_STD_{filetype_ID}_Surviving_Runs.txt", sep="\t", index=False, header=True)
+                if df_all is not None:
+                    df_all.to_csv(subdirpath + f"/MEAN_STD_{filetype_ID}_All_Runs.txt", sep="\t", index=False, header=True)
+            except Exception as e:
+                print("Error: Could not write MEAN_STD to " + subdirpath + "/MEAN_STD.txt with error message: \n" + str(e))
+        #'''
+
+        #'''# Find max R in files.
+        Rvals=[]; find_vals(files, ["R_[\d]+"], Rvals) 
+        # Assumes R is an integer and files are of the form "FRAME_T_{T}_a_{a_val}_R_{R}.csv"
+        maxR = max([int(re.sub("R_", "", r)) for r in Rvals])
+        # Save maxR+1 to a text file "maxR.txt" in subdirpath, overwriting the file if it already exists.
+        try:
+            if filetype_ID == "FRAME":
+                with open(subdirpath + "/maxR.txt", "w") as f:
+                    f.write(str(maxR + 1))
+                f.close()
+            elif filetype_ID == "GAMMA":
+                # For GAMMA files, save to "gammaxR.txt" instead.
+                with open(subdirpath + "/gammaxR.txt", "w") as f:
+                    f.write(str(maxR + 1))
+                f.close()
+        except Exception as e:
+            print("Error: Could not write maxR to */" + os.path.basename(subdirpath) + "/maxR.txt with error message: \n" + str(e))
+            
+        if filetype_ID == "FRAME":
+            
+            #'''# Find Mean for each column in each file in files and the mean across all files for each column using gen_MEAN_INDVL_Colsfiledata.
+            # Save this df to a txt file in subdirpath.
+            
+            df_replicates = gen_MEAN_INDVL_Colsfiledata(files, pathtodir=subdirpath, ext="csv")
+            try:
+                if df_replicates is not None:
+                    df_replicates.to_csv(subdirpath + f"/MEAN_{filetype_ID}_REPLICATES.txt", sep="\t", index=False, header=True)
+            except Exception as e:
+                print("Error: Could not write MEAN_REPLICATES to " + subdirpath + f"/MEAN_{filetype_ID}_REPLICATES.txt with error message: \n" + str(e))
+            #'''
+
+            #'''# Finds the power spectrum of each column in each file using gen_FFT_PowerSpectra.
+            # Bin_mask : "auto" (use GMMs to find thresholds), "read" (read thresholds from files in savedir/BIN_MASKS/{files}.txt), 
+            # or None (no thresholding).
+            df_fft_power = gen_FFT_PowerSpectra(files, pathtodir=subdirpath, ext="csv", Tmin = tmin, Tmax = tmax, bin_mask= "GMM", 
+                                                exclude_col_labels= ["a_c", "x", "L", "W(x; t)", "O(x; t)"], binwidth=0.5)
+            Path(subdirpath + "/FFT_PowerSpect").mkdir(parents=True, exist_ok=True)
+
+            print("Found FFT Power Spectra:")
+            #print(df_fft_power)
+
+            try:
+                if df_fft_power is not None:
+                    df_fft_power.to_csv(subdirpath + "/FFT_PowerSpect/FFT_POWERspectra.csv", sep=",", index=False, header=True)
+            except Exception as e:
+                print("Error: Could not write FFT_PowerSpectra to " + subdirpath + "/FFT_PowerSpect/FFT_PowerSpectra.csv with error message: \n" + str(e))
+            #'''
+
+            '''# Find clustered data in files using gen_clustered_data.
+            # If evaluate_clusterfrequencies is True, save the frequencies of cluster sizes 
+            # across replicates to a csv file in subdirpath/CLUST/{cluster_type}_{n_clusters}/
+            cluster_type = "GMM" # or "KMeans", "GMM", "Zero".
+            nclusters = 2 # Number of clusters to find.
+            df_clustered_freqs = gen_clustered_data(files, pathtodir=subdirpath, ext="csv", exclude_col_labels= ["a_c", "x", "L", "W(x; t)", "O(x; t)"], 
+                    Tmin = tmin, Tmax = tmax, n_clusters=nclusters, cluster_type=cluster_type, evaluate_clusterfrequencies= True, periodic=True, save_frames= False)
+            #Path(subdirpath + "/CLUST/Kmeans_2").mkdir(parents=True, exist_ok=True)
+            try:
+                if df_clustered_freqs is not None:
+                    df_clustered_freqs.to_csv(subdirpath + f"/CLUST/{cluster_type}_{nclusters}/CLUSTERED_FREQUENCIES.csv", sep=",", index=False, header=True)
+            except Exception as e:
+                print("Error: Could not write clustered data to " + subdirpath + f"/CLUST/{cluster_type}_{nclusters}/CLUSTERED_FREQUENCIES.csv with error message: \n" + str(e))
+            #'''
+
+            '''# Find potential well data in files using gen_potential_well_data.
+            # Save the potential well data to a csv file in subdirpath/Pot_Well.
+            # If evaluate_local_minima is True, also save the local minima data to a csv file in subdirpath/Pot_Well.
+            df_kde, df_local_minima = gen_potential_well_data(files, pathtodir=subdirpath, ext="csv", 
+                    #exclude_col_labels= ["a_c", "x", "L"], Tmin = 150000, evaluate_local_minima= True, bins =300)
+                    exclude_col_labels= ["a_c", "x", "L"], Tmin = tmin, evaluate_local_minima= True, bins =300)
+            Path(subdirpath + "/Pot_Well").mkdir(parents=True, exist_ok=True)
+            try:
+                if df_kde is not None:
+                    df_kde.to_csv(subdirpath + "/Pot_Well/Pot_Well.csv", sep=",", index=False, header=True)
+                if df_local_minima is not None:
+                    df_local_minima.to_csv(subdirpath + "/Pot_Well/LOCAL_MINIMA.csv", sep=",", index=False, header=True)
+            except Exception as e:
+                print("Error: Could not write potential well data to " + subdirpath + "/Pot_Well/Pot_Well.csv with error message: \n" + str(e))
+            #'''
+        
+        return f"✅ Successfully post-processed {len(files)} files of type {filetype_ID}*.csv ..."
+    except Exception as e:
+        trace_str = ''.join(traceback.format_exception(type(e), e, e.__traceback__));
+        trace_frame =inspect.stack()[1]; 
+        err_str = f"❌ Error: Could not post-process {filetype_ID}*.csv files in {subdirpath}:"\
+        f" 📄 {os.path.basename(trace_frame.filename)}, L. {trace_frame.lineno}, with 💥 Error: {e}\n"\
+        f"🧵 Full traceback:\n{trace_str}"
+        #return f"❌ Error: Could not post-process {filetype_ID}*.csv files in {subdirpath} with error message: \n{str(e)}"
+        return err_str
+        
+    
+       
 """ # Summary of the function post_process(...)
 # A wrapper function that post-processes the data files in out_dir_noprefix, after the main() function has been executed/
 # Out_dir_noprefix is the output directory where the reorganised data files are stored.
@@ -596,6 +753,84 @@ def post_process_gamma(prefixes= []):
 # 3. Next, for each such non-empty nested sub-directory, use glob to find all files of the form "FRAME*.csv".
 # 4. Next, pass this list of files to other functions for further processing.
 """
+def unified_post_process(prefixes= [], filetype_ID="FRAME", ncores= CPU_Ncores, tmin=tmin, tmax=tmax):
+
+    if gpu.DASK_AVAILABLE:
+        # Use Dask to parallelize the post-processing of each subdirectory.
+        mem_limit = "3GB"
+        daskclient = dask_Client(processes=True, n_workers=ncores, threads_per_worker=1, memory_limit="3GB")
+        if gpu.GPU_AVAILABLE:
+            daskclient.register_worker_plugin(gpu.setup_daskworker_gpu_context)
+        # Assigns local CUDA context to each worker.
+        joblib_backend = 'dask'
+        print("Dashboard URL: ", daskclient.dashboard_link)
+        # Pause for 5s
+        time.sleep(8)
+    else:
+        daskclient = None
+        joblib_backend = 'threading' if gpu.GPU_AVAILABLE else 'loky'
+    
+    #Assigning prefixes to all subdirectories in out_dir_noprefix if prefixes is empty.
+    if len(prefixes) == 0:
+        prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(out_dir_noprefix, '*/'))]
+    
+    try:
+        for pre in prefixes:
+            # Recursively navigate to each sub-directory within out_dir_noprefix/{pre} that contains files of the form "FRAME*.csv".
+            # These subdirectories may be immediate or nested.
+            # For each such non-empty nested sub-directory, use glob to find all files of the form "FRAME*.csv".
+            # Pass this list of files to other functions for further processing.
+            workdir = os.path.join(out_dir_noprefix, pre)
+            all_valid_subdirpaths = [dir for dir, _, files in os.walk(workdir) if len(glob.glob(dir + f"/{filetype_ID}*.csv")) > 0]
+
+            if len(all_valid_subdirpaths) == 0:
+                print("\n=====================================================================================================\n")
+                print(f"Done post-processing {filetype_ID} for prefix: {pre}...")
+                print("\n=====================================================================================================\n")
+                continue
+
+            if daskclient:
+                # Use Dask to parallelize the post-processing of each subdirectory.
+                nofutures =[dask_delayed(post_process_subdir)(subdirpath, pre, filetype_ID, tmin, tmax) for subdirpath in all_valid_subdirpaths]
+                nosubmission = daskclient.compute(nofutures)
+                # Track the progress of the Dask tasks.
+                dask_progress(nosubmission)
+                results = daskclient.gather(nosubmission)
+
+                #with dask_ProgressBar():
+                #    results = dask.compute(*nofutures)
+            else:
+                # Use joblib to parallelize the post-processing of each subdirectory.
+                with parallel_backend(joblib_backend, n_jobs=ncores):
+                    results = Parallel(
+                        batch_size="auto",
+                        verbose=10 if True else 0 #verbose else 0  # Joblib verbosity
+                    )([
+                        delayed(post_process_subdir)(subdirpath, pre, filetype_ID, tmin, tmax) 
+                        for subdirpath in all_valid_subdirpaths
+                    ])
+            # Print the results of post-processing that are error messages (containing "Error" or "Skipped").
+            # Also print the number of successful post-processing results.
+            #print(f"\nPost-processing results for prefix: {pre}...")
+            successful_results = [result for result in results if re.search(r"✅ Successfully post-processed", result)]
+            print(f"Number of successful post-processing subdirectory evaluations for prefix {pre}:"
+                f" {len(successful_results)} / {len(all_valid_subdirpaths)}")
+            print(f"With {len(results) - len(successful_results)} errors or skipped subdirectories as...")
+            for result in results:
+                if result not in successful_results:
+                    print(result)
+            print("\n=====================================================================================================\n")
+            print(f"Done post-processing {filetype_ID} for prefix: {pre}...")
+            print("\n=====================================================================================================\n")
+    finally:
+        if gpu.DASK_AVAILABLE and daskclient is not None:
+            #daskclient.unregister_worker_plugin(gpu.setup_daskworker_gpu_context)
+            daskclient.close()
+            print("Dask client closed and worker plugin unregistered...")
+
+
+
+
 def post_process(prefixes= []):
     #Assigning prefixes to all subdirectories in out_dir_noprefix if prefixes is empty.
     if len(prefixes) == 0:
@@ -614,12 +849,8 @@ def post_process(prefixes= []):
             # For example, one can calculate the mean and standard deviation of the files in the subdirectory.
             # Or one can calculate the autocorrelation of the files in the subdirectory.
             # Or one can calculate the power spectrum of the files in the subdirectory.
-            # Or one can calculate the mean squared displacement of the files in the subdirectory.
-            # Or one can calculate the velocity autocorrelation of the files in the subdirectory.
-            # Or one can calculate the spatial correlation of the files in the subdirectory.
-            # Or one can calculate the spatial power spectrum of the files in the subdirectory.
 
-            '''# Find mean and standard deviation of each column in each file in files if the column values are non-zero.
+            #'''# Find mean and standard deviation of each column in each file in files if the column values are non-zero.
             #Mean and Std Rho Density & Max Replicates
             df_surviving = gen_MEAN_SD_COLSfiledata(files, pathtodir=subdirpath, ext="csv", nonzero=True, add_counts= True)
             df_all = gen_MEAN_SD_COLSfiledata(files, pathtodir=subdirpath, ext="csv", nonzero=False, add_counts= True)
@@ -635,7 +866,7 @@ def post_process(prefixes= []):
             
             #'''
 
-            '''# Find max R in files.
+            #'''# Find max R in files.
             Rvals=[]; find_vals(files, ["R_[\d]+"], Rvals) 
             # Assumes R is an integer and files are of the form "FRAME_T_{T}_a_{a_val}_R_{R}.csv"
             maxR = max([int(re.sub("R_", "", r)) for r in Rvals])
@@ -658,7 +889,7 @@ def post_process(prefixes= []):
                 print("Error: Could not write MEAN_REPLICATES to " + subdirpath + "/MEAN_REPLICATES.txt with error message: \n" + str(e))
             #'''
 
-            # Finds the power spectrum of each column in each file using gen_FFT_PowerSpectra.
+            '''# Finds the power spectrum of each column in each file using gen_FFT_PowerSpectra.
             # Bin_mask : "auto" (use GMMs to find thresholds), "read" (read thresholds from files in savedir/BIN_MASKS/{files}.txt), 
             # or None (no thresholding).
             df_fft_power = gen_FFT_PowerSpectra(files, pathtodir=subdirpath, ext="csv", Tmin = 150000, Tmax = 240000, bin_mask= "auto", 
@@ -673,7 +904,21 @@ def post_process(prefixes= []):
                     df_fft_power.to_csv(subdirpath + "/FFT_PowerSpect/FFT_POWERspectra.csv", sep=",", index=False, header=True)
             except Exception as e:
                 print("Error: Could not write FFT_PowerSpectra to " + subdirpath + "/FFT_PowerSpect/FFT_PowerSpectra.csv with error message: \n" + str(e))
-            
+            #'''
+
+            #'''# Find clustered data in files using gen_clustered_data.
+            # If evaluate_clusterfrequencies is True, save the frequencies of cluster sizes 
+            # across replicatesto a csv file in subdirpath/CLUST/{cluster_type}_{n_clusters}/
+            df_clustered_freqs = gen_clustered_data(files, pathtodir=subdirpath, ext="csv", exclude_col_labels= ["a_c", "x", "L", "W(x; t)", "O(x; t)"], 
+                    Tmin = 4990, Tmax = 5005, n_clusters=2, cluster_type="Kmeans", evaluate_clusterfrequencies= True, periodic=True)
+            #Path(subdirpath + "/CLUST/Kmeans_2").mkdir(parents=True, exist_ok=True)
+            try:
+                if df_clustered_freqs is not None:
+                    df_clustered_freqs.to_csv(subdirpath + "/CLUST/Kmeans_2/CLUSTERED_FREQUENCIES.csv", sep=",", index=False, header=True)
+            except Exception as e:
+                print("Error: Could not write clustered data to " + subdirpath + "/CLUST/Kmeans_2/CLUSTERED_FREQUENCIES.csv with error message: \n" + str(e))
+            #'''
+
             '''# Find potential well data in files using gen_potential_well_data.
             # Save the potential well data to a csv file in subdirpath/Pot_Well.
             # If evaluate_local_minima is True, also save the local minima data to a csv file in subdirpath/Pot_Well.
@@ -966,12 +1211,19 @@ else:
     # Set up a timer to measure the time taken for processing.
 start_time_CPU = time.time()
 end_time_CPU = None
+    
 
 if __name__ == "__main__":
     #main()
     #post_process(prefixes)
+    unified_post_process(prefixes, "FRAME", ncores= CPU_Ncores, tmin=85000, tmax = 120230)
+    #unified_post_process(prefixes, "GAMMA", ncores= CPU_Ncores, tmin=80000)
     #post_process_gamma(prefixes)
-    post_imgprocess(prefixes= prefixes, Trange=[82000.1, 84000, 86000, 88000, 90000, 92000, 94000, 96000, 98000, 100000], largest_T_only= True)
+    #post_imgprocess(prefixes= prefixes, Trange=[82000.1, 84000, 86000, 88000, 90000, 92000, 94000, 96000, 98000, 100000], largest_T_only= True)
+    #post_imgprocess(prefixes= prefixes, Trange=[0, 6000], largest_T_only= True)
+    #post_imgprocess(prefixes= prefixes, Trange=[0, 5001], largest_T_only= True)
+    #post_process_df_files(prefixes= prefixes, frame_file_prefixes=["Auto_NCC", "CROSS_NCC", "Auto_ZNCC", "CROSS_ZNCC", 
+    #    "Auto_AMI", "CROSS_AMI", "Auto_MI", "CROSS_MI", "Auto_BVMoransI", "CROSS_BVMoransI"])
 
 
 if(gpu.GPU_AVAILABLE):
@@ -986,6 +1238,7 @@ if(gpu.GPU_AVAILABLE):
 end_time_CPU = time.time()
 elapsed_time_CPU = end_time_CPU - start_time_CPU
 print(f"Time reported by CPU: {elapsed_time_CPU:.3f} seconds")
+
 
 
 

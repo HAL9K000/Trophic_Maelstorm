@@ -101,6 +101,7 @@ CPU_Ncores = 1; # Number of CPU cores to be used by the script (monothreaded by 
 dynamic_inspect = False;    # Set to True to stop script periodically and inspect values of parameters and outputs.
 
 
+
 def set_prelims_inputs():
     parser = argparse.ArgumentParser(description="Set Prelim Inputs for the script.")
 
@@ -624,6 +625,7 @@ if(gpu.GPU_AVAILABLE):
         print(f"Time taken for processing with GPU: {elapsed_time_GPU:.3f} seconds")
     except Exception as e:
          pass
+    
 end_time_CPU = time.time()
 elapsed_time_CPU = end_time_CPU - start_time_CPU
 print(f"Time reported by CPU: {elapsed_time_CPU:.3f} seconds")

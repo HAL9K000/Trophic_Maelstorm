@@ -323,14 +323,14 @@ void generateNeighboringSitesFromCentral(const auto range_CentralNeighboringSite
 //----------------------------- Regular Rietkerk Integration Machinery --------------------------------------------//
 
 void f_2D(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, double alpha, double d, double rW, double W0,  
-	double D[], double K[],  double t, double dt, double dx, int g);
-void RK4_Integrate(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, double a, double b, double D[], double A[Sp][Sp], 
-	double H[Sp][Sp], double E[], double M[], double t, double dt, double dx, int g);
+	double (&Dxd2)[Sp], double (&K)[3],  double t, double dt, int g);
+void RK4_Integrate(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar,  D2Vec_Double &K1, D2Vec_Double &K2,  D2Vec_Double &K3, D2Vec_Double &K4, D3Vec_Int &nR2, 
+	double a, double b, double (&Dxd2)[Sp], double (&K)[3],  double t, double dt, double dx, int g);
 void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double c, double gmax, 
-	  double alpha, double d, double rW, double W0, double D[], double K[], double a_st, double a_end,  double dt, double dx, double dP, int r, int g);
+	  double alpha, double d, double rW, double W0, double (&D)[Sp], double (&K)[3], double a_st, double a_end,  double dt, double dx, double dP, int r, int g);
 
 void first_order_critical_exp_delta(int div, double t_max, double a_start, double a_end,  double c, double gmax, double alpha,
-	double d, double rW, double W0, double D[], double K[], double dt, double dx, double dP, int r,  int g);
+	double d, double rW, double W0, double (&D)[Sp], double (&K)[3], double dt, double dx, double dP, int r,  int g);
 
 
 //----------------------------- Stochastic Rietkerk-Dornic Integration Machinery --------------------------------------------//

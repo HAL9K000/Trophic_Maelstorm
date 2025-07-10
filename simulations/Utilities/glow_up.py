@@ -14,7 +14,7 @@ import warnings
 import functools
 from functools import lru_cache
 import secrets
-from collections import defaultdict
+from collections import defaultdict, Counter
 from contextlib import contextmanager
 
 
@@ -30,13 +30,19 @@ from joblib import Parallel, delayed, parallel_backend, cpu_count, Memory
 
 if gpu.DASK_AVAILABLE:
     # Set up global Dask Client and configure it.
+    #dask = gpu._dask
+    #dask_distributed = gpu._dask_distributed
+    dask_delayed = gpu._dask_delayed
+    dask_progress = gpu._dask_progress
     dask_Client = gpu._dask_Client
     dask_LocalCluster = gpu._dask_LocalCluster
+    #dask_ProgressBar = gpu._dask_ProgressBar
 
 # Importing necessary libraries
 np = gpu.np
 signal = gpu.signal
 fft = gpu.fft
+ndimage = gpu.ndimage
 
 interpolate = gpu.interpolate
 stats = gpu.stats
@@ -48,8 +54,10 @@ is_gpu_array = gpu.is_gpu_array
 _np_base = gpu._cpu_np  # Access the underlying numpy module
 
 # CPU-only modules
-esda_moran = gpu.cpu_safe_import("esda.moran")
-libpysal_weights = gpu.cpu_safe_import("libpysal.weights")
+#esda_moran = gpu.cpu_safe_import("esda.moran")
+#libpysal_weights = gpu.cpu_safe_import("libpysal.weights")
+#import esda.moran as esda_moran
+#import libpysal.weights as libpysal_weights
 #from esda_moran import Moran_BV
 #from libpysal_weights import Queen, KNN, lat2W
 
@@ -75,10 +83,18 @@ if gpu.GPU_AVAILABLE and not gpu.RAPIDS_AVAILABLE:
 else:
     # RAPIDs handles CPU fallback by default, so no need for additional handling here.
     from sklearn.cluster import KMeans
-    from sklearn.mixture import GaussianMixture
-    from skimage.metrics import structural_similarity as ssim
-    from sklearn.metrics import mutual_info_score , normalized_mutual_info_score
-    from sklearn.metrics import adjusted_mutual_info_score
+    #from sklearn.mixture import GaussianMixture
+    #from skimage.metrics import structural_similarity as ssim
+    #from sklearn.metrics import mutual_info_score #, normalized_mutual_info_score
+    sklearn_metrics = gpu.cpu_safe_import("sklearn.metrics")
+    skimage_metrics = gpu.cpu_safe_import("skimage.metrics")
+    sklearn_mixture = gpu.cpu_safe_import("sklearn.mixture")
+    GaussianMixture = sklearn_mixture.GaussianMixture
+    ssim = skimage_metrics.structural_similarity
+    mutual_info_score = sklearn_metrics.mutual_info_score
+    normalized_mutual_info_score = sklearn_metrics.normalized_mutual_info_score
+    adjusted_mutual_info_score = sklearn_metrics.adjusted_mutual_info_score
+    #from sklearn.metrics import adjusted_mutual_info_score
     import pandas as pan
 
 '''
@@ -457,7 +473,7 @@ def gen_MEAN_SD_COLSfiledata(files, pathtodir="", ext="csv", exclude_col_labels=
     pooled_data_stats = pan.DataFrame(columns = [y + x for x in col_labels 
             for y in ["POOLED_AVG ", "POOLED_VAR ", "POOLED_SAMPLE_SIZE ", "POOLED_COUNTS "]])
     # Initialise the pooled_data_stats to 0.
-    pooled_data_stats.loc[0] = 0
+    pooled_data_stats.loc[0] = 0.0
     # Iterate over all files in files.
     for file in files:
 
@@ -536,7 +552,7 @@ def gen_MEAN_INDVL_Colsfiledata(files, pathtodir="", ext="csv", exclude_col_labe
     col_labels = df.columns; col_labels = [col.strip() for col in col_labels]
     col_labels = [col for col in col_labels if col not in exclude_col_labels];
     # Remove exclude_col_labels from col_labels.
-
+    tot_col_labels = len(col_labels)
     # Create a df with col_labels as column names. This will store the mean data, fot each column in col_labels for each file in files.
     # Create another df which will concatenate the mean data across all files.
     df_file = pan.DataFrame(columns= ["AVG[" + x + "]" for x in col_labels])
@@ -546,6 +562,7 @@ def gen_MEAN_INDVL_Colsfiledata(files, pathtodir="", ext="csv", exclude_col_labe
     for file in sorted(files, key= lambda x: int(re.sub("R_", "", re.findall(r'R_[\d]+', x)[0]))):
         # Read the file.
         Rstr = re.findall(r'R_[\d]+', file)[0]
+        R = int(re.sub("R_", "", Rstr))
         #R = int(re.search(r'R_[\d]+', file).group(0).split("_")[1])
         if(ext == "csv"):
             df = pan.read_csv(file, header=0)
@@ -565,6 +582,12 @@ def gen_MEAN_INDVL_Colsfiledata(files, pathtodir="", ext="csv", exclude_col_labe
         if not all([col in df.columns for col in col_labels]):
             print("Error: Columns in file " + pathtodir + "/" + file + " are not standardised.")
             return None
+
+        # Consolidate df_file based on R value.
+        if getattr(df_file, "_data", None) is not None and df_file._data.nblocks > 100:
+            df_file._consolidate_inplace()
+        if getattr(df_pooled, "_data", None) is not None and df_pooled._data.nblocks > 100:
+            df_pooled._consolidate_inplace()
         
         # Find mean of each column in df.
         for col in col_labels:
@@ -607,7 +630,7 @@ def gen_MEAN_INDVL_Colsfiledata(files, pathtodir="", ext="csv", exclude_col_labe
     The function will also generate the mean FFT power spectra across all files for each column in the files, which is stored in POWER[{var}]_MEAN.
 '''
 def gen_FFT_PowerSpectra(files, pathtodir="", ext="csv", bin_mask= None, exclude_col_labels= ["a_c", "x", "L"], 
-                         Tmin= None, Tmax = None, Lval="infer", binwidth=1, verbose= False):
+                         Tmin= None, Tmax = None, Lval="infer", binwidth=0.5, verbose= False):
     
     # Read the first file in files.
     # If L is not provided, infer L from the maximum length of the column in the files.
@@ -647,7 +670,8 @@ def gen_FFT_PowerSpectra(files, pathtodir="", ext="csv", bin_mask= None, exclude
     for file in sorted(files, key= lambda x: int(re.sub("R_", "", re.findall(r'R_[\d]+', x)[0]))):
         Rstr = re.findall(r'R_[\d]+', file)[0]
         #print(f"subdir: {pathtodir}, file: {file}, R: {Rstr}")
-        filename = file.split(pathtodir + "\\")[1]
+        #filename = file.split(pathtodir + "\\")[1]
+        filename = os.path.basename(file)
         # Read the file.
         if(ext == "csv"):
             df = pan.read_csv(file, header=0)
@@ -694,7 +718,7 @@ def gen_FFT_PowerSpectra(files, pathtodir="", ext="csv", bin_mask= None, exclude
                 print("Error: Could not load binarised mask for file " + pathtodir + "/" + file + " with error message: \n" + str(e))
                 print("Proceeding without binarisation....")
                 bin_mask = None
-        elif bin_mask == "auto":
+        elif bin_mask == "auto" or bin_mask == "GMM":
             # We will create a binarised mask for each file in files and save it in <path_to_dir>/BIN_MASKS.
                 # The binarised mask will have column names as the same as the columns in the file, with each column
                 # bearing a single threshold value (float b/w 0 and 1) for binarisation.
@@ -704,25 +728,43 @@ def gen_FFT_PowerSpectra(files, pathtodir="", ext="csv", bin_mask= None, exclude
                     data = df[col].dropna().to_numpy(dtype=np.float64).reshape(-1, 1)
                     # Normalise the data in each column by max value in the column.
                     data /= data.max() if data.max() != 0.0 else 1.0
-                    gmm = GaussianMixture(n_components=2, covariance_type='full', random_state=rng.integers(0, 1000))
+                    gmm = GaussianMixture(n_components=2, covariance_type='full', random_state=gpu._cpu_np.random.randint(0, 1000))
                     gmm.fit(data)
+                    binned_data = gmm.predict(data)
                     # Set threshold as the mean of the means of the two clusters.
                     thresholds.loc[0, col] = float(np.mean(gmm.means_.flatten()))
+                    # Next sort the centers in ascending order and reassign cluster ids accordingly.
+                    sorted_indices = np.argsort(gmm.means_.flatten())
+                    binned_data = sorted_indices[binned_data]
+                    # Assign the binned data to the column in df.
+                    df[col] = pan.Series(binned_data)
+
                 # Print all thresholds.
                 print(f"Thresholds for file {filename} are: \n" + str(thresholds))
                 # Save the binarised mask in <path_to_dir>/BIN_MASKS/.
-                savetxt_to_dir(thresholds, pathtodir + "/BIN_MASKS", filename.split("." + ext)[0] + ".txt", header = True, index = False, sep = "\t", overwrite = True, verbose = verbose)
+                savetxt_to_dir(thresholds, pathtodir + "/BIN_MASKS", filename.split("." + ext)[0] + ".txt", 
+                               header = True, index = False, sep = "\t", overwrite = True, verbose = verbose)
+                
+                
                 # Assign the binarised mask to bin_mask.
                 BINmask = thresholds
 
         kbins = np.arange(1 - binwidth/2, L//2 + 1, binwidth) # Bin the data in each column before generating the FFT power spectra.
         kvals = 0.5*(kbins[1:] + kbins[:-1]) #k values at bin centers (1 , 2, 3, ... L//2)
         # Store the k values in the dataframe at the start.
-        df_fft_power.insert(len(df_fft_power.columns), "k_" + Rstr, kvals)
+        df_fft_power.insert(len(df_fft_power.columns), "k_" + Rstr, pan.Series(kvals))
         for col in col_labels:
             # Resize each column in the files to a square matrix of size L x L.
             # Bin the data in each column before generating the FFT power spectra.
-            img_arr = df[col].to_numpy(dtype=np.float64); img_arr = np.resize(img_arr, (L, L))
+            
+            
+            img_arr = asarray(df[col].values).astype(np.float64)  # Convert to float64 for FFT calculations.
+            # Ensure img_arr is dtype float64.
+
+            if gpu.GPU_AVAILABLE:
+                print(f"Is img_arr at this point a CUPY array? {isinstance(img_arr, gpu._cupy.ndarray)}")
+                print(f"Is img_arr at this point a NUMPY array? {isinstance(img_arr, gpu._cpu_np.ndarray)}")
+            img_arr = np.resize(img_arr, (L, L))
             #mean_arr = img_arr.mean(); var_arr = img_arr.var()
             #print(f"Mean of {col} = {mean_arr}, Variance of {col} = {var_arr}, BEFORE NORMALISATION.")
             # Normalise the data in each column by max value in the column.
@@ -731,10 +773,19 @@ def gen_FFT_PowerSpectra(files, pathtodir="", ext="csv", bin_mask= None, exclude
 
             if var_arr == 0 and mean_arr == 0:
                 print(f"Warning: Homogenous 0 column {col} at a = {aval}, T = {Tval}, R = {Rstr}...")
-            if bin_mask == "read" or bin_mask == "auto":
+            if bin_mask == "read":
                 try:
                     # Binarise the data in each column in the file using the binarised mask.
-                    img_arr = np.where(BINmask[col].to_numpy(dtype=np.float64) > img_arr, 0, img_arr)
+                    #img_arr = np.where(BINmask[col].to_numpy(dtype=np.float64) > img_arr, 0, img_arr)
+                    # Print and check if img_arr is a numpy array or a cupy array.
+                    if gpu.GPU_AVAILABLE:
+                        print(f"Is img_arr CUPY array? {isinstance(img_arr, gpu._cupy.ndarray)}")
+                        print(f"Is img_arr NUMPY array? {isinstance(img_arr, gpu._cpu_np.ndarray)}")
+                        print(f"Is asarray(BINmask[col].values) CUPY array? {isinstance(asarray(BINmask[col].values), gpu._cupy.ndarray)}")
+                        print(f"Is asarray(BINmask[col].values) NUMPY array? {isinstance(asarray(BINmask[col].values), gpu._cpu_np.ndarray)}")
+                        print(f"Is BINmask[col].values a Pandas Series? {isinstance(BINmask[col].values, gpu._cpu_pandas.Series)}")
+                        print(f"Is BINmask[col].values a Numpy array? {isinstance(BINmask[col].values, gpu._cpu_np.ndarray)}")
+                    img_arr = np.where(asarray(BINmask[col].values) > img_arr, 0, img_arr)
                     # If bin
                 except Exception as e:
                     print("Error: Could not binarise data in column " + col + " for file " + pathtodir + "/" + file + " with error message: \n" + str(e))
@@ -767,11 +818,20 @@ def gen_FFT_PowerSpectra(files, pathtodir="", ext="csv", bin_mask= None, exclude
             knrm = knrm.flatten(); fourier_amplitudes = np.abs(img_fft**2)
             fourier_amplitudes = fourier_amplitudes.flatten()
             
-            Ampbins, _, _ = stats.binned_statistic(knrm, fourier_amplitudes, bins=kbins, statistic='mean')
-
+            #Ampbins, _, _ = stats.binned_statistic(knrm, fourier_amplitudes, bins=kbins, statistic='mean')
+            
+            bin_sums, _ = np.histogram(knrm, bins=kbins, weights=fourier_amplitudes)
+            bin_counts, _ = np.histogram(knrm, bins=kbins)
+            # Calculate the average power in each bin, avoiding division by zero.
+            Ampbins = np.divide(bin_sums, bin_counts, out=np.zeros_like(bin_sums), where=bin_counts!=0)
+            Ampbins *= np.pi * (kbins[1:]**2 - kbins[:-1]**2) # Calculate the area of each bin in frequency space.
+            #WARNING: Unlike stats.binned_statistic, np.histogram does not return NaN for empty bins, but 0.
+            # So we need to replace 0 with NaN in Ampbins.
             # Store the FFT power spectra for each column in the files for each file at the END of the dataframe.
-            df_fft_power.insert(len(df_fft_power.columns), "POWER[" + col + "]_" + Rstr, Ampbins)
-        
+
+            df_fft_power.insert(len(df_fft_power.columns), "POWER[" + col + "]_" + Rstr, pan.Series(Ampbins))
+            # Replace all 0s in Ampbins with NaN.
+            df_fft_power["POWER[" + col + "]_" + Rstr] = df_fft_power["POWER[" + col + "]_" + Rstr].replace(0, np.nan)
         # Done with all columns in col_labels for file.
     # Done with all files in files.
     
@@ -785,7 +845,6 @@ def gen_FFT_PowerSpectra(files, pathtodir="", ext="csv", bin_mask= None, exclude
         df_fft_power.insert(i, "FREQ[" + col_labels[i] + "]", df_fft_power.filter(like= "k_").mean(axis=1))
             
     return df_fft_power
-
 
 ''' # Summary of the function quadratic_spline_roots(...)
     The function quadratic_spline_roots(spl) finds the roots of a quadratic spline function spl.
@@ -966,6 +1025,268 @@ def gen_potential_well_data(files, pathtodir="", ext="csv", exclude_col_labels= 
     # Done with all columns in col_labels.     
     return (df_kde, df_local_minima) if evaluate_local_minima else (df_kde, None)
 
+""" Summary of the function gen_clustered_data(...)
+The function gen_clustered_data() will read all files in files, and will generate clustered datsets for each file (replicate).
+It will cluster the data in each file using the specified clustering algorithm (cluster_type) into n_clusters clusters.
+It will save these clustered datasets as dataframes, and if evaluate_clusterfrequencies is True, it will also evaluate the cluster frequencies.
+This is done by counting the size of each cluster (cluster sizes determined using scipy.ndimage.label) in each file.
+The frequency of cluster sizes across all files (replicates) is then stored in a dataframe and returned.
+If periodic is True, the cluster counting is done using periodic boundary conditions.
+IMPORTANT: 
+Cluster_type can be: "Kmeans", "GMM" (Gaussian Mixture Model)
+    "Zero" (all data points above 0 are assigned to cluster 1, all data points < = 0 are assigned to cluster 0)
+    "ZeroKmeans" or "ZeroGMM" (where some specified columns are zero-clustered as above, the rest are clustered using Kmeans or GMM respectively).
+
+If "ZeroKmeans" or "ZeroGMM" is specified, the function will then look at an optional argument exclude_col_from_algorithm, which is a 
+list of column names that should not be clustered using Kmeans or GMM (i.e. these columns will be zero-clustered).
+If exclude_col_from_algorithm is not provided (empty list), "ZeroKmeans" or "ZeroGMM" will be identical to "Kmeans" or "GMM" respectively.
+"""
+def gen_clustered_data(files, pathtodir="", ext="csv", exclude_col_labels= ["a_c", "x", "L"], Tmin= None, Tmax = None, save_frames= True,
+                        n_clusters=2, cluster_type="KMeans", evaluate_clusterfrequencies = True, periodic=True, verbose= False):
+    
+    # Get T and a values from the first file.
+    Tval = re.search(r'T_[\d]+', files[0]).group(0).split("_")[1] if re.search(r'T_[\d]+', files[0]) else re.search(r'T_[\d]*[.][\d]+', files[0]).group(0).split("_")[1]
+    aval = re.search(r'a_[\d]*[.][\d]+' , files[0]).group(0).split("_")[1] if re.search(r'a_[\d]*[.][\d]+' , files[0]) else re.search(r'a_[\d]+' , files[0]).group(0).split("_")[1]
+    # Check if Tmin and Tmax are provided. If they are, only calculate KDE and potential well data for Tval in the range [Tmin, Tmax].
+    if Tmin is not None:
+        if float(Tval) < Tmin:
+            print(f"Skipping T = {Tval} and a = {aval} as it is not in the range [{Tmin}, {Tmax}].")
+            return None
+    if Tmax is not None:
+        if float(Tval) > Tmax:
+            print(f"Skipping T = {Tval} and a = {aval} as it is not in the range [{Tmin}, {Tmax}].")
+            return None
+    print(f"Generating clustered data for T = {Tval} and a = {aval}.")
+    
+    # Read the first file in files.
+    if(ext == "csv"):
+        df = pan.read_csv(files[0], header=0)
+    else:
+        try:
+            df = pan.read_table(files[0], header=0)
+        except Exception as e:
+            print("Error: Non-standard extension for file " + pathtodir +"/" + files[0] + " with error message: \n" + str(e))
+            return None
+    # Store column names in col_labels. Strip elements of any leading or trailing whitespaces.
+    col_labels = df.columns; col_labels = [col.strip() for col in col_labels]
+    col_labels = [col for col in col_labels if col not in exclude_col_labels];
+    count_cols =  [y + x + "]" for x in col_labels for y in ["CLUSTER_SIZE[", "CLUSTER_COUNTS[", "CLUSTER_FREQ["]]
+    
+    """ Additional logic to handle cluster_type OF "ZeroKmeans" or "ZeroGMM":
+    if( (cluster_type == "ZeroKmeans" or cluster_type == "ZeroGMM")):
+        if exclude_col_labels_from_algo == [] or exclude_col_labels_from_algo is None:
+            print(f"Warning: No columns specified to be excluded from clustering algorithm {cluster_type}. Treating as {cluster_type.replace('Zero', '')}.")
+            cluster_type = cluster_type.replace("Zero", "") # If no columns are specified to be excluded from clustering algorithm, treat as Kmeans or GMM.
+        else:
+            # If cluster_type is "ZeroKmeans" or "ZeroGMM", then we will zero-cluster the columns in exclude_col_labels_from_algo.
+            # The rest of the columns will be clustered using Kmeans or GMM respectively.
+            col_labels = [col for col in col_labels if col not in exclude_col_labels_from_algo]
+            print(f"Clustering algorithm {cluster_type} will be ONLY be applied to columns: {col_labels}...")
+    all_col_labels = list(set(col_labels + exclude_col_labels_from_algo)) if exclude_col_labels_from_algo else col_labels
+    """
+    if evaluate_clusterfrequencies:
+        # Create a df with col_labels as column names. This will store the cluster frequencies.
+        df_cluster_freq = pan.DataFrame(columns= count_cols)
+
+    # Default dict to store cluster sizes and counts for each column in col_labels.
+    cluster_freqs = defaultdict(Counter)
+
+    Path(pathtodir + f"/CLUST/{cluster_type}_{n_clusters}").mkdir(parents=True, exist_ok=True)
+
+    for file in files:
+
+        # First read the file.
+        if(ext == "csv"):
+            df = pan.read_csv(file, header=0)
+        else:
+            try:
+                df = pan.read_table(file, header=0)
+            except Exception as e:
+                print("Error: Non-standard extension for file " + pathtodir +"/" + files[0] + " with error message: \n" + str(e))
+                return None
+        # Modify column names in df to remove leading and trailing whitespaces.
+        df.columns = [col.strip() for col in df.columns]
+        # Remove exclude_col_labels from df.
+        df = df[[col for col in df.columns if col not in exclude_col_labels]]
+
+        # First check if the columns in df are the same as col_labels. If not, return an error.
+        if not all([col in df.columns for col in col_labels]):
+            print("Error: Columns in file " + pathtodir + "/" + file + " are not standardised.")
+            return None
+        
+        # Get L value from the first file.
+        Lval = re.search(r'L_[\d]+', files[0]).group(0).split("_")[1] if re.search(r'L_[\d]+', files[0]) else re.search(r'L_[\d]*[.][\d]+', files[0]).group(0).split("_")[1]
+        Lval = int(Lval) if Lval.isdigit() else round(float(Lval))
+
+        L = round(asnumpy(df[col_labels[0]].size**0.5))
+        # Recall asnumpy() returns a numpy array from a cupy array.
+        assert L == Lval, f"NOTE : L value in file {file} does not match the expected L value {Lval}. Found {L}."
+
+        # Normalise the data in each column by max value in the column.
+        df[col_labels] = df[col_labels].apply(lambda x: x / x.max() if x.max() != 0.0 else 0, axis=0)
+
+        if save_frames:
+            bin_df = pan.DataFrame(columns=col_labels) # This dataframe will store the binned data for each column in the files.
+        
+        for col in col_labels:
+            is_zero = False; is_flat = False; # Flags to check if the column is entirely zero or flat. 
+            
+            #print(f"Evaluating column: {col} at T = {Tval}, a = {aval} and R = {re.search(r'R_[\d]+', file).group(0).split('_')[1]}...")
+            # First check if the column is entirely zero. If it is, skip the column.
+            if all(df[col] == 0):
+                print(f"Warning: Entirely zero column in {col} for T = {Tval} and a = {aval} ... Skipping column.")
+                is_zero = True
+                continue
+            # Check if the column is entirely flat, i.e. std < 1e-6. If it is, skip the column.
+            if df[col].std() < 1e-6:
+                print(f"Warning: Entirely flat column  in {col} for T = {Tval} and a = {aval} ... Skipping column.")
+                is_flat = True
+                continue
+            
+            #Perform clustering on the data in col using the specified clustering algorithm.
+            if cluster_type == "KMeans":
+                test_df = pan.DataFrame({col: df[col]})
+                kmeans_model = KMeans(n_clusters=n_clusters, init= 'k-means++' , max_iter= 500, 
+                random_state=42).fit(test_df)
+                # Get the cluster labels for each data point in col.
+                cluster_labels = kmeans_model.labels_
+                df["CLUSTER[" + col + "]"] =  kmeans_model.predict(test_df)
+                centers = kmeans_model.cluster_centers_.flatten()
+                ''' # For ZeroKmeans or ZeroGMM, we will zero-cluster the columns in exclude_col_labels_from_algo.
+                elif cluster_type == "Kmeans" or cluster_type == "ZeroKmeans":
+                    if col in col_labels:
+                        test_df = pan.DataFrame({col: df[col]})
+                        kmeans_model = KMeans(n_clusters=n_clusters, init= 'k-means++' , max_iter= 500, 
+                        random_state=42).fit(test_df)
+                        # Get the cluster labels for each data point in col.
+                        cluster_labels = kmeans_model.labels_
+                        df["CLUSTER[" + col + "]"] =  kmeans_model.predict(test_df)
+                        centers = kmeans_model.cluster_centers_.flatten()
+                    else:
+                        # If col is in exclude_col_labels_from_algo, then we will zero-cluster the column.
+                        df["CLUSTER[" + col + "]"] = df[col].apply(lambda x: 1 if x > 0 else 0)
+                        centers = np.array([0, 1])
+                #'''
+            elif cluster_type == "GMM":
+                test_df = pan.DataFrame({col: df[col]})
+                gmm_model = GaussianMixture(n_components=n_clusters, covariance_type='full', random_state=42).fit(test_df)
+                #Get the cluster labels for each data point in col.
+                cluster_labels = gmm_model.fit_predict(test_df)
+                df["CLUSTER[" + col + "]"] = cluster_labels
+                centers = gmm_model.means_.flatten()
+            elif cluster_type == "Zero":
+                # If cluster_type is "Zero", we will assign all data points above 0 to cluster 1, and all data points <= 0 to cluster 0.
+                df["CLUSTER[" + col + "]"] = df[col].apply(lambda x: 1 if x > 0 else 0)
+                centers = np.array([0, 1])
+            else:
+                print(f"Error: Invalid cluster_type {cluster_type}. Use 'Kmeans' or 'GMM'.")
+                return None
+            
+            ''' OLD VERSION
+            palette = cluster_labels.astype(float())
+            ordered_palette = np.sort(np.unique(palette))
+
+            # Ensure that the cluster labels are in ascending order.
+            sorting_order = sorted(range(len(palette)), key=lambda k: palette[k][0], reverse=True)
+            if sorting_order != list(range(len(palette))):
+                print(f"Warning: Cluster labels are not in ascending order for column {col} in file {file}. Reordering cluster labels.")
+                for new_order, order in enumerate(sorting_order):
+                    df['CLUSTER[' + col + ']'] = df['CLUSTER[' + col + ']'].replace(order, new_order + n_clusters)
+                for new_order, order in enumerate(ordered_palette):
+                    df['CLUSTER[' + col + ']'] = df['CLUSTER[' + col + ']'].replace(new_order + n_clusters, new_order)
+            #'''
+
+             # Reorder cluster labels so that label 0 corresponds to the lowest cluster center, etc.
+            
+            # Get the order that sorts the centers
+            order = np.argsort(centers)
+            # Map old labels to new labels
+            label_map = {old: new for new, old in enumerate(asnumpy(order))}
+            df['CLUSTER[' + col + ']'] = df['CLUSTER[' + col + ']'].map(label_map)
+
+            if save_frames:
+                bin_df[col] = df['CLUSTER[' + col + ']']
+            
+
+            if evaluate_clusterfrequencies:
+                # First binarise df['CLUSTER[' + col + ']'] to get the cluster sizes.
+                # Here all values in df['CLUSTER[' + col + ']'] are either 0 or 1, where 1 indicates the presence of a cluster.
+                # All values in df['CLUSTER[' + col + ']'] > 0 are set to 1.
+                #bin_df[col] = df['CLUSTER[' + col + ']'].apply(lambda x: 1 if x > 0 else 0).values.reshape((L, L))
+                binary_mask = asarray(df[f"CLUSTER[{col}]"].values > 0).astype(int).reshape((L, L))
+                # Count the size of each cluster in col using scipy.ndimage.label.
+
+                non_periodic_labels, num_ind_clusters = ndimage.label(binary_mask, structure=np.ones((3, 3)))
+                if periodic:
+                    for x in range(L):
+                        if non_periodic_labels[x, 0] > 0 and non_periodic_labels[x, -1] > 0:
+                            non_periodic_labels[non_periodic_labels == non_periodic_labels[x, -1]] = non_periodic_labels[x, 0]
+                            #Dealing with top and bottom borders.
+                    for x in range(0, L):
+                        if non_periodic_labels[0, x] > 0 and non_periodic_labels[-1, x] > 0:
+                            non_periodic_labels[non_periodic_labels == non_periodic_labels[-1, x]] = non_periodic_labels[0, x]
+                            #Dealing with L and R borders.
+
+                    # Get sorted label IDs
+                    label_ids = np.unique(non_periodic_labels) #Return labels in ascending order.
+                    for i in  range(1, len(label_ids)):
+                        if(label_ids[i] == label_ids[i-1] + 1):
+                            continue
+                        #Update LABEL ID to lowest extant value possible
+                        non_periodic_labels[non_periodic_labels == label_ids[i]] = label_ids[i-1] + 1
+                        label_ids[i] = label_ids[i-1] + 1
+
+                Clus_ID, Clus_Size = np.unique(non_periodic_labels, return_counts=True)
+
+                for sz, count in Counter(asnumpy(Clus_Size[1:])).items():
+                    cluster_freqs[col][sz] += count
+
+
+                """ # Using df approach with np.unique
+                label_ids = Clus_ID
+                CSize, NS = np.unique(Clus_Size[1:], return_counts=True)
+                # If df_cluster_freq["CLUSTER_SIZE[" + col + "]"] is empty, initialise it with the cluster sizes.
+                if df_cluster_freq[f"CLUSTER_COUNTS[{col}]"].empty:
+                    df_cluster_freq[f"CLUSTER_COUNTS[{col}]"] = NS
+                if df_cluster_freq[f"CLUSTER_SIZE[{col}]"].empty:
+                    df_cluster_freq[f"CLUSTER_SIZE[{col}]"] = CSize
+                else:
+                    for i in range(len(CSize)):
+                        # If CSize[i] is in df_cluster_freq["CLUSTER_SIZE[" + col + "]"], update the cluster size and cluster counts.
+                        if CSize[i] in df_cluster_freq[f"CLUSTER_SIZE[{col}]"].values:
+                            df_cluster_freq[f"CLUSTER_SIZE[{col}]"].iloc[df_cluster_freq[f"CLUSTER_SIZE[{col}]"].values == CSize[i]] = CSize[i]
+                            df_cluster_freq[f"CLUSTER_COUNTS[{col}]"].iloc[df_cluster_freq[f"CLUSTER_SIZE[{col}]"].values == CSize[i]] += NS[i]
+                        else:
+                            # If CSize[i] is not in df_cluster_freq["CLUSTER_SIZE[" + col + "]"], append it to the end.
+                            df_cluster_freq[f"CLUSTER_SIZE[{col}]"] = pan.concat([df_cluster_freq[f"CLUSTER_SIZE[{col}]"], pan.Series([CSize[i]])], ignore_index=True)
+                            df_cluster_freq[f"CLUSTER_COUNTS[{col}]"] = pan.concat([df_cluster_freq[f"CLUSTER_COUNTS[{col}]"], pan.Series([NS[i]])], ignore_index=True)
+                              
+                # Sort the above two columns in df_cluster_freq by cluster size.
+                df_cluster_freq[[f"CLUSTER_SIZE[{col}]", f"CLUSTER_COUNTS[{col}]"]] = df_cluster_freq[[f"CLUSTER_SIZE[{col}]", 
+                        f"CLUSTER_COUNTS[{col}]"]].sort_values(by=f"CLUSTER_SIZE[{col}]").reset_index(drop=True)
+
+                # Reset the index of the DataFrame.
+                df_cluster_freq.reset_index(drop=True, inplace=True)
+                 #""" 
+        # End of all columns in col_labels for file.
+        # Save the clustered data given by df['CLUSTER[' + col + ']'] in the file.
+        # Use the file name to save the clustered data (adding CLUSTER_ prefix to the file name).
+        if save_frames:
+            bin_df.to_csv(pathtodir + f"/CLUST/{cluster_type}_{n_clusters}/CLUSTERED_{os.path.basename(file)}", index=False)
+    # End of all files in files.
+    if evaluate_clusterfrequencies:
+        # Reset the index of the DataFrame.
+        #df_cluster_freq.reset_index(drop=True, inplace=True)
+        all_size_fits_all = sorted({sz for col in cluster_freqs for sz in cluster_freqs[col]})
+        for col in col_labels:
+            counts = [cluster_freqs[col].get(sz, 0) for sz in all_size_fits_all]
+            df_cluster_freq[f"CLUSTER_SIZE[{col}]"] = all_size_fits_all
+            df_cluster_freq[f"CLUSTER_COUNTS[{col}]"] = counts
+            df_cluster_freq[f"CLUSTER_FREQ[{col}]"] = pan.Series(np.array(counts) / sum(counts)) if sum(counts) > 0 else 0
+        return df_cluster_freq
+    return None
+
+
 
 def compute_mutual_information(X, Y, bins="scotts", verbose= False):
     # x, y should be 1D arrays, if not, flatten them
@@ -1033,6 +1354,7 @@ def compute_mutual_information(X, Y, bins="scotts", verbose= False):
     # Digitise the data in X and Y using the histogram bin edges.
     X_digitised = np.digitize(X, bins=np.histogram_bin_edges(X, bins=nbins))
     Y_digitised = np.digitize(Y, bins=np.histogram_bin_edges(Y, bins=nbins))
+    #print("Computing Mutual Information...")
     MI = mutual_info_score(X_digitised, Y_digitised)
     #'''
     #print(f"Mutual Information between X and Y: {MI} for bins = {nbins} using {bins} method.")
@@ -1175,10 +1497,11 @@ def compute_BiMoronsI(X, Y):
     L = round(asnumpy(X.shape[0])**0.5)  # Use round to ensure L is an integer
     #print(f"Computing Bi-variate Moran's I for L = {L} ...")
     #Spatial_Weights = libpysal_weights.lat2W(L, L)
-    Spatial_Weights= cached_libpysalweights_lat2W(L)
-    MoranI = esda_moran.Moran_BV(X, Y, Spatial_Weights)
+    #Spatial_Weights= cached_libpysalweights_lat2W(L)
+    #MoranI = esda_moran.Moran_BV(X, Y, Spatial_Weights)
     #print(f"Bi-variate Moran's I: {MoranI.I}, p-value: {MoranI.p_sim}")
-    return MoranI.I, MoranI.p_sim
+    #return MoranI.I, MoranI.p_sim
+    return None, None  # Placeholder return, as the actual computation is not implemented here.
 
 
 
@@ -1271,6 +1594,11 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
     cross_NCC_dict = defaultdict(double_nested_default_dict)
     auto_ZNCC_dict = defaultdict(nested_default_dict)  #recursively_nested_default_dict(2) # 2 levels deep
     cross_ZNCC_dict = defaultdict(double_nested_default_dict)
+
+    # Precompiled regex patterns for T and R values
+    T_intpattern = re.compile(r'T_(\d+)\b')
+    T_floatpattern = re.compile(r'T_(\d+\.\d+)\b')
+    R_pattern = re.compile(r'R_(\d+)')
     
     if calc_AMI:
         #auto_AMI_dict = defaultdict(lambda: defaultdict(dict)) ; cross_AMI_dict = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
@@ -1302,7 +1630,8 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
 
     for file in sorted_files_R(files, ascending=True):
         # Read the file.
-        Rstr = re.findall(r'R_[\d]+', file)[0]
+        Rstr = R_pattern.search(file).group(0)
+        #Rstr = re.findall(r'R_[\d]+', file)[0]
         Lfile = int(re.search(r'L_[\d]+', file).group(0).split("_")[1]) if re.search(r'L_[\d]+', file) else None 
         filetype = re.search(r'FRAME|GAMMA', file).group(0)
         
@@ -1329,10 +1658,14 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
         df_Znorm = gen_zer0mean_normalised_df(df)  # Generate 0-normalised columns for df.
             
         # Get crossfiles with the same T value as tval and R value as Rstr.
+        
+        crossfile_tval = [x for x in crossfiles if ((m := T_intpattern.search(x)) and m.group(1) == str(tval))
+                        or ((m := T_floatpattern.search(x)) and m.group(1) == str(tval))]
+        """ OLD UNOPTIMISED CODE:
         crossfile_tval = [x for x in crossfiles
                         if ((m := re.findall(r'T_(\d+)', x)) and m[0] == str(tval)) 
                         or ((m := re.findall(r'T_([\d]+\.[\d]+)', x)) and m[0] == str(tval))]
-        
+        """
         crossfile_tval = [x for x in crossfile_tval if re.search(r'R_[\d]+', x).group(0) == Rstr]# and re.search(r'FRAME|GAMMA', x).group(0) == filetype]
         # Get filetype of crossfile_tval and store it in filetype_crossfile.
         
@@ -1397,7 +1730,7 @@ def process_time_value(tval, files, T, crossfiles, L, col_labels, ext, exclude_c
                     continue
 
                 #safe_print(f"Calculating 2D AUTO Correlation for column {col}...")
-                print(f"Calculating 2D AUTO Correlation for column {col}...")
+                #print(f"Calculating 2D AUTO Correlation for column {col}...")
 
                 #process = psutil.Process(os.getpid())
                 #start_cpu_times = process.cpu_times()
@@ -1742,7 +2075,7 @@ def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv",
         if file == files[0]:
             # Get L from the number of rows in the first file.
             #L = int(np.sqrt(len(df))) #int(np.sqrt(len(df[df.columns[0]])))
-            L = round(asarray(len(df)**0.5))
+            L = round(asnumpy(len(df)**0.5))
             print(f"Found L = {L}.")
     
     # Remove duplicates and exclude_col_labels from col_labels.
@@ -1825,13 +2158,15 @@ def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv",
     
 
     
-    if gpu.DASK_AVAILABLE and gpu.GPU_AVAILABLE:
+    if gpu.DASK_AVAILABLE:
         #dask_loccluster = dask_LocalCluster(n_workers=ncores, threads_per_worker=1, memory_limit='2GB')
         mem_limit = "3GB"
-        daskclient = dask_Client(processes=True, n_workers=ncores, threads_per_worker=1, memory_limit='3GB')
+        daskclient = dask_Client(processes=True, n_workers=ncores, threads_per_worker=1, memory_limit='3GB',
+            worker_kwargs={'death_timeout': 60,  'preload': []}, timeout=60)
         # Each dask worker gets single thread with its own CUDA context!
         print(f"Using Dask LocalCluster with {ncores} workers and 1 thread per worker, with {mem_limit} memory limit per worker.")
-        daskclient.register_worker_plugin(gpu.setup_daskworker_gpu_context)
+        if gpu.GPU_AVAILABLE:
+            daskclient.register_worker_plugin(gpu.setup_daskworker_gpu_context)
         # Assigns local CUDA context to each worker.
         joblib_backend = 'dask'
         print("Dashboard URL: ", daskclient.dashboard_link)
@@ -1884,6 +2219,8 @@ def gen_2DCorr_data(files, T, matchT=[], crossfiles=[], pathtodir="", ext="csv",
 
         #If Dask client is used, unregister the worker plugin
         if gpu.DASK_AVAILABLE and daskclient is not None:
+            # Wait for all tasks to complete
+            daskclient.run_on_workers(lambda: None)  # Synchronization point
             #daskclient.unregister_worker_plugin(gpu.setup_daskworker_gpu_context)
             daskclient.close()
             print("Dask client closed and worker plugin unregistered.")
@@ -2320,7 +2657,7 @@ def logarithm10_time_bins_smalldt(t_max, dt, dt_factor =1, linear_windows =[(600
         return logspaced    
 
 
-''' # Summary of function gen_1D_HarmonicFreq_Prelimsdata(...)
+''' # Summary of function get_1D_HarmonicFreq_Prelimsdata(...)
 This function performs FFT-based harmonic frequency analysis on time series data, identifying spectral peaks
 and computing averaged harmonic frequencies across experimental replicates.
 
@@ -2361,7 +2698,7 @@ IMPORTANT: Error Conditions:
 - Missing column/index references
 - Insufficient data for spline fitting
 '''
-def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], X_as_index= True, skip_row=0, 
+def get_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], X_as_index= True, skip_row=0, 
             rel_threshold =0.05, abs_threshold=None, report_maxima=True, maxima_finder="cubic_spline"):
 
     df_timeseries = df.copy(); # Copy the dataframe to avoid modifying the original one
@@ -2384,7 +2721,8 @@ def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], 
         if X in df_timeseries.columns:
             Xvalues = asarray(df_timeseries[X].values)
         elif X in df_timeseries.index.names:
-            df_timeseries = df_timeseries.reset_index(level=X) if isinstance(df_timeseries.index, pan.MultiIndex) else df_timeseries.reset_index()
+            df_timeseries = df_timeseries.reset_index(level=X) #if isinstance(df_timeseries.index, pan.MultiIndex) else df_timeseries.reset_index()
+            Xvalues = asarray(df_timeseries[X].values)
         else:
             print(f"Error: X={X} is not in the columns, index or MultiIndex levels. Please provide a valid X label or pass as np.linspace.")
             return None, None
@@ -2490,21 +2828,25 @@ def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], 
 
             elif maxima_finder == "find_peaks":
                 # Use scipy's find_peaks to find the local maxima
-                peaks, _ = signal.find_peaks(df_fft[f"FFT{{{col}}}"], height=thresh)
+                peaks, _ = signal.find_peaks(df_fft.loc[1:, f"FFT{{{col}}}"], height=thresh); peaks +=1;
                 peak_frequencies = asarray(df_fft[f"k({X})"].iloc[asnumpy(peaks)].values)
                 peak_fft_values = asarray(df_fft[f"FFT{{{col}}}"].iloc[asnumpy(peaks)].values)
                 # Create (frequency, value) pairs and sort
                 maxima_data = sorted(zip(peak_frequencies, peak_fft_values), 
                                     key=lambda pair: pair[1], reverse=True)
+                # Filter maxima_data to remove peaks with frequencies less than the second frequency (df_fft[f"k({X})"].iloc[1])
+                #maxima_data = [pair for pair in maxima_data if pair[0] >= df_fft[f"k({X})"].iloc[1]]
             else:
                 print(f"Error: Invalid maxima_finder '{maxima_finder}'. Use 'cubic_spline' or 'find_peaks'.")
                 return None, None
             # Assign these values to harm_peaks and harm_peaks_fftvals
-            for i, (peakfreq, pealval) in enumerate(maxima_data):
+            for i, (peakfreq, peakval) in enumerate(maxima_data):
                 if i >= len(harm_peaks):
                     break
+                if peakfreq <= df_fft[f"k({X})"].iloc[1]:
+                    continue # Skip frequencies less than the second frequency
                 harm_peaks[i] = peakfreq
-                harm_peaks_fftvals[i] = pealval
+                harm_peaks_fftvals[i] = peakval
                 
 
             peak_df[f"FFT-PEAK[{col}]"] = pan.Series(harm_peaks);
@@ -2530,6 +2872,61 @@ def gen_1D_HarmonicFreq_Prelimsdata(df, pathtodir="", X="t", exclude_Y_cols=[], 
         return df_fft, peak_df
     
     return df_fft, None
+
+''' # Summary of the function gen_1D_HarmonicFreq_PrelimsWrapper(...)
+This function is a wrapper for gen_1D_HarmonicFreq_Prelimsdata that processes multiple files in a directory.
+It reads each file, extracts the time series data, and applies the harmonic frequency analysis.
+index_cols is a list of columns to be used as index for the dataframe (either numeric values indicating iloc index or strings indicating column names).
+If index_cols has more than one element, the dataframes will be read as MultiIndex dataframes.
+'''
+def gen_1D_HarmonicFreq_PrelimsWrapper(files, pathtodir, ext="csv", X="t", exclude_Y_cols=[], index_cols = [], X_as_index=True, skip_row=0,
+            rel_threshold =0.05, abs_threshold=None, report_maxima=True, maxima_finder="cubic_spline"):
+    for file in files:
+        try:
+            if ext == "csv":
+                df = pan.read_csv(file, header=0, index_col=index_cols if len(index_cols) > 0 else None)
+            else:
+                df = pan.read_table(file, header=0, index_col=index_cols if len(index_cols) > 0 else None)
+        except Exception as e:
+            print(f"Error: Failed to read file {file} with error message: {e}")
+            continue
+        
+        # Modify column names in df to remove leading and trailing whitespaces.
+        df.columns = [col.strip() for col in df.columns]
+        
+        # Call gen_1D_HarmonicFreq_Prelimsdata on the dataframe
+        df_fft, peak_df = get_1D_HarmonicFreq_Prelimsdata(df, pathtodir, X=X, exclude_Y_cols=exclude_Y_cols, X_as_index=X_as_index,
+                                                            skip_row=skip_row, rel_threshold=rel_threshold, abs_threshold=abs_threshold,
+                                                            report_maxima=report_maxima, maxima_finder=maxima_finder)
+        if df_fft is None:
+            print(f"Error: Failed to process file {file}. Skipping this file.")
+            continue
+        
+        savedir = pathtodir if pathtodir else os.path.dirname(file)
+        savedir += "/FFT/" if not savedir.endswith("/") else "FFT/"
+        # Create the directory if it does not exist
+        Path(savedir).mkdir(parents=True, exist_ok=True)
+        output_file = os.path.join(savedir, f"FFTSig_{os.path.basename(file)}")
+        try:
+            if ext == "csv":
+                df_fft.to_csv(output_file, index=False, sep=",", header=True)
+            else:
+                df_fft.to_csv(output_file, index=False, header=True)
+        except Exception as e:
+            print(f"Error: Failed to save FFT data for file {file} with error message: {e}")
+            continue
+        
+        if report_maxima and peak_df is not None:
+            try:
+                peak_output_file = os.path.join(savedir, f"HarmonicPeaks_{os.path.basename(file)}")
+                if ext == "csv":
+                    peak_df.to_csv(peak_output_file, index=False, sep=",", header=True)
+                else:
+                    peak_df.to_table(peak_output_file, index=False, header=True)
+                print(f"Saved harmonic peaks data for file {file} to {peak_output_file}.")
+            except Exception as e:
+                print(f"Error: Failed to save harmonic peaks data for file {file} with error message: {e}")
+                continue
 
 
 '''# Summary of the function gen_missing_zero_Prelims(...)

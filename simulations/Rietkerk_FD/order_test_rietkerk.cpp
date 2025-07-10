@@ -1,6 +1,6 @@
 #include "rietkerk_bjork_basic.h"
 
-int main()
+int main(int argc, char *argv[])
 {
   increase_stack_limit(2048L); //Increase stack limit to 512 MB.
 
@@ -21,7 +21,7 @@ int main()
   k0= 0; k1 = 5; k2 =5;
 
   double D[Sp] ={d0, d1, d2}; //Diffusion coefficients for species.
-  double K[Sp] ={k0, k1, k2}; //Diffusion coefficients for species.
+  double K[3] ={k0, k1, k2}; //Diffusion coefficients for species.
 
   /**
 
@@ -33,32 +33,54 @@ int main()
   p0mstar = (R/alpha)*(p0istar + K[2] )/(p0istar + K[2]*W0);
   */
   
+  if(argc == 1)
+  {
+    cout << "Enter desired time-step: ";
+    cin >> dt;
 
-  cout << "Enter desired time-step: ";
-  cin >> dt;
+    cout << "Enter maximum duration of simulation (in days): ";
+    cin >> t_max;
 
-  cout << "Enter maximum duration of simulation (in days): ";
-  cin >> t_max;
+    cout << "Enter the desired grid-size (L) (dx = 0.2 m): ";
+    cin >> g;
 
-  cout << "Enter the desired grid-size (L) (dx = 0.2 m): ";
-  cin >> g;
+    cout << "Enter the desired number of replicates (r): ";
+    cin >> r;
 
-  cout << "Enter the desired number of replicates (r): ";
-  cin >> r;
+    cout << "Note that a relevant value of 'a' may be construed as:\t" << setprecision(10) << a <<endl;
 
-  cout << "Note that a relevant value of 'a' may be construed as:\t" << setprecision(10) << a <<endl;
+    cout << "Enter starting a-value: ";
+    cin >> a_start;
 
-  cout << "Enter starting a-value: ";
-  cin >> a_start;
+    cout << "Enter ending a-value: ";
+    cin >> a_end;
 
-  cout << "Enter ending a-value: ";
-  cin >> a_end;
+    cout << "Enter number of divisions of p (n+1): ";
+    cin >> div;
 
-  cout << "Enter number of divisions of p (n+1): ";
-  cin >> div;
-
-  cout << "Enter kick for high state: ";
-  cin >> dP;
+    cout << "Enter kick for high state: ";
+    cin >> dP;
+  }
+  // If the user has entered the correct number of arguments, then the arguments are read from the command line.
+  else if(argc == 9)
+  {
+    dt = atof(argv[1]);
+    t_max = atof(argv[2]);
+    g = atoi(argv[3]);
+    r = atoi(argv[4]);
+    a_start = atof(argv[5]);
+    a_end = atof(argv[6]);
+    div = atoi(argv[7]);
+    dP = atof(argv[8]);
+    //preFIX = argv[9];
+  }
+  else
+  {
+    cout << "Please enter the correct number of arguments.\n";
+    cout << "The correct number of arguments is 8.\n";
+    cout << "The arguments are as follows: dt, t_max, g, r, a_start, a_end, div, dP\n";
+    exit(1);
+  }
 
   //cout << "Enter 1 to read from csv or 0 to input standardised initial condions"
 
@@ -76,6 +98,9 @@ int main()
 
   int go =8;
   add_three(1,2,go);
+
+  set_global_system_params(dt, dx); //Set the global parameters for the simulation.
+  cout << "Global parameters set, with dt/2.0 = " << dt2 << " and dx*dx = " << dx2 <<  " and 1/(dx*dx) = " << dx1_2 << "\n";
 
   //D2Vec_Double Rho_0(Sp, vector<double> (g*g, 1.0));
   // Rho_0 is 2D [Spx(L*L)] vector initialised to 1.00.
@@ -95,11 +120,15 @@ int main()
 
   stringstream ast, est, dPo; ast << a_start; est  << a_end; dPo << dP;
 
+  //string path_to_folder = frame_folder + ast.str() + "-" + est.str() + "_dP_" + dPo.str() + "_Geq_" + geq.str();
   stringstream foldername;
 	foldername << "../Data/Rietkerk/Frames/Non-Stochastic/" << ast.str() << "-" << est.str() << "_dP_" << dPo.str() << "/";
+  string path_to_folder = "../Data/Rietkerk/Frames/Non-Stochastic/" + ast.str() + "-" + est.str() + "_dP_" + dPo.str();
+  recursive_dir_create(path_to_folder);
+
 	// Creating a string stream instance to store the values of the parameters in the file name.
 	// This is done to avoid overwriting of files.
-
+  /**  
 	struct stat info2;
 	if( stat( foldername.str().c_str(), &info2 ) != 0 )
 	{
@@ -111,12 +140,15 @@ int main()
 			exit(1);
 		}
 	}
+  */
 
   stringstream foldername2;
 	foldername2 << "../Data/Rietkerk/Prelims/Non-Stochastic/" << ast.str() << "-" << est.str() << "_dP_" << dPo.str() << "/";
+  path_to_folder = "../Data/Rietkerk/Prelims/Non-Stochastic/" + ast.str() + "-" + est.str() + "_dP_" + dPo.str();
+  recursive_dir_create(path_to_folder);
 	// Creating a string stream instance to store the values of the parameters in the file name.
 	// This is done to avoid overwriting of files.
-
+  /** 
 	struct stat info1;
 	if( stat( foldername2.str().c_str(), &info1 ) != 0 )
 	{
@@ -128,8 +160,11 @@ int main()
 			exit(1);
 		}
 	}
+  */
   stringstream foldername3;
 	foldername3 << "../Data/Rietkerk/Non-Stochastic/";
+  path_to_folder = "../Data/Rietkerk/Non-Stochastic";
+  recursive_dir_create(path_to_folder);
 	// Creating a string stream instance to store the values of the parameters in the file name.
 	// This is done to avoid overwriting of files.
 

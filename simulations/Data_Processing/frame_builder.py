@@ -54,20 +54,20 @@ from sklearn.cluster import KMeans
 
 
 # User inputs.
-SPB = 3; # Number of species in the model
+SPB = 1; # Number of species in the model
 #in_dir = f"../Data/Remote/DP/Reorg_Frames/{SPB}Sp/DPParam_20_100_DSUNITY/" # FOR DP
 #out_dir = f"../../Images/{SPB}Sp/DPParam_20_100_DSUNITY/" # FOR DP
 
 #in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/ASCALE_1g_LOC_DsC_FD/"
 #out_dir = f"../../Images/{SPB}Sp/ASCALE_1g_LOC_DsC_FD/"
-#in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/StdParam_MFT/"
-#out_dir = f"../../Images/{SPB}Sp/StdParam_MFT/"
-in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/ASCALE_20_100_BRNIN-HsX-OLD/"
-out_dir = f"../../Images/{SPB}Sp/ASCALE_20_100_BRNIN-HsX/"
+in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/StdParam_MFT/"
+out_dir = f"../../Images/{SPB}Sp/StdParam_MFT/"
+#in_dir = f"../Data/Remote/Rietkerk/Reorg_Frames/{SPB}Sp/ASCALE_20_100_BRNIN-HsX-OLD/"
+#out_dir = f"../../Images/{SPB}Sp/ASCALE_20_100_BRNIN-HsX/"
 Path(out_dir).mkdir(parents=True, exist_ok=True)
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 
-g = 128;  dP = 10000; Geq = 4.802  ; R_max= -1; #4.802    0.19208   0.096039         #0.2991     7.4774
+g = 128;  dP = 10000; Geq = 5  ; R_max= -1; #4.802    0.19208   0.096039         #0.2991     7.4774
 #g = 128;  dP = 1; Geq = 0 ; R_max= -1; #0.0032013  
 # Geq (for LOC case) 2.2007 0.088027 [2 SP] 2.2786 0.091143
 # Geq (for small ratio case) 3.0029 0.12012 [2 SP] 4.1569 0.16627
@@ -279,12 +279,13 @@ def home_video(file_parendir, out_dir, prefixes, a_vals, T_vals, maxR, minR = 0,
                 
                 for R in range(minR, maxR):
                     try:
-                        img = cv2.imread(file_parendir +pngdir.format(s=0, Pre=Pre, g=g, dP=dP, Geq=Geq, a=a, T=T, R=R, Tmin = min_T, Tmax = max_T)
-                                         + pngformat.format(s=0, g=g, dP=dP, Geq=Geq,  a=a, T=T, R=R, Tmin = min_T, Tmax = max_T))
+                        img = cv2.imread(file_parendir +pngdir.format(s=0, Pre=Pre, g=g, dP=dP, Geq=Geq, a=a, T=T, R=R, 
+                                        Tmin = min_T, Tmax = max_T, amin = a_vals[0], amax = a_vals[-1])
+                                         + pngformat.format(s=0, g=g, dP=dP, Geq=Geq,  a=a, T=T, R=R, Tmin = min_T, Tmax = max_T, amin = a_vals[0], amax = a_vals[-1]))
                         img_array.append(img)
                     except FileNotFoundError:
-                        print(f"Image not found for a = {a}, T = {T}, R = {R}, Pref = {Pre}, in Path: \n"  + pngdir.format(s=0, Pre=Pre, L=g, dP=dP, Geq=Geq, a=a, T=T, R=R) 
-                                         + pngformat.format(s=0, g=g, dP=dP, Geq=Geq,  a=a, T=T, R=R) + " \n Skipping....")
+                        print(f"Image not found for a = {a}, T = {T}, R = {R}, Pref = {Pre}, in Path: \n"  + pngdir.format(s=0, Pre=Pre, L=g, dP=dP, Geq=Geq, a=a, T=T, R=R, amin = a_vals[0], amax = a_vals[-1]) 
+                                         + pngformat.format(s=0, g=g, dP=dP, Geq=Geq,  a=a, T=T, R=R, amin = a_vals[0], amax = a_vals[-1]) + " \n Skipping....")
                         continue
                 # End of R loop
             # End of T loop
@@ -494,47 +495,6 @@ def frame_visualiser(in_dir, out_dir, PREFIX, a_vals, T_vals, maxR, minR =0, plt
                videoname = "guess")
         """
     
-
-''' # Summary Description of get_timeseriesData(...) (called by analyse_timeseriesData(...))
-This function creates a multi-Indexed DataFrame with the timeseries data for each species.
-The indices are as follows:
-Prefix, a, T
-The columns are determined by reading the header of tab-delineated txt file MEAN_INDV_REPLICATES.txt
-which is located in the directory {in_dir}/{PREFIX}/L_{g}_a_{a_val}/dP_{dP}/Geq_{Geq}/T_{T}/
-The columns of each such txt file follow the following structure:
-R_max   AVG[{var}]_SURV   ...   AVG[{var}]_ALL   ...   AVG[{var}]_R_0   ...   AVG[{var}]_R_{R_max}
-where {var} is one of the species names.
-The second line of the file contains the values for the columns.
-
-Each such file is read and the data is stored in the DataFrame and returned. 
-Note that since R_max can vary for each a and T value, the DataFrame will have NaN values for the missing columns.
-
-def get_timeseriesData(indir, PREFIX, a_vals, T_vals, filename = "MEAN_INDV_REPLICATES.txt", construct_means = False):
-
-    auto_guess_avals_tvals(indir, PREFIX, a_vals, T_vals)
-    # Guess all a_vals and T_vals from the directory structure if not provided.
-    print(f"List of a values: {a_vals}")
-    print(f"List of T values: {T_vals}")
-    # Create a multi-indexed DataFrame
-    data = pan.DataFrame()
-
-    # Now populate the DataFrame with the data from the files
-    for a in a_vals:
-        for T in T_vals:
-            try:
-                # Read tab-delineated txt file
-                df = pan.read_table(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/" + filename, header= 0)
-                # Use the header row as the column names and the second row as the data
-                df.columns = df.columns.astype(str)
-                #print(f"Data for a = {a}, T = {T}:")
-                df.index = pan.MultiIndex.from_tuples([(PREFIX, a, T)], names = ['Prefix', 'a', 'T'])
-                #Assign the data df to the appropriate index in the data DataFrame
-                data = pan.concat([data, df], axis = 0).sort_index(axis = 0)
-            except FileNotFoundError:
-                print(f"Data not found for a = {a}, T = {T}. Skipping....")
-                continue
-    return data
-'''
 
 
 '''# Summary Description of get_FRAME_EQdata(...) (called by analyse_EQdata(...))
@@ -803,6 +763,55 @@ def get_FRAME_CORRdata(indir, PREFIX, a_vals, focus_T_vals, corrsubdir="2DCorr/"
     return (corrdata, var_names)
 
 
+""" # Summary Description of get_FRAME_CLUSTERdata(...) (called by analyse_CLUSTERdata(...))
+This function creates a multi-Indexed DataFrame with the clustered frequency data for each species.
+The indices are as follows:
+Prefix, a, T
+The columns are determined by reading the header of comma-delineated csv file CLUSTERED_FREQUENCIES.csv
+which is located in the directory {in_dir}/{PREFIX}/L_{g}_a_{a_val}/dP_{dP}/Geq_{Geq}/T_{T}/{clustsubdir}/
+The data is stored in the DataFrame and returned.
+"""
+def get_FRAME_CLUSTERdata(indir, PREFIX, a_vals, T_vals, a_scale =1, freqfilename = "CLUSTERED_FREQUENCIES.csv", 
+                                     clustsubdir= "CLUST/{binType}_{nbins}/", binType="KMeans", nbins=2):
+    
+    clustsubdir = clustsubdir.format(binType=binType, nbins=nbins)
+    a_vals, T_vals = auto_guess_avals_tvals(indir, PREFIX, a_vals, T_vals)
+    if a_vals == None:
+        print("Exiting..."); return;
+    a_scaled_vals = [a*a_scale for a in a_vals]
+    print(f"List of a values: {a_vals}")
+    if (a_scale != 1):
+        print(f"List of scaled a values: {a_scaled_vals}")
+    # Create a multi-indexed DataFrame
+    clustdata = pan.DataFrame()
+    # Now populate the DataFrame with the data from the files
+    for a in a_vals:
+        for T in T_vals:
+            # Read the file
+            try:
+                df = pan.read_csv(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/T_{T}/{clustsubdir.format(binType=binType, nbins=nbins)}" 
+                        + freqfilename, header=0)
+                df.columns = df.columns.astype(str)
+                #print(f"Data for a = {a}, T = {T}:")
+                df.index = pan.MultiIndex.from_tuples([(PREFIX, a*a_scale, T)]*len(df), names=['Prefix', 'a', 'T'])
+                # Assign the data df to the appropriate index in the clustdata DataFrame
+                clustdata = pan.concat([clustdata, df], axis=0).sort_index(axis=0)
+            except FileNotFoundError:
+                print(f"Cluster Frequency data not found for a = {a}, T = {T}. Skipping....")
+                continue
+
+    # Finally, get unique var_names by extracting them from the columns of the DataFrame as follows:
+    # "CLUSTER_FREQ[{var}]" where {var} is the variable name
+
+    #var_names = list(set([re.search(r'CLUSTER_FREQ\[(.*?)\]', col).group(1) 
+    #        for col in clustdata.columns if re.search(r'CLUSTER_FREQ\[', col)]))
+    # Next replace all 0 values in CLUSTER_FREQ[{var}] columns with np.nan
+    for col in clustdata.columns:
+        if re.search(r'CLUSTER_FREQ\[(.*?)\]', col):
+            clustdata[col].replace(0, np.nan, inplace=True)
+
+    return clustdata
+
 
 ''' # Summary Description of get_FRAME_POTdata(...) (called by analyse_POTdata(...))
 This function creates a multi-Indexed DataFrame with the potential data for each species.
@@ -937,6 +946,7 @@ def get_PRELIM_EQdata(indir, PREFIX, a_vals, tseries_vals, a_scale =1,
                 data = pan.concat([data, df], axis = 0).sort_index(axis = 0)
             except FileNotFoundError:
                 print(f"Mean data not found for a = {a}, TS = {TS}. Skipping this a-value....")
+                print(f" With missing filename: {indir + PREFIX + f'/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/TimeSeries/' + meanfilename.format(Pre=PREFIX, g=g, dP=dP, Geq=Geq, a=a, serType= serType, TS=TS)}")
                 continue
             selected_files = glob.glob(indir + PREFIX + f"/L_{g}_a_{a}/dP_{dP}/Geq_{Geq}/TimeSeries/{serType}_T_{TS}_*.csv")
             # First get maxR for this a and TS value
@@ -1178,7 +1188,15 @@ NOTE: This function assumes that the data is stored in the FILENAME the followin
 FREQ[{var1}] ... FREQ[{varN}]   POWER[{var1}]_MEAN_ALL ... POWER[{varN}]_MEAN_ALL POWER[{var1}]_MEAN_SURV ... POWER[{varN}]_MEAN_SURV k_R_0 ... POWER[{varN}]_R_{R_max}
 where {var} is one of the species names.
 It creates a Multi-Index DataFrame with Indices: Prefix, a, T, R and columns: FREQ[{var}], POWER[{var}]_MEAN_ALL, POWER[{var}]_MEAN_SURV, POWER[{var}]_R_{R_max}
+
+
 '''
+
+def get_edges(arr):
+    arr = np.asarray(arr)
+    midpoints = (arr[1:] + arr[:-1]) / 2
+    edges = np.concatenate([[arr[0] - (midpoints[0] - arr[0])], midpoints, [arr[-1] + (arr[-1] - midpoints[-1])]])
+    return edges
 
 def analyse_FRAME_FFTPOWERdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], Tavg_window_index = [-100000, 0], filename = "FFT_POWERspectra.csv", a_scaling=1,
                                  var_labels= [ "P(x; t)" , "G(x; t)", "Pr(x; t)"]):
@@ -1226,11 +1244,11 @@ def analyse_FRAME_FFTPOWERdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[
         # Find Tmax as the maximum value of T in the data.
         Tmax = data.index.get_level_values('T').max()
         Tmax = int(Tmax) if float(Tmax).is_integer() else Tmax
-        savecsvdir = out_dir + f"{Pre}/FFT_POWER/"
-        Path(savecsvdir).mkdir(parents=True, exist_ok=True)
+        #savecsvdir = out_dir + f"{Pre}/FFT_POWER/"
+        #Path(savecsvdir).mkdir(parents=True, exist_ok=True)
 
         # Save the data to a csv file.
-        data.to_csv(savedir + f"{savefilename}_dP_{dP}_Geq_{Geq}.csv")
+        #data.to_csv(savedir + f"{savefilename}_dP_{dP}_Geq_{Geq}.csv")
         #Concatenate the data to the combined data
         combined_data = pan.concat([combined_data, data], axis = 0)
 
@@ -1258,8 +1276,8 @@ def analyse_FRAME_FFTPOWERdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[
             Tavg["POWER[" + var_labels[s] + "]_MEAN_ALL"] = np.log10(Tavg["POWER[" + var_labels[s] + "]_MEAN_ALL"])
             Tavg["POWER[" + var_labels[s] + "]_MEAN_SURV"] = np.log10(Tavg["POWER[" + var_labels[s] + "]_MEAN_SURV"])
 
-        # Remove rows with FREQ[{var}] > 30
-        Tavg = Tavg[Tavg["FREQ[" + var_labels[0] + "]"] <= 30]
+        # Remove rows with FREQ[{var}] > 80
+        #Tavg = Tavg[Tavg["FREQ[" + var_labels[0] + "]"] <= 60]
 
         # Iterating over the Pre, a indices, average over the last Tavg_window_index values of T and assign to new DataFrame.
         ''' FIX THIS LATER
@@ -1307,29 +1325,53 @@ def analyse_FRAME_FFTPOWERdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[
             ax_SURV = axs_SURV[s] if num_species > 1 else axs_SURV
             # Plotting the mean power spectra for all replicates
             data_A = Tavg.loc[(slice(None), slice(None), T_vals[-1]), :]
+            # Replace all np.nan values with 0 in the data_A DataFrame.
+            #data_A = data_A.fillna(0)
+            # Drop rows where POWER[{var}]_MEAN_SURV is NaN or empty.
+            #data_A = data_A.dropna(subset=["POWER[" + var_labels[s] + "]_MEAN_SURV"])
+            # Drop rows where FREQ[{var}] is 2.5
+            data_A = data_A[data_A["FREQ[" + var_labels[s] + "]"] != 2.5]
+            # If T_vals is empty, use the last T value in the data_A DataFrame
             #data_A = Tavg.loc[(slice(None), slice(None), slice(None), slice(None)), :]
             # Create a mesh grid of a and FREQ[{var}] values, as X and Y respectively, with POWER[{var}]_MEAN_SURV OR  POWER[{var}]_MEAN_ALL as Z.
-            X, Y = np.meshgrid(data_A.index.get_level_values('a').unique(), data_A["FREQ[" + var_labels[s] + "]"].unique())
-            Z_ALL = data_A["POWER[" + var_labels[s] + "]_MEAN_ALL"].values.reshape(len(data_A.index.get_level_values('a').unique()), len(data_A["FREQ[" + var_labels[s] + "]"].unique()))
-            Z_SURV = data_A["POWER[" + var_labels[s] + "]_MEAN_SURV"].values.reshape(len(data_A["FREQ[" + var_labels[s] + "]"].unique()), len(data_A.index.get_level_values('a').unique()))
+
+            x = data_A.index.get_level_values('a').unique()
+            y = data_A["FREQ[" + var_labels[s] + "]"].unique()
+            print(f"X = {x}, \n Y = {y}")
+            X = x; Y = y
+            #X, Y = np.meshgrid(x, y)
+            Z_SURV = data_A["POWER[" + var_labels[s] + "]_MEAN_SURV"].values.reshape(len(y), -1, order='F')
+
+            # Print the first column of Z_SURV
+            #print(f"Z_SURV first column at {x[0]} = {Z_SURV[:, 0]}")
+            #print(f"Z_SURV second column at {x[1]} = {Z_SURV[:, 1]}")
+            #print(f"Z_SURV last column at {x[-1]} = {Z_SURV[:, -1]}")
+            # Reverse the order of Y to have the highest frequency at the top.
+            #Z_SURV = Z_SURV[::-1, :]
+            print(f"Z_SURV shape = {Z_SURV.shape}, X shape = {X.shape}, Y shape = {Y.shape}")
+            #X, Y = np.meshgrid(data_A.index.get_level_values('a').unique(), data_A["FREQ[" + var_labels[s] + "]"].unique())
+            #Z_ALL = data_A["POWER[" + var_labels[s] + "]_MEAN_ALL"].values.reshape(len(data_A.index.get_level_values('a').unique()), len(data_A["FREQ[" + var_labels[s] + "]"].unique()))
+            #Z_SURV = data_A["POWER[" + var_labels[s] + "]_MEAN_SURV"].values.reshape(len(data_A["FREQ[" + var_labels[s] + "]"].unique()), len(data_A.index.get_level_values('a').unique()))
             # Plot the heatmap for the mean power spectra for surviving replicates
 
-            plot = ax_SURV.pcolormesh(X, Y, Z_SURV, cmap=sea.color_palette("icefire", as_cmap=True), shading = 'auto')
+            plot = ax_SURV.pcolormesh(X, Y, Z_SURV, cmap=sea.color_palette("viridis", as_cmap=True), shading='nearest')
             # If s = 0, set vmin and vmax for it.
             if s == 0:
-                plot.set_clim(vmin = 0, vmax = 5)
+                pass
+                #plot.set_clim(vmin = 3.5, vmax = 7)
             ax_SURV.set_title(f"Power Spectra of {var_labels[s]}" )
             ax_SURV.set_xlabel(r'R $(mm/d)$', fontsize=13)
             ax_SURV.set_ylabel(r'Frequency (in $px^{-1}$ (px $ \approx 0.1 km$))', fontsize=13)
             #axs_SURV.set_yscale('log')
             ax_SURV.set_ylim(ax_SURV.get_ylim()[::-1])
             ax_SURV.yaxis.set_major_locator(mtick.MultipleLocator(5))
+            #ax_SURV.axvline(x=0.052, color='mediumvioletred', linestyle='--', linewidth=1.5)
 
             # Only show y-axis values between 0 and 30
             #ax_SURV.set_ylim(0, 30)
 
             # Set x axis ticks to display a-values at the center of the bins.
-            #aval = data_A.index.get_level_values('a').unique()
+            aval = data_A.index.get_level_values('a').unique()
             #ax_SURV.set_xticks( [aval[i] + (aval[i+1] - aval[i])/2 for i in range(len(aval) - 1)] + [aval[-1] + (aval[-1] - aval[-2])/2])
 
             # Add a colorbar to the plot
@@ -1339,6 +1381,7 @@ def analyse_FRAME_FFTPOWERdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[
         fig_SURV.suptitle(r" Power Spectra vs Rainfall ($R$)" + f" For {Pre} at dP = {dP}, Geq = {Geq} at Equilibrium")
         plt.savefig(savedir + f"FFT_POWER_{Pre}_dP_{dP}_Geq_{Geq}_Tavg_{T_vals[-1]}_BWIN_0.5_DEF.png")
         plt.show(); plt.close()
+
 
 
 """ Summary Description of analyse_FRAME_CORRdata(...)
@@ -1753,6 +1796,14 @@ def analyse_FRAME_FFTCORRdata(indir, out_dir, prefixes=[], a_vals=[], focus_T_va
     
     autosavefilename = f"FFTPIQUES_AUTOCORR-2D_{analType}_fTmax_{focus_T_vals[-1]}"
     crosssavefilename = f"FFTPIQUES_CROSSCORR-2D_{analType}_fTmax_{focus_T_vals[-1]}"
+
+    # Check if harm_peaks_index is a list or array with integer values.
+    if not ( isinstance(harm_peaks_index, (list, np.ndarray)) 
+            and all(isinstance(i, int) for i in harm_peaks_index)):
+        print(f"harm_peaks_index is not a valid list or array of integers. Using default harm_peaks_index = [0, 1, 2].")
+        harm_peaks_index = [0, 1, 2]  # Default values if not provided or invalid.
+
+
     if len(prefixes) == 0:
         prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(indir, '*/'))]
     combined_data_auto = pan.DataFrame(); combined_data_cross = pan.DataFrame()
@@ -1839,12 +1890,6 @@ def analyse_FRAME_FFTCORRdata(indir, out_dir, prefixes=[], a_vals=[], focus_T_va
 
                 # If harm_peaks_index is not None or an empty list/array, then iterate over the indices "i"
                 # and extract the "ith" ( i % 10) rows from the auto_FFTPeakdata DataFrame.
-                
-                # Check if harm_peaks_index is a list or array with integer values.
-                if not ( isinstance(harm_peaks_index, (list, np.ndarray)) 
-                        and all(isinstance(i, int) for i in harm_peaks_index)):
-                    print(f"harm_peaks_index is not a valid list or array of integers. Using default harm_peaks_index = [0, 1, 2].")
-                    harm_peaks_index = [0, 1, 2]  # Default values if not provided or invalid.
                     
                 for harm_indx in harm_peaks_index:
                     # Extract the ith (i % 10) rows from the auto_FFTPeakdata DataFrame.
@@ -1859,7 +1904,7 @@ def analyse_FRAME_FFTCORRdata(indir, out_dir, prefixes=[], a_vals=[], focus_T_va
                         print(f"Plotting ALL AUTO PEAK data (Superimposed) for {Pre} at T0 = {T0}....")
                     if harm_indx != -1:
                         try:
-                            auto_data_T0 = auto_data_T0.iloc[harm_indx % 10, :]
+                            auto_data_T0 = auto_data_T0.iloc[[(i % 10) == harm_indx for i in range(len(auto_data_T0))], :]  # Note the double brackets
                         except IndexError:
                             print(f"No AUTO data found for {Pre} at T0 = {T0} for harm_peaks_index = {harm_indx}. Skipping....")
                             continue
@@ -1872,13 +1917,38 @@ def analyse_FRAME_FFTCORRdata(indir, out_dir, prefixes=[], a_vals=[], focus_T_va
                     #p_auto = len(auto_FFTPeakvariables)// SPB + 1; q_auto = SPB
                     p_auto = len(auto_FFTPeakvariables)//4 + 1; q_auto = 4
                     fig_auto, axs_auto = plt.subplots(p_auto, q_auto, figsize = set_figsizeGrid(p_auto, q_auto), sharex = True, sharey = True)
-
+                    print(f"Auto_data_T0 index: {auto_data_T0.index}")
                     # Flatten the axs array for easier indexing.
                     axs_auto = axs_auto.flatten()
                     # Loop over the variables and plot the data.
                     for s in range(len(auto_FFTPeakvariables)):
                         # Plotting the auto data
                         ax_auto = axs_auto[s] if len(auto_FFTPeakvariables) > 1 else axs_auto
+
+                        if(s< 0):
+                            # Print the contents of the columns that correspond to PEAK-TIMEPERIOD-REPAVG{...} or PEAK-TIMEPERIOD[AVG[...]]
+                            col_repavg = f"PEAK-TIMEPERIOD-REPAVG{{{analType}{{{auto_FFTPeakvariables[s]}}}}}"
+                            col_avg = f"PEAK-TIMEPERIOD[AVG[{analType}{{{auto_FFTPeakvariables[s]}}}]]"
+                            if col_repavg in auto_data_T0.columns and col_avg in auto_data_T0.columns:
+                                print(f"Index | {col_repavg} | {col_avg}")
+                                for idx, (repavg_val, avg_val) in zip(auto_data_T0.index, zip(auto_data_T0[col_repavg], auto_data_T0[col_avg])):
+                                    print(f"{idx} | {repavg_val} | {avg_val}")
+                            elif col_repavg in auto_data_T0.columns:
+                                print(f"Index | {col_repavg}")
+                                for idx, repavg_val in zip(auto_data_T0.index, auto_data_T0[col_repavg]):
+                                    print(f"{idx} | {repavg_val}")
+                            elif col_avg in auto_data_T0.columns:
+                                print(f"Index | {col_avg}")
+                                for idx, avg_val in zip(auto_data_T0.index, auto_data_T0[col_avg]):
+                                    print(f"{idx} | {avg_val}")
+                            #Next print the entire df
+                            #print("\nFull DataFrame for auto_data_T0:")
+                            #print(auto_data_T0.head())
+
+                            # Show the columns that correspond to the variables.
+                            input("Press Enter to continue...")
+                            
+
                         # For each species, plot the second and third columns
                         print(f"Plotting AUTO {analType}{{{auto_FFTPeakvariables[s]}}}] for {Pre} at T0 = {T0}.")
                         # First plotting the average of all time periods corresponding to individual replicates vs a value.
@@ -1904,18 +1974,24 @@ def analyse_FRAME_FFTCORRdata(indir, out_dir, prefixes=[], a_vals=[], focus_T_va
                                                 color = "grey", marker = 'o', s = 15, alpha = 0.35)
                         
                         # TODO: Implement 95% CI as infill area for the scatter plot.
-
+                        err = 2*np.sqrt(auto_data_T0["PEAK-TIMEPERIOD-REPVAR{" + analType + "{" + auto_FFTPeakvariables[s] + r"}}"])
+                        #ax_auto.fill_between(auto_data_T0.index.get_level_values('a'), 
+                        #    auto_data_T0["PEAK-TIMEPERIOD-REPAVG{" + analType + "{" + auto_FFTPeakvariables[s] + r"}}"] - err,
+                        #    auto_data_T0["PEAK-TIMEPERIOD-REPAVG{" + analType + "{" + auto_FFTPeakvariables[s] + r"}}"] + err, 
+                        #    color = colours_light[s % len(colours_light)], alpha= 0.25)
                         # Set the title and labels for the plot.
                         ax_auto.set_title(r"$\delta T($ " + analType + "[" + auto_FFTPeakvariables[s] + r"]) vs a")
                         ax_auto.set_xlabel(r'R $(mm/hr)$')
                         ax_auto.set_ylabel(r'Recovery Time Period $\delta T$')
+                        # Set lower ylim as -5
+                        ax_auto.set_ylim(bottom=-1)
                         ax_auto.legend()
                     # End of s loop
                     fig_auto.suptitle(r"Recovery Time Periods for " + analType + f" data at T0 = {T0} for {Pre}, dP = {dP}, Geq = {Geq}")
                     plt.tight_layout()
                     plt.savefig(savepngdir_auto + f"{autosavefilename}_Peak_{harm_indx}.png")
                     plt.show(); plt.close()
-
+                # End of harm_indx loop
             # End of T0 loop
         
         # Now plotting the cross data
@@ -1932,58 +2008,83 @@ def analyse_FRAME_FFTCORRdata(indir, out_dir, prefixes=[], a_vals=[], focus_T_va
                 except KeyError:
                     print(f"No CROSS data found for {Pre} at T0 = {T0}. Skipping....")
                     continue
-                
-                # Create save directory for the plots.
-                savepngdir_cross = out_dir + f"{Pre}/2DCorrelation/BoxViolin/L_{g}/dP_{dP}/Geq_{Geq}/T0_{T0}/FFTTime/"
-                Path(savepngdir_cross).mkdir(parents=True, exist_ok=True)
-                # Create subplots of shape (p, p) where p is round(sqrt(len(cross_FFTPeakvariables)))
-                #p_cross = len(cross_FFTPeakvariables)// SPB + 1; q_cross = SPB
-                p_cross = len(cross_FFTPeakvariables)//4 + 1; q_cross = 4
-                fig_cross, axs_cross = plt.subplots(p_cross, q_cross, figsize = set_figsizeGrid(p_cross, q_cross), sharex = True, sharey = True)
-
-                # Flatten the axs array for easier indexing.
-                axs_cross = axs_cross.flatten()
-                # Loop over the variables and plot the data.
-                for s in range(len(cross_FFTPeakvariables)):
-                    # Plotting the cross data
-                    ax_cross = axs_cross[s] if len(cross_FFTPeakvariables) > 1 else axs_cross
-                    # For each species, plot the second and third columns
-                    print(f"Plotting CROSS {analType}{{{cross_FFTPeakvariables[s]}}}] for {Pre} at T0 = {T0}.")
-                    # First plotting the average of all time periods corresponding to individual replicates vs a value.
-                    ax_cross.scatter(cross_data_T0.index.get_level_values('a'),
-                                    cross_data_T0["PEAK-TIMEPERIOD-REPAVG{" + analType + "{" + cross_FFTPeakvariables[s] + r"}}"],
-                                    label = r"$\delta T[\mu_{R}(FFT_{i}($" + cross_FFTPeakvariables[s] + r"$))]$", color = colours[s % len(colours)],
-                                    marker = 'o', s = 20, alpha = 0.85)
-                    # Next plotting the time period of AVG (average of all replicates timeseries) vs a value.
-                    ax_cross.scatter(cross_data_T0.index.get_level_values('a'),
-                                    cross_data_T0["PEAK-TIMEPERIOD[AVG[" + analType + "{" + cross_FFTPeakvariables[s] + "}]]"],
-                                    label = r"$\delta T[FFT(\mu_{R}($" + cross_FFTPeakvariables[s] + r"$))]$", color = colours_med[s % len(colours_med)],
-                                    marker = 'o', s = 20, alpha = 0.75)
-                    # Plotting the individual replicates in a light grey shade.
-                    Rmax = int(cross_data_T0.index.get_level_values('maxR').max())
-                    for R in range(0, Rmax):
-                        # Check if the column exists and is not empty before plotting.
-                        if ( f"PEAK-TIMEPERIOD[{analType}{{{cross_FFTPeakvariables[s]}}}_R_{R}]" in cross_data_T0.columns 
-                            and not cross_data_T0[f"PEAK-TIMEPERIOD[{analType}{{{cross_FFTPeakvariables[s]}}}_R_{R}]"].isnull().all() ):
-                            #print(f"Plotting R {analType}[{cross_FFTPeakvariables[s]}]_R_{R} for {Pre} at a = {a}, T0 = {T0}.")
-                            ax_cross.scatter(cross_data_T0.index.get_level_values('a'),
-                                            cross_data_T0[f"PEAK-TIMEPERIOD[{analType}{{{cross_FFTPeakvariables[s]}}}_R_{R}]"],
-                                            color = "grey", marker = 'o', s = 15, alpha = 0.35)
-                            
                     
-                    # TODO: Implement 95% CI as infill area for the scatter plot.
-                    # Set the title and labels for the plot.
-                    ax_cross.set_title(r"$\delta T($ " + analType + "[" + cross_FFTPeakvariables[s] + r"]) vs a")
-                    ax_cross.set_xlabel(r'R $(mm/hr)$')
-                    ax_cross.set_ylabel(r'Recovery Time Period $\delta T$')
-                    ax_cross.legend()
-                # End of s loop
-                fig_cross.suptitle(r"Recovery Time Periods for " + analType + f" data at T0 = {T0} for {Pre}, dP = {dP}, Geq = {Geq}")
-                plt.tight_layout()
-                plt.savefig(savepngdir_cross + f"{crosssavefilename}.png")
-                plt.show(); plt.close()
+                for harm_indx in harm_peaks_index:
+                    # Extract the ith (i % 10) rows from the auto_FFTPeakdata DataFrame.
+                    try:
+                        cross_data_T0 = cross_FFTPeakdata.loc[(slice(None), slice(None), T0, slice(None)), :]
+                    except KeyError:
+                        print(f"No CROSS data found for {Pre} at T0 = {T0}. Skipping....")
+                        continue
+                    # Extract the ith (i % 10) rows from the auto_FFTPeakdata DataFrame.
+                    # If harm_indx is -1, then we simply plot all the data for that T0 value.
+                    if harm_indx == -1:
+                        print(f"Plotting ALL CROSS PEAK data (Superimposed) for {Pre} at T0 = {T0}....")
+                    if harm_indx != -1:
+                        try:
+                            cross_data_T0 = cross_data_T0.iloc[[(i % 10) == harm_indx for i in range(len(cross_data_T0))], :]
+                        except IndexError:
+                            print(f"No CROSS data found for {Pre} at T0 = {T0} for harm_peaks_index = {harm_indx}. Skipping....")
+                            continue
+                
+                    # Create save directory for the plots.
+                    savepngdir_cross = out_dir + f"{Pre}/2DCorrelation/BoxViolin/L_{g}/dP_{dP}/Geq_{Geq}/T0_{T0}/FFTTime/"
+                    Path(savepngdir_cross).mkdir(parents=True, exist_ok=True)
+                    # Create subplots of shape (p, p) where p is round(sqrt(len(cross_FFTPeakvariables)))
+                    #p_cross = len(cross_FFTPeakvariables)// SPB + 1; q_cross = SPB
+                    p_cross = len(cross_FFTPeakvariables)//4 + 1; q_cross = 4
+                    fig_cross, axs_cross = plt.subplots(p_cross, q_cross, figsize = set_figsizeGrid(p_cross, q_cross), sharex = True, sharey = True)
+
+                    # Flatten the axs array for easier indexing.
+                    axs_cross = axs_cross.flatten()
+                    # Loop over the variables and plot the data.
+                    for s in range(len(cross_FFTPeakvariables)):
+                        # Plotting the cross data
+                        ax_cross = axs_cross[s] if len(cross_FFTPeakvariables) > 1 else axs_cross
+                        # For each species, plot the second and third columns
+                        print(f"Plotting CROSS {analType}{{{cross_FFTPeakvariables[s]}}}] for {Pre} at T0 = {T0}.")
+                        # First plotting the average of all time periods corresponding to individual replicates vs a value.
+                        ax_cross.scatter(cross_data_T0.index.get_level_values('a'),
+                                        cross_data_T0["PEAK-TIMEPERIOD-REPAVG{" + analType + "{" + cross_FFTPeakvariables[s] + r"}}"],
+                                        label = r"$\delta T[\mu_{R}(FFT_{i}($" + cross_FFTPeakvariables[s] + r"$))]$", color = colours[s % len(colours)],
+                                        marker = 'o', s = 20, alpha = 0.85)
+                        # Next plotting the time period of AVG (average of all replicates timeseries) vs a value.
+                        ax_cross.scatter(cross_data_T0.index.get_level_values('a'),
+                                        cross_data_T0["PEAK-TIMEPERIOD[AVG[" + analType + "{" + cross_FFTPeakvariables[s] + "}]]"],
+                                        label = r"$\delta T[FFT(\mu_{R}($" + cross_FFTPeakvariables[s] + r"$))]$", color = colours_med[s % len(colours_med)],
+                                        marker = 'o', s = 20, alpha = 0.75)
+                        # Plotting the individual replicates in a light grey shade.
+                        Rmax = int(cross_data_T0.index.get_level_values('maxR').max())
+                        for R in range(0, Rmax):
+                            # Check if the column exists and is not empty before plotting.
+                            if ( f"PEAK-TIMEPERIOD[{analType}{{{cross_FFTPeakvariables[s]}}}_R_{R}]" in cross_data_T0.columns 
+                                and not cross_data_T0[f"PEAK-TIMEPERIOD[{analType}{{{cross_FFTPeakvariables[s]}}}_R_{R}]"].isnull().all() ):
+                                #print(f"Plotting R {analType}[{cross_FFTPeakvariables[s]}]_R_{R} for {Pre} at a = {a}, T0 = {T0}.")
+                                ax_cross.scatter(cross_data_T0.index.get_level_values('a'),
+                                                cross_data_T0[f"PEAK-TIMEPERIOD[{analType}{{{cross_FFTPeakvariables[s]}}}_R_{R}]"],
+                                                color = "grey", marker = 'o', s = 15, alpha = 0.35)
+                                
+                        
+                        # TODO: Implement 95% CI as infill area for the scatter plot.
+                        err = 2*np.sqrt(cross_data_T0["PEAK-TIMEPERIOD-REPVAR{" + analType + "{" + cross_FFTPeakvariables[s] + r"}}"])
+                        ax_auto.fill_between(cross_data_T0.index.get_level_values('a'), 
+                            cross_data_T0["PEAK-TIMEPERIOD-REPAVG{" + analType + "{" + cross_FFTPeakvariables[s] + r"}}"] - err,
+                            cross_data_T0["PEAK-TIMEPERIOD-REPAVG{" + analType + "{" + cross_FFTPeakvariables[s] + r"}}"] + err, 
+                            color = colours_light[s % len(colours_light)], alpha= 0.25)
+                        # Set the title and labels for the plot.
+                        ax_cross.set_title(r"$\delta T($ " + analType + "[" + cross_FFTPeakvariables[s] + r"]) vs a")
+                        ax_cross.set_xlabel(r'R $(mm/hr)$')
+                        ax_cross.set_ylim(bottom=-1)  # Set lower ylim as -5
+                        ax_cross.set_ylabel(r'Interaction Time Scales $\delta T$')
+                        ax_cross.legend()
+                    # End of s loop
+                    fig_cross.suptitle(r"Interaction Time Scales for " + analType + f" data at T0 = {T0} for {Pre}, dP = {dP}, Geq = {Geq}")
+                    plt.tight_layout()
+                    plt.savefig(savepngdir_cross + f"{crosssavefilename}.png")
+                    plt.show(); plt.close()
                 # End of T0 loop
         # End of cross data check
+
 
 
 
@@ -2088,6 +2189,116 @@ def analyse_FRAME_POTdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], fi
         # Note that there is only one png per a value, so the video will be a simple slideshow (and R_max = 1).
         input("Press F to Continue...")
  
+
+""" # Summary description of the analyse_FRAME_CLUSTEREDISTdata(...)
+Reads frequency distribution of clustered data from csv file given by filename, for various prefixes, a and T values.
+Then plots the data as lineplots with size of cluster on the x-axis and frequency on the y-axis (a value  serving as hue for different lines).
+This plot is made for each prefix and T value.
+"""
+def analyse_FRAME_CLUSTEREDISTdata(indir, out_dir, prefixes=[], a_vals=[], T_vals =[], filename = "CLUSTERED_FREQUENCIES.csv", 
+            clustsubdir ="CLUST/{binType}_{nbins}/", binType="KMeans", nbins=2, var_labels= [ "P(x; t)" , "G(x; t)", "Pr(x; t)", "O(x; t)"],
+             plot_binframes = False,  a_scaling = 1):
+    
+    savefilename = re.sub(r'\.csv$', '', filename)
+    clustsubdir = clustsubdir.format(binType=binType, nbins=nbins)
+    if len(prefixes) == 0:
+        prefixes = [os.path.basename(subdir) for subdir in glob.glob(os.path.join(indir, '*/'))]
+    combined_data_auto = pan.DataFrame(); combined_data_cross = pan.DataFrame()
+    sea.set_palette("husl")
+
+    colours = [hex_list[i][-1] for i in range(len(hex_list))]
+    colours_med = [hex_list[i][-4] for i in range(len(hex_list))]
+    colours_light = [hex_list[i][1] for i in range(len(hex_list))]
+
+    init_a_vals = a_vals; init_T_vals = T_vals
+
+    for Pre in prefixes:
+
+        data = get_FRAME_CLUSTERdata(indir, Pre, init_a_vals, init_T_vals, a_scaling, freqfilename=filename, 
+                                     clustsubdir= clustsubdir, binType=binType, nbins=nbins)
+        # Returns a MultiIndex Dataframe with Indices: Prefix, a, T and columns for each species given by {var}, of the form:
+        # CLUSTER_SIZE[{var1}], CLUSTER_COUNTS[{var1}], CLUSTER_FREQ[[{var1}] ... CLUSTER_FREQ[[{varN}]
+        # where {var} is one of the species names.
+        if data.empty:
+            print(f"No data found for {Pre}. Skipping....")
+            continue
+
+        print("====================================================================")
+        print(f"Data for {Pre}:")
+        print("====================================================================\n")
+        #print(data.info())
+        print(data.head())
+        print(data.tail())
+        print(data.columns)
+        print(data.index)
+
+        savecsvdir = out_dir + f"{Pre}/{clustsubdir}/"
+        Path(savecsvdir).mkdir(parents=True, exist_ok=True)
+        # Save the data to a csv file.
+        data.to_csv(savecsvdir + f"{savefilename}_L_{g}_dP_{dP}_Geq_{Geq}.csv")
+
+        a_scaled_vals = data.index.get_level_values('a').unique().to_list()
+        t_vals_list = data.index.get_level_values('T').unique().to_list()
+        amin = min(a_scaled_vals); amax = max(a_scaled_vals)
+        Tmax = max(t_vals_list)
+        Tmax = int(Tmax) if float(Tmax).is_integer() else Tmax
+
+        for T in t_vals_list:
+            T = int(T) if float(T).is_integer() else T
+
+            # We will plot the data CLUSTER_SIZE[{var}] vs CLUSTER_FREQ[{var}] for each species {var} 
+            # and a value as hue, with a separate plot for each Prefix and T value.
+            savepngdir = out_dir + f"{Pre}/{clustsubdir}/L_{g}/dP_{dP}/Geq_{Geq}/T_{T}/"
+            Path(savepngdir).mkdir(parents=True, exist_ok=True)
+
+            data_T = data.loc[(slice(None), slice(None), T), :] # Extract data for the current T value.
+            fig, axs = plt.subplots(1, len(var_labels), figsize = set_figsize(len(var_labels)))
+            for s in range(len(var_labels)):
+                # First extract the columns for the current species {var}, and drop any NaN values.
+                col_size = f"CLUSTER_SIZE[{var_labels[s]}]"; col_freq = f"CLUSTER_FREQ[{var_labels[s]}]"
+                if col_size not in data_T.columns or col_freq not in data_T.columns:
+                    print(f"Columns {col_size} or {col_freq} not found in data for {Pre} at T = {T}. Skipping....")
+                    continue
+                data_T_var = data_T[[col_size, col_freq]].dropna()
+
+                # Plotting the data for the current species {var} and T value, across all a values.
+                ax = axs[s] if len(var_labels) > 1 else axs
+                for a in a_scaled_vals:
+                    a = int(a) if float(a).is_integer() else a
+                    try:
+                        data_T_var_a = data_T_var.loc[(slice(None), a), :]
+                    except KeyError:
+                        print(f"Data for a = {a} not found in data for {Pre} at T = {T}. Skipping....")
+                        continue
+                    # Plotting the CLUSTER_SIZE vs CLUSTER_FREQ for the current species {var} and a value.
+                    ax.plot(data_T_var_a[col_size], data_T_var_a[col_freq], label = f"a = {a}",
+                            color = colours_med[a_scaled_vals.index(a) % len(colours_med)], linestyle = 'solid', linewidth = 1.25, alpha = 0.6)
+                    # Superimpose scatter points for the data.
+                    ax.scatter(data_T_var_a[col_size], data_T_var_a[col_freq], color = colours_light[a_scaled_vals.index(a) % len(colours_light)],
+                               marker = 'o', s = 15, alpha = 0.65)
+                # Set the title and labels for the plot.
+                ax.set_title(r"$N_s(T_{eq}) $" + var_labels[s] + f" at T = {T}")
+                ax.set_xlabel(r'Cluster Size ($s$)')
+                ax.set_ylabel(r'Normalised Frequency $N_s(T_{eq} = %g$)' % T)
+                # Set both x and y axes to log scale.
+                ax.set_xscale('log'); ax.set_yscale('log')
+                ax.legend()
+            # Generate fig suptitle with Prefix, dP, Geq and T values.
+            fig.suptitle(r"Cluster Size Distribution for " + f"{Pre} at T = {T}, dP = {dP}, Geq = {Geq}")
+            plt.tight_layout()
+            plt.savefig(savepngdir + f"{savefilename}_a_{amin}-{amax}.png")
+            plt.show(); plt.close()
+
+        # End of T loop
+        # Use home_video function to create a video of the plots.
+        home_video(out_dir, out_dir, prefixes=[f"{Pre}/{clustsubdir}"], a_vals= [amin, amax], T_vals=T_vals, maxR= 1,
+                     pngformat= "%s_a_{amin}-{amax}.png" %(savefilename), pngdir= "{Pre}/L_{g}/dP_{dP}/Geq_{Geq}/T_{T}/", 
+                     videoname = f"{savefilename}_{Pre}_Tmax_{Tmax}.mp4", video_relpath= "{Pre}/Videos/{amin}-{amax}/")
+
+
+
+
+
 
 def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseries_vals =[], serType = "TSERIES",
                                    meanfilename = "Mean_{serType}_T_{TS}.csv", var_labels= [ "<<P(x; t)>_x>_r" , "<<G(x; t)>_x>_r", "<<Pr(x; t)>_x>_r"], a_scaling = 1):
@@ -2198,12 +2409,19 @@ def analyse_PRELIMS_TIMESERIESdata(indir, out_dir, prefixes=[], a_vals=[], tseri
                         ax.plot(data_R["t"], data_R[var_labels[s]], color ="grey", linestyle = 'solid', alpha = 0.25)
                     # End of R loop
                     #Set y-axis as log scale.
-                    ax.set_yscale('log')
-                    ax.set_xscale('log')
+                    #ax.set_yscale('log')
+                    #ax.set_xscale('log')
+                    ax.set_xlim(1e2, 1.25e5)
+                    # Display x-axis labels to be 
+                    
                     if serType == "MOVSERIES":
+                        #ax.set_xlim(7.5e4, 1.5e5)
                         ax.set_title(f"{var_labels[s]}" + r" vs $t$"  + f" at a = {a}")
                         ax.set_ylabel(f"{var_labels[s]}")
+                        #ax.set_ylim(0-1e-2, 1.01)
                     else:
+                        ax.set_yscale('log')
+                        ax.set_xscale('log')
                         ax.set_title(r"$\langle \rho_{%g}(t) \rangle_{x}$ vs $t$" %(s)  + f" at a = {a}")
                         ax.set_ylabel(r'$\langle \rho_{%g}(t) \rangle_{x}$' % (s))
                     ax.set_xlabel(r'Time $(d)$')
@@ -2853,7 +3071,7 @@ def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], 
             #Tavg_TS.loc[Tavg_TS["AVG[" + var_labels[0] + "]_SURV"] == 0, ["AVG[" + var_labels[1] + "]_ALL", "AVG[" + var_labels[1] + "]_SURV", "AVG[" + var_labels[1] + "]", "VAR[" + var_labels[1] + "]_SURV", "VAR[" + var_labels[1] + "]_ALL", "VAR[" + var_labels[1] + "]"]] = 0
 
             # Set ALL ENTRIES of Tavg_TS with a < 0.0018 to 0.
-            #Tavg_TS.loc[Tavg_TS.index.get_level_values('a') < 0.0018, :] = 0
+            #Tavg_TS.loc[Tavg_TS.index.get_level_values('a') < 0.00178, :] = 0
             for s in range(len(var_labels)):
 
                 # First plot scatter plots of Surviving and All replicates for each species.
@@ -2895,7 +3113,12 @@ def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], 
                     ax.set_ylabel(r" $ \langle \langle \rho_{%g}(x, t) \rangle_{x} \rangle_{t} $" % (s))
                 #ax.set_title(r" $ \langle \langle \rho_{%g}(x, t) \rangle_{x} \rangle_{t} $" % (s))
                 #ax.set_ylabel(r" $ \langle \langle \rho_{%g}(x, t) \rangle_{x} \rangle_{t} $" % (s))
-                ax.set_xlabel(r'R $(mm/hr)$')
+                #ax.set_xlabel(r'R $(mm/hr)$') # For Rietkerk
+                ax.set_xlabel(r'a $(hr^{-1})$') # For DP
+                # Set x-axis to log scale (for DP)
+                ax.set_xscale('log')
+                # Set x-axis ticks to display four significant figures (for DP)
+                ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.4g}'))
                 
                 ax.legend()
 
@@ -2917,15 +3140,24 @@ def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], 
 
             # Drop rows where col entries for cols "var_labels[0]" and "var_labels[1]" are BOTH EITHER 1 or 0.
             if serType == "MOVSERIES":
-                #Tbox = Tbox[~( ((Tbox[var_labels[0]] == 0) | (Tbox[var_labels[0]] == 1)) & ((Tbox[var_labels[1]] == 0) | (Tbox[var_labels[1]] == 1)) )]
-                #Tbox = Tbox[~((Tbox[var_labels[0]] == 1))]; Tbox = Tbox[~((Tbox[var_labels[1]] == 0) | (Tbox[var_labels[1]] == 1))]
-                Tbox = Tbox[~((Tbox[var_labels[1]] == 0))]
+                Tbox = Tbox[~( ((Tbox[var_labels[0]] == 0) | (Tbox[var_labels[0]] > 0.9)) & ((Tbox[var_labels[1]] == 0) | (Tbox[var_labels[1]] == 1)) )]
+                #Tbox = Tbox[~((Tbox[var_labels[0]] > 0.8))]; Tbox = Tbox[~((Tbox[var_labels[1]] == 0) | (Tbox[var_labels[1]] == 1))]
+                #Tbox = Tbox[~((Tbox[var_labels[1]] == 0))]
             # Plotting the box/violin plots for each species.
             # NOTE: Seaborn's violinplot function does NOT support NON-UNIQUE multi-indexes, so we need to reset the index.
             Tbox_flat = Tbox.reset_index()
             fig, axs = plt.subplots(1, len(var_labels), figsize = set_figsize(len(var_labels)))
             # Set the category order to ensure $\sum(a)$ is the first category.
-            cat_var_plot_order = ["$\sum(a)$"] + [str(i) for i in Tbox.index.get_level_values('a').unique() if i != "$\sum(a)$"]
+            
+            # Replace all Tbox_flat['a'] numeric strings with their numeric 5 significant figure representation
+            #Tbox_flat['a'] = Tbox_flat['a'].replace({r"\$\\sum\(a\)\$": "$\sum(a)$"}, regex=True)
+            Tbox_flat['a'] = Tbox_flat['a'].apply(lambda x: f"{float(x):.5g}" if x != "$\sum(a)$" else x)
+            # Print unique values of Tbox_flat['a]
+            print(f"Unique values of Tbox_flat['a']: {Tbox_flat['a'].unique()}")
+            cat_var_plot_order = ["$\sum(a)$"] + [f"{float(x):.5g}" for x in Tbox.index.get_level_values('a').unique() if x != "$\sum(a)$"]
+            cat_dtype = pan.api.types.CategoricalDtype(categories=cat_var_plot_order, ordered=True)
+            Tbox_flat['a'] = Tbox_flat['a'].astype(cat_dtype)
+            print(f"Category order for Tbox_flat['a']: {cat_var_plot_order}")
             for s in range(len(var_labels)):
                 ax = axs[s] if SPB > 1 else axs
                 # First plotting violin plot for '$\sum(a)$' and then violin plot for the rest of the data.
@@ -2939,7 +3171,17 @@ def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], 
                                inner='box', linewidth = 1.5, alpha = 0.85, density_norm='area')
                 # Add vertical line seperating sum data from individual a data.
                 ax.axvline(x=0.5, color='grey', linestyle='--', linewidth=1.5, alpha=0.75)
-                                
+               
+                # Set x-axis ticks to display 5 significant figures if numeric for DP
+
+                '''
+                if serType == "MOVSERIES":
+                    ax.set_xticks([0.5] + [i for i in Tbox.index.get_level_values('a').unique() if i != "$\sum(a)$"])
+                    ax.set_xticklabels([r"$\sum(a)$"] + [f"{i:.5g}" for i in Tbox.index.get_level_values('a').unique() if i != "$\sum(a)$"])
+                else:
+                    ax.set_xticks(np.arange(len(Tbox.index.get_level_values('a').unique())))
+                    ax.set_xticklabels([r"$\sum(a)$"] + [f"{i:.5g}" for float(i) in Tbox.index.get_level_values('a').unique() if i != "$\sum(a)$" else pass])
+                '''              
                 #ax.set_ylim(bottom = -0.05); ax.set_xlim(right= 0.014)
                 if serType == "MOVSERIES":
                     ax.set_title(r" $ P[$ " +f"{var_labels[s]}" + r"$ ]$")
@@ -2949,7 +3191,13 @@ def analyse_PRELIMS_EQdata(indir, out_dir, prefixes=[], a_vals=[], TS_vals =[], 
                     ax.set_ylabel(r" $ P[ \rho_{%g}(x, t) ] $" % (s))
                 #ax.set_title(r" $ \langle \langle \rho_{%g}(x, t) \rangle_{x} \rangle_{t} $" % (s))
                 #ax.set_ylabel(r" $ \langle \langle \rho_{%g}(x, t) \rangle_{x} \rangle_{t} $" % (s))
-                ax.set_xlabel(r'R $(mm/hr)$')
+                #ax.set_xlabel(r'R $(mm/hr)$') # For Rietkerk
+                ax.set_xlabel(r'a $(hr^{-1})$') # For DP
+                #ax.set_xticks(range(len(cat_var_plot_order)))
+                #ax.set_xticklabels(cat_var_plot_order)
+
+                 # Display current x-axis tick labels
+                #tick_labels = ax.get_xticklabels(); print(f"Current x-axis tick labels: {tick_labels}")
             
             fig.suptitle(f"Eq Distribution of Species For {Pre}, dP = {dP}, Geq = {Geq} B/W {Twin_min} -- {Twin_max}")
             plt.savefig(savedir + f"ALT_VIOLIN_{serType}_amin_{Avals_scaled_list[0]}_amax_{Avals_scaled_list[-1]}_Twin_{Twin_min}_{Twin_max}_dP_{dP}_Geq_{Geq}.png")
@@ -3252,7 +3500,7 @@ def recursive_copydir(src, dst, include_filetypes = ["*.txt"],
 recursive_copydir(in_dir, out_dir, include_filetypes = ["*.txt"], exclude_filetypes =["*.png", "*.jpg", "*.jpeg", "*.mp4"], symlinks=False)
 a_vals = [0.026, 0.034, 0.0415, 0.042, 0.05, 0.052]  #1.75, 1.8, 20] #0.026, 0.034, 0.0415, 0.042, 0.05, 0.052] #, 0.057 , 0.06] #0.051, 0.053, 0.055]; 
 a_scaling = 1 #0.001
-T_vals= []
+T_vals= [91201]
 #T_vals= [0, 63.03, 109.56, 144.54, 190.52, 251.13, 331.1, 436.48, 575.41, 758.56, 831.71, 999.9, 1202.19, 1445.4, 1737.78, 2089.23, 2511.85, 3019.94, 3630.77, 4365.13, 5247.99, 6309.49, 6918.23, 7585.71, 8317.54, 9120.1, 9999.99]
 #T_vals=[0, 63095.7, 69182.9, 75857.7, 83176.3, 91201, 99999.9, 109647, 120226, 131826, 144544, 158489, 173780, 190546, 208930, 229087];
 # TVALS WHEN DT= 0.1
@@ -3291,7 +3539,7 @@ T_vals= []
 #prefixes = ["COR-DDM5-NREF-0.5HI", "COR-DDM10-NREF-0.5HI", "COR-DDM1-NREF-0.5HI"]
 #prefixes = ["DIC-NREF-1.1HI", "DIC-NREF-0.5LI", "DIC-NREF-0.1LI"]
 #prefixes = ["HX2001-UA125A0-5E2UNI"]#, "HX1005-UA125A125-5E2UNI"]#, "HX2005-UA125A0-5E2UNI"]
-prefixes = [ "HsX2001-UA125A0-5E2UNI"]#, "HsX2005-UA125A0-5E2UNI"]     
+prefixes = [ "DiC-STD"]#, "HsX2005-UA125A0-5E2UNI"]     
 
 # PREFIXES FOR SMALL BODY SIZE METAPOPLN
 
@@ -3392,7 +3640,7 @@ elif SPB == 1:
 for a in a_vals:
     analyse_PRELIMS_TRAJECTORYdata(in_dir, out_dir, prefixes, [a], TS_vals, size_label = ["t"], maxR= 10, minR=0, T_window = Traj_win_index, meanfilename = "Mean_TSERIES_T_{TS}_dP_{dP}_Geq_{Geq}.csv", a_scaling= a_scaling, x_label= ["<<P(x; t)>_x>_r"], y_label= ["<<G(x; t)>_x>_r"], hue_label=[])
 #'''
-#analyse_FRAME_FFTPOWERdata(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "FFT_POWERspectra.csv", Tavg_window_index = Tavg_win_index, var_labels= var_frame_labels, a_scaling= a_scaling)
+analyse_FRAME_FFTPOWERdata(in_dir, out_dir, prefixes, a_vals, T_vals, filename = "FFT_POWERspectra.csv", Tavg_window_index = Tavg_win_index, var_labels= var_frame_labels, a_scaling= a_scaling)
 #analyse_FRAME_POTdata(in_dir, out_dir, prefixes, a_vals, T_vals, find_minima= True, filename = "Pot_Well.csv", 
 #                          minimafilename = "LOCAL_MINIMA.csv", var_labels= [ "P(x; t)" , "G(x; t)", "Pr(x; t)"], a_scaling= a_scaling)
 
@@ -3409,7 +3657,7 @@ for anal in analType:
     analyse_FRAME_CORRdata(in_dir, out_dir, prefixes, a_vals, TCorr_vals, analType = anal, 
                            filename = "{corrType}_{analType}_TD_*.csv", var_labels= "deduce", a_scaling= a_scaling)
 #'''
-#''' # For HARMONIC PEAK (FFT ANALYSIS) of CORR DATA.
+''' # For HARMONIC PEAK (FFT ANALYSIS) of CORR DATA.
 analType= ["NCC", "ZNCC", "AMI", "MI"]
 for anal in analType:
     analyse_FRAME_FFTCORRdata(in_dir, out_dir, prefixes, a_vals, TCorr_vals, analType = anal, corrsubdir="2DCorr/FFT/",

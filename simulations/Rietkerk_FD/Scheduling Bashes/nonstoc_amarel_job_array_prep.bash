@@ -58,7 +58,7 @@ cat << EOF > ${2}_array.sh
 #SBATCH --partition=p_deenr_1      
 #SBATCH --requeue  
 #SBATCH --priority=100
-#SBATCH --array=0-$((k))%5
+#SBATCH --array=0-$((k))%10
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=$((n))      # IDEALLY THIS SHOULD BE DYNAMICALLY SET, VARYING FOR EACH JOB.
 #SBATCH --mem-per-cpu=4G          # Memory per CPU core
@@ -73,30 +73,9 @@ cat << EOF > ${2}_array.sh
 # Path to the input file containing the arguments
 init_file=$1
 # Read the corresponding line of arguments based on SLURM_ARRAY_TASK_ID
-read -r p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 p11 p12 p13 <<< \$(sed -n "\$((SLURM_ARRAY_TASK_ID+2))p" \$init_file)
+read -r p1 p2 p3 p4 p5 p6 p7 p8 p9 p10 p11 p12 <<< \$(sed -n "\$((SLURM_ARRAY_TASK_ID+2))p" \$init_file)
 CPUS_PER_TASK=\$p7
-#Strip whitespaces and newlines from p12
-p12=\$(echo \$p12 | tr -d '[:space:]')
-prefix=\$p12
-#Remove trailing whitespaces and new lines from p9 if SpB is 1 else remove trailing whitespaces and new lines from p10
-if [ $3 -eq 1 ]; then
-    p9=\$(echo \$p9 | tr -d '[:space:]')
-    prefix=\$p11
-elif [ $3 -eq 2 ]; then
-    p11=\$(echo \$p11 | tr -d '[:space:]')
-    prefix=\$p11
-else
-    p12=\$(echo \$p12 | tr -d '[:space:]')
-    prefix=\$p12
-fi
-if [ $init -eq 2 ]; then
-    # Check if p13 is not empty
-    if [ -z "\$p13" ]; then
-        p12=$(echo \$p12 | tr -d '[:space:]')
-    else
-        p13=$(echo \$p13 | tr -d '[:space:]')
-    fi
-fi
+
 
 echo \$p1 \$p2 \$p3 \$p4 \$p5 \$p6 \$p7 \$p8 \$p9 \$p10 \$p11 \$p12
 # Dynamically set the number of CPUs per task
@@ -106,9 +85,9 @@ cd ..
 
 # Use the variables p1, p2, p3, p4, p5, p6, p7, p8, p9 to compile the source files:
 if [ $init -ne 2 ]; then
-    g++ -O3 -march=native -DSPB=${3} -DINIT=${init} rietkerk_bjork_basic.cpp order_${3}stoc_unity_rietkerk.cpp -fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
+    g++ rietkerk_bjork_basic.cpp order_test_rietkerk.cpp -fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
 else
-    g++ -O3 -march=native -DSPB=${3} -DINIT=${init}  rietkerk_bjork_basic.cpp order_${3}stoc_burnin_rietkerk.cpp -fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
+    g++  rietkerk_bjork_basic.cpp order_test_rietkerk.cpp-fopenmp -o ama_${2}_\${SLURM_ARRAY_TASK_ID}.out -std=c++23
 fi
 
 # Run the compiled program with the input parameters

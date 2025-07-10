@@ -835,7 +835,7 @@ void init_exprtk_readCSVcolumns_frame(D2Vec_Double &array, vector<int> &const_in
 
 void init_burnin_wrapper(D2Vec_Double &Rho_dt, double a, double a_c, double dP, double perc,  int L, int r, double c_spread[] )
 {
-	stringstream  rain, dPO, Lgrid, t_val; rain  << a; Lgrid << L; dPO << dP; t_val << 88000; 
+	stringstream  rain, dPO, Lgrid, t_val; rain  << a; Lgrid << L; dPO << dP; t_val << 76000; 
 	map<string, string> local_input_keys = input_keys; // Copy input_keys to local_input_keys.
 	local_input_keys["T"] = t_val.str(); local_input_keys["a"] = rain.str(); local_input_keys["dP"] = dPO.str();
 	local_input_keys["L"] = Lgrid.str();
@@ -1716,7 +1716,7 @@ void generateNeighboringSitesFromCentral(const auto range_CentralNeighboringSite
 
 
 void f_2D(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double c, double gmax, double alpha, double d, double rW, double W0,  
-	double D[], double K[],  double t, double dt, double dx2, int g)
+	double (&Dxd2)[Sp], double (&K)[3],  double t, double dt, int g)
 {
 	//Vector function that updates an array containing (dP/dt, dW/dt, DO/dt) for each site in the lattice.
     //Based on the Rietkerk model for plant vegetation dynamics.
@@ -1727,13 +1727,13 @@ void f_2D(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double
         //Note that the Laplacian is calculated using reflective boundary conditions.
         //The Laplacian is calculated using the 5-point stencil method.
         //Equivalent to dP/dt = c*g_max*P*W/(W+K1) - d*P + D*(Laplacian of P)
-        f[0][i] = c*gmax*Rho_M[1][i]*Rho_M[0][i]/(Rho_M[1][i] +K[1]) -d*Rho_M[0][i] + (D[0]/(dx2))*(Rho_M[0][nR2[i][0][1]]  + Rho_M[0][nR2[i][2][1]]  
+        f[0][i] = c*gmax*Rho_M[1][i]*Rho_M[0][i]/(Rho_M[1][i] +K[1]) -d*Rho_M[0][i] + (Dxd2[0])*(Rho_M[0][nR2[i][0][1]]  + Rho_M[0][nR2[i][2][1]]  
         + Rho_M[0][nR2[i][1][0]]  + Rho_M[0][nR2[i][1][2]]  - 4*Rho_M[0][i]);
         //Equivalent to dW/dt = alpha*(P+K2*W)/(P+K2) - rW*W + D*(Laplacian of W)
         f[1][i] = alpha*(Rho_M[0][i]+ K[2]*W0)/(Rho_M[0][i] +K[2])*Rho_M[2][i] -gmax*Rho_M[1][i]*Rho_M[0][i]/(Rho_M[1][i] +K[1]) - rW*Rho_M[1][i] 
-        + (D[1]/(dx2))*(Rho_M[1][nR2[i][0][1]]  + Rho_M[1][nR2[i][2][1]]  + Rho_M[1][nR2[i][1][0]]  + Rho_M[1][nR2[i][1][2]]  - 4*Rho_M[1][i]);
+        + (Dxd2[1])*(Rho_M[1][nR2[i][0][1]]  + Rho_M[1][nR2[i][2][1]]  + Rho_M[1][nR2[i][1][0]]  + Rho_M[1][nR2[i][1][2]]  - 4*Rho_M[1][i]);
         //Equivalent to dO/dt = a - alpha*(P+K*W)/(P+K)*O + D*(Laplacian of O)
-		f[2][i] = a - alpha*(Rho_M[0][i]+ K[2]*W0)/(Rho_M[0][i] +K[2])*Rho_M[2][i] + (D[2]/(dx2))*(Rho_M[2][nR2[i][0][1]]  + Rho_M[2][nR2[i][2][1]] 
+		f[2][i] = a - alpha*(Rho_M[0][i]+ K[2]*W0)/(Rho_M[0][i] +K[2])*Rho_M[2][i] + (Dxd2[2])*(Rho_M[2][nR2[i][0][1]]  + Rho_M[2][nR2[i][2][1]] 
         + Rho_M[2][nR2[i][1][0]]  + Rho_M[2][nR2[i][1][2]]  - 4*Rho_M[2][i]);
 		
 	}
@@ -1750,48 +1750,47 @@ void f_2D(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, double
 //The function should also take in the number of iterations performed so far, and the number of iterations to be performed.
 
 
-void RK4_Integrate(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D3Vec_Int &nR2, double a, double c, double gmax, double alpha, double d, double rW,
-	  double W0, double D[], double K[],  double t, double dt, double dx, int g)
+void RK4_Integrate(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D2Vec_Double &K1, D2Vec_Double &K2,  D2Vec_Double &K3, D2Vec_Double &K4, D3Vec_Int &nR2, 
+	double a, double c, double gmax, double alpha, double d, double rW, double W0, double (&Dxd2)[Sp], double (&K)[3],  double t, double dt, double dx, int g)
 {
     
 
     // Rho_t stores value of rho at time t.
 
 	// Rho_tstar stores value of rho*, provided by sampling Gaussian.
-	std::ofstream errout; //Save Error Logs
-	std::string thr = "ErrLog_" + std::to_string(omp_get_thread_num()) + ".txt";
-	double dt6 = dt/6.0; double dt2 = dt/2.0; double dx2 = dx*dx;
+	//std::ofstream errout; //Save Error Logs
+	//std::string thr = "ErrLog_" + std::to_string(omp_get_thread_num()) + ".txt";
+	double dt6 = dt/6.0; double dt2 = dt/2.0; //double dx2 = dx*dx;
 
-    D2Vec_Double K1(Sp, vector<double> (g*g, 0.0)); D2Vec_Double K2(Sp, vector<double> (g*g, 0.0));
-    D2Vec_Double K3(Sp, vector<double> (g*g, 0.0)); D2Vec_Double K4(Sp, vector<double> (g*g, 0.0));
-    D2Vec_Double Rho_M(Sp, vector<double> (g*g, 0.0));
+    
+    //D2Vec_Double Rho_M(Sp, vector<double> (g*g, 0.0));
 
 	//double K1[Sp][g*g] ={0.0}; double K2[Sp][g*g] ={0.0}; double K3[Sp][g*g] ={0.0}; double K4[Sp][g*g] ={0.0};
 	//double Rho_M[Sp] ={0.0, 0.0};
 
 
-	f_2D(K1, Rho_tsar, nR2, a, c, gmax, alpha, d, rW, W0, D, K, t, dt, dx2, g); //K1 updated.
+	f_2D(K1, Rho_t, nR2, a, c, gmax, alpha, d, rW, W0, Dxd2, K, t, dt, g); //K1 updated.
 
 	for(int i=0; i < g*g; i++)
 	{
 		for(int s= 0; s <Sp; s++)
-			Rho_M[s][i] = Rho_tsar[s][i] + (dt2)*K1[s][i];
+			Rho_tsar[s][i] = Rho_t[s][i] + (dt2)*K1[s][i];
 	}
 
-	f_2D(K2, Rho_M, nR2, a, c, gmax, alpha, d, rW, W0, D, K, t + dt2, dt, dx2, g); //K2 updated.
+	f_2D(K2, Rho_tsar, nR2, a, c, gmax, alpha, d, rW, W0, Dxd2, K, t + dt2, dt,  g); //K2 updated.
 
 	for(int i=0; i < g*g; i++)
 	{
 		for(int s= 0; s <Sp; s++)
-			Rho_M[s][i] = Rho_tsar[s][i] + (dt2)*K2[s][i];
+			Rho_tsar[s][i] = Rho_t[s][i] + (dt2)*K2[s][i];
 	}
-	f_2D(K3, Rho_M, nR2, a, c, gmax, alpha, d, rW, W0, D, K, t + dt2, dt, dx2, g); //K3 updated.
+	f_2D(K3, Rho_tsar, nR2, a, c, gmax, alpha, d, rW, W0, Dxd2, K, t + dt2, dt,  g); //K3 updated.
 	for(int i=0; i < g*g; i++)
 	{
 		for(int s= 0; s <Sp; s++)
-			Rho_M[s][i] = Rho_tsar[s][i] + (dt)*K3[s][i];
+			Rho_tsar[s][i] = Rho_t[s][i] + (dt)*K3[s][i];
 	}
-	f_2D(K4, Rho_M, nR2, a, c, gmax, alpha, d, rW, W0, D, K, t + dt, dt, dx2, g); //K4 updated.
+	f_2D(K4, Rho_tsar, nR2, a, c, gmax, alpha, d, rW, W0, Dxd2, K, t + dt, dt, g); //K4 updated.
     
 	for(int i=0; i < g*g; i++)
 	{
@@ -1805,8 +1804,9 @@ void RK4_Integrate(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D3Vec_Int &nR2, 
 				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
         		m6 << "RK4 WAS KO'ED WITH:\t" << Rho_t[s][i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
 				<< " at time:\t:" << t << " For Species:\t:" << s << " with K1[s][i]:   " << K1[s][i] << "\t, K2[s][i]:\t" << K2[s][i] 
-				<< "\t, K3[s][i]:\t" << K3[s][i] << "\t AND K4[s][i]:\t" << K4[s][i] << endl; //cout << m6.str();
-				errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+				<< "\t, K3[s][i]:\t" << K3[s][i] << "\t AND K4[s][i]:\t" << K4[s][i] << "\n"; cerr << m6.str();
+				 //cout << m6.str();
+				//errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
 			}
 			
 		}
@@ -1814,7 +1814,7 @@ void RK4_Integrate(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsar, D3Vec_Int &nR2, 
 }
 
 void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, double a, double c, double gmax, 
-	  double alpha, double d, double rW, double W0, double D[], double K[], double a_st, double a_end, double dt, double dx, double dP, int r, int g)
+	  double alpha, double d, double rW, double W0, double (&D)[Sp], double (&K)[3], double a_st, double a_end, double dt, double dx, double dP, int r, int g)
 {
 	// Rho_0 stores value of rho at time t=0.
 	// Rho_t stores value of rho at time t.
@@ -1845,13 +1845,17 @@ void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, do
 
 	stringstream m0;     //To make cout thread-safe as well as non-garbled due to race conditions.
     m0 << "Parameters:\t a:\t" << a << "\t c:\t " << c << "\t dt,dx:\t " << dt << "," << dx << "\t gmax:\t " << gmax 
-	<< "\t and  Alpha:\t " << alpha  <<endl; //cout << m1.str();
+	<< "\t and  Alpha:\t " << alpha  << "\n"; //cout << m1.str();
 	cout << m0.str();
-	std::ofstream errout; //Save Error Logs
-	std::string thr = "ErrLog_" + std::to_string(omp_get_thread_num()) + ".txt";
-	errout.open(thr, std::ios_base::out); errout << m0.str(); errout.close();
+	//std::ofstream errout; //Save Error Logs
+	cerr << m0.str(); // Output to standard error stream for debugging purposes.
+	//std::string thr = "ErrLog_" + std::to_string(omp_get_thread_num()) + ".txt";
+	//errout.open(thr, std::ios_base::out); errout << m0.str(); errout.close();
 
-	double beta = c*gmax - d;
+	double beta = c*gmax - d; double dx2 = dx*dx; // dx2 is the square of the spatial step.
+	double diff_coefficient[Sp]={0.0};
+	for(int s= 0; s < Sp; s++)
+		diff_coefficient[s] = D[s]/(dx2);
   	double p0istar, p0jstar, p0mstar; // Analytic steady state values.
 
 	if(a < 1)
@@ -1864,7 +1868,8 @@ void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, do
  		p0istar = (c/d)*(a - rW*p0jstar);
   		p0mstar = (a/alpha)*(p0istar + K[2] )/(p0istar + K[2]*W0);
 	}
-	
+
+	auto start_t = high_resolution_clock::now(); //Start the clock
 	for(int j=0; j< r; j++)
 	{
 		// Iterating over replicates.
@@ -1902,6 +1907,8 @@ void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, do
 		D2Vec_Double Rho_dt(Sp, vector<double> (g*g, 0.0)); // 2D vector of dim: Sx(L*l) Updated through the turn, in turn used to update DRho.
 		D2Vec_Double Rho_tsar(Sp, vector<double> (g*g, 0.0)); // 2D vector of dim: Sx(L*l) Dummy variable, Kept constant, only updated at end of turn.
 		//double Rho_M[tot_iter][Sp2] ={0.0}; //Stores <rho>x values per time step for a single replicate.
+		D2Vec_Double K1(Sp, vector<double> (g*g, 0.0)); D2Vec_Double K2(Sp, vector<double> (g*g, 0.0));
+    	D2Vec_Double K3(Sp, vector<double> (g*g, 0.0)); D2Vec_Double K4(Sp, vector<double> (g*g, 0.0));
 		D2Vec_Double Rho_M(tot_iter, vector<double> (Sp2, 0.0)); //Stores <rho>x values per time step for a single replicate.
 		double perc = 0.015; double c_high[Sp] ={p0istar + dP, p0jstar, p0mstar}; double c_low[Sp] ={p0istar, p0jstar, p0mstar};
 		
@@ -1911,10 +1918,10 @@ void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, do
 		stringstream m1;     //To make cout thread-safe as well as non-garbled due to race conditions.
     	m1 << "Initial Conditions:\t Per:\t" << perc  << "\t C_High[0], C_High[1], C_High[2]:\t " << c_high[0] << "," << c_high[1] << "," << c_high[2]   
 		<< "\t C_Lo[0], C_Lo[1], C_Lo[2]:\t " << c_low[0] << "," << c_low[1] << "," << c_low[2] << ",\t R: " << a << endl; //cout << m1.str();
-		cout << m1.str();
+		cout << m1.str(); cerr << m1.str(); // Output to standard error stream for debugging purposes.
 		//std::ofstream errout; //Save Error Logs
 		//std::string thr = "ErrLog_" + std::to_string(omp_get_thread_num()) + ".txt";
-		errout.open(thr, std::ios_base::app); errout << m1.str(); errout.close();
+		//errout.open(thr, std::ios_base::app); errout << m1.str(); errout.close();
 
 		for(int i=0; i < g*g; i++)
 		{
@@ -1926,6 +1933,7 @@ void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, do
 
 		double t=0; int index = 0;  //Initialise t
 		int iter_index=0; int po=1; int so =1; int lo=1;
+		int counter=0;
 
 		while (t < t_max + dt)
 		{
@@ -1947,7 +1955,7 @@ void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, do
                 }
 				 iter_index+=1;//Rho_M.push_back({t, rhox_avg});
 
-				if( t >= 100 && t <= 2500 || t== 0 ||  iter_index >= tot_iter -3 &&  iter_index <= tot_iter)
+				if( t >= 500 && t <= 2500 || t== 0 ||  iter_index >= tot_iter -15 &&  iter_index <= tot_iter)
 				{
 					//Saving Rho_dt snapshots to file. This is done at times t= 0, t between 100 and 2500, and at time points near the end of the simulation.
 					
@@ -1959,7 +1967,13 @@ void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, do
 					a1 << a_st; a2  << a_end;
 					// Three replicates are over.
 
-					ofstream frame_dp;
+					string parendir = "../Data/Rietkerk/Frames/Non-Stochastic/" + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str();
+					string filenamePattern = "/FRAME_RAND_Basic_P_c_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() 
+					+ "_D0_"+ Dm0.str() + "_D1_"+ Dm1.str() + "_dx_"+ dix.str() + "_alph_"+ alph.str() + "_gmax_"+ gm.str() + "_R_";
+					string filename = filenamePattern + rini.str() + ".csv"; // Naive filename
+					save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, "a_c,  x,  P(x; tmax), W(x; tmax), O(x; tmax) \n");
+					/** OLD WAY OF SAVING FRAME FILES 
+					 ofstream frame_dp;
   					// Creating a file instance called output to store output data as CSV
 					frame_dp.open("../Data/Rietkerk/Frames/Non-Stochastic/" + a1.str() + "-" + a2.str() +  "_dP_" + dimitri.str() + "/FRAME_RAND_Basic_P_c_DP_G_" + L.str() + "_T_" + tm.str() + "_dt_" + d3.str() + "_a_"+ p1.str() 
 					+ "_D0_"+ Dm0.str() + "_D1_"+ Dm1.str() + "_dx_"+ dix.str() + "_alph_"+ alph.str() + "_gmax_"+ gm.str() + "_R_"+ rini.str() + ".csv");
@@ -1968,12 +1982,12 @@ void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, do
 					frame_dp << "a_c,  x,  P(x; tmax), W(x; tmax), O(x; tmax) \n";
 					for(int i=0; i< g*g; i++)
 					{
-						frame_dp << a << "," << i << ","<< Rho_dt[0][i] << "," << Rho_dt[1][i] << "," << Rho_dt[2][i] <<endl;
+						frame_dp << a << "," << i << ","<< Rho_dt[0][i] << "," << Rho_dt[1][i] << "," << Rho_dt[2][i] <<"\n";
 				
 					}
 
 					frame_dp.close();
-
+					*/
 					
 				}
 				
@@ -1985,7 +1999,7 @@ void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, do
 			for(int s= 0; s <Sp; s++)
 				Rho_tsar[s] = Rho_dt[s]; //Assigning initial conditions
 
-			RK4_Integrate(Rho_dt, Rho_tsar, nR2, a, c, gmax, alpha, d, rW, W0, D, K, t, dt, dx, g);
+			RK4_Integrate(Rho_dt, Rho_tsar, K1, K2, K3, K4, nR2, a, c, gmax, alpha, d, rW, W0, diff_coefficient, K, t, dt, dx, g);
 
 			for(int s= 0; s <Sp; s++)
 			{
@@ -1996,8 +2010,8 @@ void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, do
 						stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
         				m6 << "RHO FALLS BELOW O:\t" << Rho_dt[s][i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
 						<< " at time:\t:" << t << " with Rho(t-dt,i):   " << Rho_tsar[s][i] << "\t and Analytic Integration Term:\t" 
-						<< Rho_tsar[s][i]<<  endl; cout << m6.str(); //so=0;
-						errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+						<< Rho_tsar[s][i]<<  "\n"; cout << m6.str(); cerr << m6.str(); //so=0;
+						//rrout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
 					}
 
 				}
@@ -2006,6 +2020,25 @@ void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, do
 			
 
 			t += dt;
+			counter+=1; //Update counter
+
+			if(counter%40000 ==1)
+			{
+				auto end_t = high_resolution_clock::now();
+				auto elapsed_min = duration_cast<minutes>(end_t-start_t);
+				// Reset the clock
+				start_t = high_resolution_clock::now();
+				stringstream m7;
+				m7 << "STATUS UPDATE AT [t, a, thr, j]\t " << t << " , "  << a << " , " << omp_get_thread_num() << " , " << j 
+				//<< " ,with current size in MB: " << currentSize/(1024.0*1024.0) << " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) 
+				<< " and time taken for " << counter << " iterations: " << elapsed_min.count() << " min." <<  "\n"; cout << m7.str();
+				cerr << m7.str(); // Output to standard error stream for debugging purposes.
+				//errout.open(thr, std::ios_base::app); errout << m7.str(); errout.close();
+
+				//Report syst every 50000 iterations.
+			
+
+			}
 
 			
 
@@ -2018,15 +2051,16 @@ void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, do
 			size_t peakSize    = getPeakRSS( );
 			stringstream m7;
 			m7 << "In replicate " << j << ", current size in MB: " << currentSize/(1024.0*1024.0) 
-			<< " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) << endl; cout << m7.str();
-			errout.open(thr, std::ios_base::app); errout << m7.str(); errout.close();
+			<< " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) << "\n"; cout << m7.str();
+			cerr << m7.str(); // Output to standard error stream for debugging purposes.
+			//errout.open(thr, std::ios_base::app); errout << m7.str(); errout.close();
 		}
 
 		if(j == 0) //Namely, the first replicate, set up initial incremental SD and mean of replicates accordingly.
 		{
 			stringstream m7;     //To make cout thread-safe as well as non-garbled due to race conditions.
         	m7 << "INITIAL UPDATE FOR Replicate:\t" << j << "\t for Thread Rank:\t " << omp_get_thread_num() 
-			<< " THE SIZE OF RHO_M: " << tot_iter << endl; cout << m7.str();
+			<< " THE SIZE OF RHO_M: " << tot_iter << "\n"; cout << m7.str(); cerr << m7.str();
 			for(int i =0; i< tot_iter; i++)
 			{	
 				for(int s =0; s< 1; s++)
@@ -2077,7 +2111,7 @@ void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, do
 				{ output_dp << rho_rep_avg_var[i][4*s + 3] << "," <<
 				rho_rep_avg_var[i][4*s +4] << "," << rho_rep_avg_var[i][4*s +5] << "," << rho_rep_avg_var[i][4*s +6] << ","; 
 				}
-				output_dp <<  endl;
+				output_dp <<  "\n";
 				
 			}
 
@@ -2095,7 +2129,8 @@ void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, do
 	stringstream m9;
 	m9 << "SA RE GA, for Thread Rank:\t " << omp_get_thread_num() << ", current size in MB: " << currentSize/(1024.0*1024.0) 
 	<< " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) << endl; cout << m9.str();
-	errout.open(thr, std::ios_base::app); errout << m9.str(); errout.close();
+	cerr << m9.str(); // Output to standard error stream for debugging purposes.
+	//errout.open(thr, std::ios_base::app); errout << m9.str(); errout.close();
 
 	
 	for(int i=0; i< tot_iter; i++)
@@ -2126,13 +2161,14 @@ void RK4_Wrapper_2D(D2Vec_Double &Rho, vector <double> &t_meas, double t_max, do
 	stringstream m10;
 	m10 << "MA PA DHA, for Thread Rank:\t " << omp_get_thread_num() << ", current size in MB: " << currentSize/(1024.0*1024.0) 
 	<< " and Peak Size (in MB): " << peakSize/(1024.0*1024.0) << endl; cout << m10.str();
-	errout.open(thr, std::ios_base::app); errout << m10.str(); errout.close();
+	cerr << m10.str(); // Output to standard error stream for debugging purposes.
+	//errout.open(thr, std::ios_base::app); errout << m10.str(); errout.close();
 }
 
 
 
 void first_order_critical_exp_delta(int div, double t_max, double a_start, double a_end,  double c, double gmax, double alpha,
-	double d, double rW, double W0,  double D[], double K[], double dt, double dx, double dP, int r,  int g)
+	double d, double rW, double W0,  double (&D)[Sp], double (&K)[3], double dt, double dx, double dP, int r,  int g)
 {
 
 	
@@ -2141,23 +2177,23 @@ void first_order_critical_exp_delta(int div, double t_max, double a_start, doubl
 	//double mean[Sp] = {1.0, 0.05}; double sd[Sp] = {0.25, 0.0125};
 	//init_randframe(Rho_0, Sp,  g*g); //Returns Rho_0 with a full initial frame filled with 0.2.
 	vector<double> a_space = linspace(a_start, a_end, div);
-	cout << "NOSTRA" <<endl;
+	cout << "NOSTRA" <<"\n";
   	// The pspace to iterate over.
     vector <double> t_measure = logarithm10_time_bins(t_max, dt);
 	// Computes and returns ln-distributed points from t= 10^{0} to log10(t_max) (the latter rounded down to 1 decimal place) 
   // Returns time-points measured on a natural logarithmic scale from e^{2} to e^ln(t_max) rounded down to one decimal place.
 
-  	cout << "Values in t_measure (which is of total size " << t_measure.size() << ") are :" <<endl;
+  	cout << "Values in t_measure (which is of total size " << t_measure.size() << ") are :" <<"\n";
   	for (int i=0; i< t_measure.size(); i++)
   	{
 		cout << t_measure[i] << " ";
-  	} 	cout << endl;
+  	} 	cout << "\n";
 
   	//usleep will pause the program in micro-seconds (1000000 micro-seconds is 1 second)
     const int microToSeconds = 1000000;   
     const double delay1 = 5 * microToSeconds;     //5 seconds
     
-    cout<<"Delay 1 in progress... ("<<delay1/microToSeconds<<"s)"<<endl;
+    cout<<"Delay 1 in progress... ("<<delay1/microToSeconds<<"s)"<<"\n";
 	std::vector<vector <double>> vec;
   // Stores collated output from parallel method calls in proper ascending order of p values.
 
@@ -2581,7 +2617,7 @@ void f_2Dor_3Sp(D2Vec_Double &f, D2Vec_Double &Rho_M, D3Vec_Int &nR2, double a, 
 	//vector<double> EA(SpB);
 	//for(int s=1; s< SpB; s++)
 	//	EA[s] = E[s]*A[s-1][s];
-	
+	#pragma omp simd // SIMD optimization for better performance.	
 	for(int i=0; i < g*g; i++)
 	{
         //Equations for the density of plants, soil water, surface water and grazers at each site.
@@ -2626,6 +2662,7 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 
 	for(int s= 0; s <Sp; s++)
 	{
+		#pragma omp simd // SIMD optimization for better performance.
 		for(int i=0; i < g*g; i++)
 			Rho_tsar[s][i] = Rho_t[s][i] + (dt2)*K1[s][i];
 	}
@@ -2634,12 +2671,14 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
 
 	for(int s= 0; s <Sp; s++)
 	{
+		#pragma omp simd // SIMD optimization for better performance.
 		for(int i=0; i < g*g; i++)
 			Rho_tsar[s][i] = Rho_t[s][i] + (dt2)*K2[s][i];
 	}
 	f_2Dor_3Sp(K3, Rho_tsar, nR2, a, c, gmax, alpha, rW, W0, Dxd2, K, A,H,E, t + dt2, dt, dx1_2, g); //K3 updated.
 	for(int s= 0; s <Sp; s++)
 	{
+		#pragma omp simd // SIMD optimization for better performance.
 		for(int i=0; i < g*g; i++)
 			Rho_tsar[s][i] = Rho_t[s][i] + (dt)*K3[s][i];
 	}
@@ -2647,21 +2686,32 @@ void RK4_Integrate_Stochastic_MultiSp(D2Vec_Double &Rho_t, D2Vec_Double &Rho_tsa
     
 	for(int s= 0; s <Sp; s++)
 	{
+		#pragma omp simd // SIMD optimization for better performance.
 		for(int i=0; i < g*g; i++)
 		{
 			Rho_t[s][i]+= (dt6)*( K1[s][i] + 2.0*K2[s][i] + 2.0*K3[s][i] + K4[s][i]);
-
+		}
+		#ifdef DEBUG
+		bool isKoed = false; // Flag to indicate if the RK4 integration was "KO'ed" due to invalid values.
+		for(int i=0; i < g*g; i++)
+		{
 			if( Rho_t[s][i] < 0 || isfinite(Rho_t[s][i]) == false || isnan(Rho_t[s][i]) == true)
 			{
-				std::ofstream errout; //Save Error Logs
-				std::string thr = "ErrLog_" + std::to_string(omp_get_thread_num()) + ".txt";
-				stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
-        		m6 << "RK4 WAS KO'ED WITH:\t" << Rho_t[s][i] << "\t at index:  " << i << " and thread:  " << omp_get_thread_num() 
-				<< " at time:\t:" << t << " For Species:\t:" << s << " with K1[s][i]:   " << K1[s][i] << "\t, K2[s][i]:\t" << K2[s][i] 
-				<< "\t, K3[s][i]:\t" << K3[s][i] << "\t, K4[s][i]:\t" << K4[s][i] << "\t AND Rho(t-dt)" << Rho_tsar[s][i] << endl; //cout << m6.str();
-				//errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+				if(isKoed == false)
+				{
+					std::ofstream errout; //Save Error Logs
+					std::string thr = "ErrLog_" + std::to_string(omp_get_thread_num()) + ".txt";
+					stringstream m6;     //To make cout thread-safe as well as non-garbled due to race conditions.
+					m6 << "RK4 WAS KO'ED WITH VAL:\t" << Rho_t[s][i] << " For [s, thr, a, i, Pre]\t" << s << " , " << omp_get_thread_num() << " , " << a 
+					<< " , " << i << " , " << prefix << " ] with K1[s][i]:   " << K1[s][i] << "\t, K2[s][i]:\t" << K2[s][i] 
+					<< "\t, K3[s][i]:\t" << K3[s][i] << "\t, K4[s][i]:\t" << K4[s][i] << "\t AND Rho(t-dt)" << Rho_tsar[s][i] << "\n"; //cout << m6.str();
+					//errout.open(thr, std::ios_base::app); errout << m6.str(); errout.close();
+					cerr << m6.str();
+					isKoed = true;
+				}
 			}
 		}
+		#endif //DEBUG
 	}
 }
 // Function to save the preliminary frame data to disk.
@@ -2684,7 +2734,7 @@ void save_prelimframe(D2Vec_Double &Rho_t, const string &parendir, const string 
 		filename = parendir + filenamePattern + std::to_string(maxRepNo + 1) + ".csv";
 		stringstream m1;
 
-		m1 << "File exists. New filename: " << filename << " \n and maxRepNo: " << maxRepNo << endl;
+		m1 << "File exists. New filename: " << filename << " \n and maxRepNo: " << maxRepNo << "\n";
 		cout << m1.str();
 		basefilename = filenamePattern + std::to_string(maxRepNo + 1) + ".csv";
 	}
@@ -2871,7 +2921,7 @@ void save_framefileswrapper(int index, int tot_iter, int j, int thrID,  double t
 		+ "_a_" + p1.str()  + "_D1_"+ Dm1.str() + "_jID_"+ thr_ID.str() + "_dx_"+ dix.str() + "_R_";
 	#endif
 	
-	/** // SAVE ALL FRAMES
+	// SAVE ALL FRAMES
 	save_frame(Rho_dt, parendir, filenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g);
 	#if SPB > 1 // Save gamma frames.
 		save_frame(gamma, parendir, gammafilenamePattern, a, a_st, a_end, t, dt, dx, dP, j, g, gammaheader);
@@ -2942,7 +2992,7 @@ void save_framefileswrapper(int index, int tot_iter, int j, int thrID,  double t
 		}
 	}//*/
 
-	///** FRAME SAVING STRATEGY FOR DT WITH FRAME_MEAS WITH LINEAR WINDOWS
+	/** FRAME SAVING STRATEGY FOR DT WITH FRAME_MEAS WITH LINEAR WINDOWS
 	if(t > 1500 && t < 6000)
 	{	//Only save one in two frames here.
 		if(index%2 ==0)
@@ -3163,35 +3213,37 @@ void calc_gamma_3Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringS
 			{	continue;	} 
 			//*/
 			//Skip this species if it is not updated at this time step (depending on advection timescale)
-
-			
+			double gamma_sum = 0.0; //Sum of gamma values for this species at site i (needed for SIMD reduction).
 			// Gamma for grazers (indexed 1)
 			if (s == 1)
 			{	
 				
 				if( Rho_avg[2] < eps)
-				{	
+				{
+					#pragma omp simd reduction(+:gamma_sum )	
 					for(int k=0; k< eff_nR_Perp_size; k++)
-					{		gamma[s][i] += Rho_t[s-1][nR_Perp[k]];	}
+					{		gamma_sum  += Rho_t[s-1][nR_Perp[k]];	}
 				} // No predators left
 				else
 				{
 					//double rho_pred1 = 1/Rho_avg[2];
+					#pragma omp simd reduction(+:gamma_sum )
 					for(int k=0; k< eff_nR_Perp_size; k++)
 					{		
-						gamma[s][i] += Rho_t[s-1][nR_Perp[k]]*(1 -Rho_t[2][nR_Perp[k]]*rho_inverse[2]);	
+						gamma_sum += Rho_t[s-1][nR_Perp[k]]*(1 -Rho_t[2][nR_Perp[k]]*rho_inverse[2]);	
 					}	
 				}
 				// RECALL : rho_inverse[s] = 1/Rho_avg[s]
-				gamma[s][i] = (gamma[s][i]*rho_inverse[s-1])/(eff_nR_Perp_size);	
+				gamma[s][i] = (gamma_sum *rho_inverse[s-1])/(eff_nR_Perp_size);	
 
 			}
 			if(s == 2)
 			{
+				#pragma omp simd reduction(+:gamma_sum )
 				for(int k=0; k< eff_nR_Perp_size; k++)
-					{		gamma[s][i] += Rho_t[s-1][nR_Perp[k]];	}
+					{		gamma_sum  += Rho_t[s-1][nR_Perp[k]];	}
 				// RECALL : rho_inverse[s] = 1/Rho_avg[s]
-				gamma[s][i] = (gamma[s][i]/(eff_nR_Perp_size))*rho_inverse[s-1];	
+				gamma[s][i] = (gamma_sum /(eff_nR_Perp_size))*rho_inverse[s-1];	
 			}
 
 			if(gamma[s][i] > 1)
@@ -3209,7 +3261,7 @@ void calc_gamma_3Sp_NonRefugia(const vector<pair<int, int>>& centralNeighboringS
 				errorMutex.unlock();
 			}
 		}
-		vector <int>().swap(nR_Perp);
+		//vector <int>().swap(nR_Perp);
 	}
 }
 
@@ -3279,6 +3331,7 @@ void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec
 			{	
 				if( Rho_avg[2] < eps)
 				{	
+					#pragma omp simd reduction(+:gamma[s][i])
 					for(int k=0; k< eff_nR_Perp_size; k++)
 					{		gamma[s][i] += Rho_t[s-1][nR_Perp[k]];	}
 				} // No predators left
@@ -3287,8 +3340,10 @@ void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec
 					//if(Rho_avg[0] == 0)
 					//{	gamma[s][i] = 0.0;	continue; } // No vegetation 
 					//double rho_pred1 = 1/Rho_avg[2];
+					#pragma omp simd reduction(+:gamma[s][i])
 					for(int k=0; k< eff_nR_Perp_size; k++)
-					{		
+					{
+								
 						gamma[s][i] += Rho_t[s-1][nR_Perp[k]]*(1 -Rho_t[2][nR_Perp[k]]*rho_inverse[2]);	
 					}
 				// RECALL : rho_inverse[s] = 1/Rho_avg[s]
@@ -3301,6 +3356,7 @@ void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec
 				
 				if( Rho_avg[0] < eps)
 				{	
+					#pragma omp simd reduction(+:gamma[s][i])	
 					for(int k=0; k< eff_nR_Perp_size; k++)
 					{		gamma[s][i] += Rho_t[s-1][nR_Perp[k]];	}
 				} // No vegetation left
@@ -3309,9 +3365,10 @@ void calc_gamma_3Sp(const vector<pair<int, int>>& centralNeighboringSites, D2Vec
 					//if(Rho_avg[1] < eps)
 					//{	gamma[s][i] = 0.0;	continue; } // No grazers left.
 					//double rho_veg1 = 1/Rho_avg[0];
+					#pragma omp simd reduction(+:gamma[s][i])
 					for(int k=0; k< eff_nR_Perp_size; k++)
-					{		
-							gamma[s][i] += Rho_t[s-1][nR_Perp[k]]*(1 -Rho_t[0][nR_Perp[k]]*rho_inverse[0]);	
+					{
+						gamma[s][i] += Rho_t[s-1][nR_Perp[k]]*(1 -Rho_t[0][nR_Perp[k]]*rho_inverse[0]);	
 					}
 				// RECALL : rho_inverse[s] = 1/Rho_avg[s]
 				}
@@ -3680,7 +3737,7 @@ void rietkerk_Dornic_2D_MultiSp(D2Vec_Double &Rho, vector <double> &t_meas, doub
 			{
 				// Saving frames to file at given time points.
 				if(frame_index >= frame_tot_iter -10 &&  frame_index <= frame_tot_iter-1  ||  t >= 50000 && t <= 150000 
-					|| t >= 50 && t <= 15000 || t== 0)
+					|| t >= 20 && t <= 15000 || t== 0)
 				{
 					save_framefileswrapper(frame_index, frame_tot_iter, j, thrID, t, dt, dx, Rho_dt, DRho, rho_rep_avg_var,
 					frame_tmeas, gamma, v_eff, t_max, a, c, gmax, alpha, rW, W0, D, v, K, sigma, a_st, a_end, a_c, A,H,E,M, 
@@ -4336,7 +4393,7 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 	
 
     vector <double> t_measure = logarithm10_time_bins(t_max, 1*dt);
-	//vector <double> t_measure = linspace(40, 880, 22);
+	//vector <double> t_measure = linspace(20, 6000, 300);
 	// Computes and returns ln-distributed points from t= 10^{0} to log10(t_max) (the latter rounded down to 1 decimal place) 
   	// Returns time-points measured on a natural logarithmic scale from e^{2} to e^ln(t_max) rounded down to one decimal place.
 
@@ -4371,8 +4428,8 @@ void first_order_critical_exp_delta_stochastic_MultiSp(int div, double t_max, do
 	frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 50, 400, 8, "linspace", true);
 	frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 400, 1200, 9, "linspace", true);
 
-	// For correlation measurement, add linear window from 10 to 4000, with 400 points (spaced 10 apart).
-	//frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 10, 4000, 400, "linspace", true);
+	// For correlation measurement, add linear window from 20 to 6000, with 300 points (spaced 20 apart).
+	//frame_tmeas = switchsort_and_bait<double>(frame_tmeas, 20, 6000, 300, "linspace", true);
 
 
 	if(t_measure[t_measure.size()-1] > 90000)

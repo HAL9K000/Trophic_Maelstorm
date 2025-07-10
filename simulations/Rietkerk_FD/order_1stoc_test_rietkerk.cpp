@@ -24,7 +24,7 @@ int main(int argc, char *argv[])
   k0= 0; k1 = 5; k2 =5;
   s0 = sqrt(0.025); // ~ D/(dx)^2 (in g^{0.5}/(m day))
   */
-
+  /* */
   dx= 0.1 ; //From Bonachela et al 2015 (in km)
   //d0 = pow(10.0, -9.0)/24.0; d1 = pow(10.0, -9.0)/24.0; d2= pow(10.0, -7.0)/24.0; //From Bonachela et al 2015 (in km^2/hr)
   d0 = 0.00025/24.0; d1 = 0.00025/24.0; d2= 0.025/24.0; //From Bonachela et al 2015 (in km^2/hr)
